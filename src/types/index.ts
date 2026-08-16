@@ -15,7 +15,7 @@ export interface Profile {
 
 export interface Organization {
   id: string;
-  orgCode: string; // short human-shareable join code, e.g. "ACME482"
+  orgCode: string; // 5-digit numeric join code, e.g. "48213"
   name: string;
   ownerId: string;
   createdAt: string;

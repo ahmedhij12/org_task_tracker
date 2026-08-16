@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { FieldInput, UsernameInput, PrimaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
+import { sanitizeOrgCode } from '@/lib/orgCode';
 
 export default function SignInScreen() {
   const c = useThemeColors();
@@ -49,10 +50,10 @@ export default function SignInScreen() {
 
           <FieldInput
             label="Organization ID"
-            placeholder="e.g. ACME482"
+            placeholder="e.g. 48213"
             value={orgCode}
-            onChangeText={setOrgCode}
-            autoCapitalize="characters"
+            onChangeText={(t) => setOrgCode(sanitizeOrgCode(t))}
+            keyboardType="number-pad"
           />
           <UsernameInput value={username} onChangeText={setUsername} />
           <FieldInput label="Password" placeholder="Your password" value={password} onChangeText={setPassword} secureTextEntry />

@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { FieldInput, UsernameInput, PrimaryButton, SecondaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
+import { sanitizeOrgCode } from '@/lib/orgCode';
 
 interface TeamOption {
   teamId: string;
@@ -92,10 +93,10 @@ export default function JoinOrgScreen() {
               {error ? <ErrorBanner message={error} /> : null}
               <FieldInput
                 label="Organization ID"
-                placeholder="e.g. ACME482"
+                placeholder="e.g. 48213"
                 value={orgCode}
-                onChangeText={setOrgCode}
-                autoCapitalize="characters"
+                onChangeText={(t) => setOrgCode(sanitizeOrgCode(t))}
+                keyboardType="number-pad"
               />
               <View style={{ height: 8 }} />
               <PrimaryButton title="Continue" onPress={handleLookup} loading={loading} disabled={!orgCode.trim()} />
