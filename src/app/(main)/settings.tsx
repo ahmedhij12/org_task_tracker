@@ -5,14 +5,18 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemePref } from '@/hooks/useThemePref';
-import { Card, useThemeColors } from '@/components/ui';
+import { Card, FieldInput, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import type { ThemePref } from '@/types';
 
 export default function SettingsScreen() {
   const c = useThemeColors();
-  const { profile, organization, team, signOut } = useAuth();
+  const { profile, organization, team, signOut, addRecoveryEmail } = useAuth();
   const { themePref, setThemePref } = useThemePref();
   const [copied, setCopied] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState(profile?.recoveryEmail ?? '');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const roleLabel = profile?.role === 'owner' ? 'Owner' : profile?.role === 'team_admin' ? 'Team Admin' : 'Employee';
 
@@ -21,6 +25,22 @@ export default function SettingsScreen() {
     await Clipboard.setStringAsync(organization.orgCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleSaveEmail = async () => {
+    const trimmed = recoveryEmail.trim();
+    if (!trimmed || savingEmail) return;
+    setSavingEmail(true);
+    setEmailNotice(null);
+    setEmailError(null);
+    try {
+      await addRecoveryEmail(trimmed);
+      setEmailNotice('Saved. You can use this address to reset your password if you forget it.');
+    } catch (e: any) {
+      setEmailError(e?.message ?? 'Could not save that email. Please try again.');
+    } finally {
+      setSavingEmail(false);
+    }
   };
 
   const handleSignOut = () => {
@@ -61,6 +81,34 @@ export default function SettingsScreen() {
               <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={c.textMuted} />
             </Pressable>
           ) : null}
+        </Card>
+
+        <Card style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
+            Recovery email
+          </Text>
+          <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
+            Optional. Without one, only your admin can reset your password for you.
+          </Text>
+          {emailError ? <ErrorBanner message={emailError} /> : null}
+          {emailNotice ? (
+            <View style={{ backgroundColor: c.indigoSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+              <Text style={{ color: c.indigo, fontSize: 13 }}>{emailNotice}</Text>
+            </View>
+          ) : null}
+          <FieldInput
+            placeholder="you@example.com"
+            value={recoveryEmail}
+            onChangeText={setRecoveryEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <PrimaryButton
+            title="Save recovery email"
+            onPress={handleSaveEmail}
+            loading={savingEmail}
+            disabled={!recoveryEmail.trim() || recoveryEmail.trim() === (profile?.recoveryEmail ?? '')}
+          />
         </Card>
 
         <Card style={{ marginBottom: 14 }}>

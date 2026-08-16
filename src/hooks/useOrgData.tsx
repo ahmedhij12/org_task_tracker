@@ -37,6 +37,9 @@ function mapProfile(row: any): Profile {
     title: row.title,
     username: row.username,
     role: row.role,
+    mustChangePassword: row.must_change_password,
+    active: row.active,
+    recoveryEmail: row.recovery_email,
     createdAt: row.created_at,
   };
 }
@@ -57,7 +60,7 @@ interface OrgDataContextValue {
     teamId: string;
   }) => Promise<void>;
   setTaskCompletion: (taskId: string, completed: boolean, note?: string, photoUrl?: string) => Promise<void>;
-  createTeam: (name: string, adminProfileId?: string) => Promise<void>;
+  createTeam: (name: string) => Promise<void>;
 }
 
 const OrgDataContext = createContext<OrgDataContextValue | null>(null);
@@ -150,11 +153,8 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const createTeam = useCallback<OrgDataContextValue['createTeam']>(
-    async (name, adminProfileId) => {
-      const { error } = await supabase.rpc('create_team', {
-        p_name: name,
-        p_admin_profile_id: adminProfileId ?? null,
-      });
+    async (name) => {
+      const { error } = await supabase.rpc('create_team', { p_name: name });
       if (error) throw error;
       await refresh();
     },

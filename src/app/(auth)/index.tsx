@@ -33,15 +33,8 @@ export default function LandingScreen() {
         <ChoiceRow
           icon="business"
           title="Create an organization"
-          subtitle="You'll be the owner, create teams, and invite people."
+          subtitle="You'll be the owner, create teams, and add people."
           onPress={() => router.push('/(auth)/create')}
-        />
-        <View style={{ height: 12 }} />
-        <ChoiceRow
-          icon="person-add"
-          title="Join an organization"
-          subtitle="Enter an Organization ID shared with you."
-          onPress={() => router.push('/(auth)/join')}
         />
 
         <Pressable onPress={() => router.push('/(auth)/signin')} style={{ marginTop: 24, alignItems: 'center' }}>

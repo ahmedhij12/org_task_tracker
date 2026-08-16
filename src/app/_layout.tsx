@@ -29,6 +29,9 @@ function RootNavigator() {
   if (loading) return null;
 
   const signedInWithOrg = !!session && !!profile;
+  // An admin-created account (or one whose password an admin just reset)
+  // cannot reach the app until it picks its own password.
+  const needsPasswordChange = signedInWithOrg && !!profile?.mustChangePassword;
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
@@ -36,7 +39,10 @@ function RootNavigator() {
         <Stack.Protected guard={!signedInWithOrg}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
-        <Stack.Protected guard={signedInWithOrg}>
+        <Stack.Protected guard={needsPasswordChange}>
+          <Stack.Screen name="change-password" />
+        </Stack.Protected>
+        <Stack.Protected guard={signedInWithOrg && !needsPasswordChange}>
           <Stack.Screen name="(main)" />
         </Stack.Protected>
       </Stack>

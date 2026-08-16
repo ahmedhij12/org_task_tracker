@@ -10,6 +10,12 @@ export interface Profile {
   title: string | null; // job title, e.g. "IT", "Accountant" — separate from permission role
   username: string | null;
   role: Role;
+  /** True until the user picks their own password after an admin created or reset it. */
+  mustChangePassword: boolean;
+  /** Deactivated accounts cannot sign in. */
+  active: boolean;
+  /** Optional, added later by the user, only used for password recovery. */
+  recoveryEmail: string | null;
   createdAt: string;
 }
 

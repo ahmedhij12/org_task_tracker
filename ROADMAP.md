@@ -8,12 +8,27 @@ Core flow tested and working end-to-end: org creation, org-code lookup, self-ser
 join, username+password sign-in. `SETUP.sql` is the single source of truth for schema
 — re-run it in Supabase SQL Editor whenever schema changes.
 
-## Now building: Admin-provisioned signup & login
+## Built, awaiting verification: Admin-provisioned signup & login
 
-Replacing self-service join with admin/team-leader-created accounts. See requirements
-below (shared with an external developer for a second opinion before implementation
-starts). This is being done first, before the task-completion feature, because it
-changes the shape of the account/team-creation screens and is better to get right once.
+Employees no longer self-register. Owners create accounts for anyone in the org
+(choosing role and team); team leaders create employees on their own team only.
+Every admin-created account is forced to pick its own password on first login.
+Admins can reset any password without knowing the old one, and deactivate accounts,
+which signs the user out and blocks sign-in. Recovery email is optional and added
+by the user from Settings.
+
+Spec: `docs/superpowers/specs/2026-08-17-admin-provisioned-accounts-design.md`
+Plan: `docs/superpowers/plans/2026-08-17-admin-provisioned-accounts.md`
+
+**BEFORE TESTING — required, in this order:**
+1. Paste `supabase/SETUP.sql` into Supabase SQL Editor and Run. This wipes all data
+   and accounts (expected — the schema changed). Nothing works until this is done.
+2. Paste `supabase/TESTS.sql` and Run. Expect a list of `PASS:` notices and no error.
+3. Then create an org in the app and try the People tab.
+
+Code is verified only as far as `npm run typecheck` (clean). The database tests and
+the three Playwright end-to-end scripts in the plan have NOT been run yet — the SQL
+has to be applied first, and that needs a human in the Supabase dashboard.
 
 ## Parked — come back after signup/login rework
 

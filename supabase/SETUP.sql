@@ -19,12 +19,23 @@ drop table if exists public.org_lookup_attempts cascade;
 drop function if exists public.my_org_id() cascade;
 drop function if exists public.my_role() cascade;
 drop function if exists public.my_team_id() cascade;
+drop function if exists public.my_active() cascade;
+drop function if exists public.my_must_change_password() cascade;
 drop function if exists public.generate_org_code(text) cascade;
 drop function if exists public.get_org_by_code(text) cascade;
 drop function if exists public.create_organization(text, text, text, text) cascade;
+-- Self-service join is gone (accounts are provisioned by an admin now), but
+-- the drop stays so re-running this script removes it from older databases.
 drop function if exists public.join_organization(text, uuid, text, text, text) cascade;
 drop function if exists public.get_login_email(text, text) cascade;
+-- Both signatures: the old one took an admin to promote, the new one doesn't.
 drop function if exists public.create_team(text, uuid) cascade;
+drop function if exists public.create_team(text) cascade;
+drop function if exists public.admin_create_user(text, text, text, text, uuid, text) cascade;
+drop function if exists public.assert_can_manage_user(uuid) cascade;
+drop function if exists public.admin_reset_password(uuid, text) cascade;
+drop function if exists public.admin_set_user_active(uuid, boolean) cascade;
+drop function if exists public.clear_must_change_password() cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text) cascade;
 
 -- Supabase blocks direct DELETE on storage tables (its own protect_delete()
@@ -63,6 +74,15 @@ create table public.profiles (
   title text,
   username text,
   role text not null check (role in ('owner', 'team_admin', 'employee')),
+  -- Set true whenever an admin creates the account or resets the password, so
+  -- the app can force a change before letting them in. An owner who chose
+  -- their own password at signup starts false.
+  must_change_password boolean not null default false,
+  -- Deactivated accounts cannot sign in; see admin_set_user_active.
+  active boolean not null default true,
+  -- Optional, added by the user later, purely so password reset can email
+  -- them. NOT the auth email — the auth email stays synthetic.
+  recovery_email text,
   created_at timestamptz not null default now()
 );
 
@@ -141,6 +161,18 @@ language sql stable security definer set search_path = public as $$
   select team_id from public.profiles where id = auth.uid();
 $$;
 
+create function public.my_active()
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select active from public.profiles where id = auth.uid();
+$$;
+
+create function public.my_must_change_password()
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select must_change_password from public.profiles where id = auth.uid();
+$$;
+
 -- ── RLS policies ────────────────────────────────────────────────────
 
 create policy "org members can read their own org"
@@ -158,7 +190,17 @@ create policy "org members can read profiles in their org"
 create policy "users can update their own display name"
   on public.profiles for update
   using (id = auth.uid())
-  with check (id = auth.uid() and org_id = public.my_org_id() and role = public.my_role() and team_id is not distinct from public.my_team_id());
+  with check (
+    id = auth.uid()
+    and org_id = public.my_org_id()
+    and role = public.my_role()
+    and team_id is not distinct from public.my_team_id()
+    -- Users may edit their own name/title/recovery_email, but never
+    -- reactivate themselves or skip a forced password change. Those two only
+    -- move through the SECURITY DEFINER admin RPCs.
+    and active = public.my_active()
+    and must_change_password = public.my_must_change_password()
+  );
 
 create policy "owner can manage roles and team assignment in their org"
   on public.profiles for update
@@ -296,38 +338,263 @@ begin
 end;
 $$;
 
-create function public.join_organization(p_org_code text, p_team_id uuid, p_name text, p_username text, p_title text default null)
-returns table (org_id uuid, team_id uuid, role text)
+-- Creates a user account on behalf of an admin or team leader. The new
+-- employee is not present, so there is no client session to call
+-- supabase.auth.signUp() from — this writes the auth.users row itself,
+-- hashing the password with the same bcrypt GoTrue verifies against, so the
+-- account signs in through the normal password flow.
+--
+-- search_path includes extensions because Supabase installs pgcrypto
+-- (crypt, gen_salt) there, not in public.
+create function public.admin_create_user(
+  p_name text,
+  p_username text,
+  p_password text,
+  p_role text default 'employee',
+  p_team_id uuid default null,
+  p_title text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_caller_team uuid;
+  v_org_code text;
+  v_new_id uuid := gen_random_uuid();
+  v_username text := lower(trim(coalesce(p_username, '')));
+  v_email text;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select p.role, p.org_id, p.team_id
+    into v_caller_role, v_caller_org, v_caller_team
+  from public.profiles p where p.id = auth.uid();
+
+  if v_caller_role is null then
+    raise exception 'not authenticated';
+  end if;
+  if v_caller_role not in ('owner', 'team_admin') then
+    raise exception 'only an admin or team leader can create users';
+  end if;
+  if p_role not in ('employee', 'team_admin') then
+    raise exception 'role must be employee or team_admin';
+  end if;
+
+  if v_caller_role = 'team_admin' then
+    if p_role <> 'employee' then
+      raise exception 'a team leader can only create employees';
+    end if;
+    if p_team_id is distinct from v_caller_team then
+      raise exception 'a team leader can only create users on their own team';
+    end if;
+  end if;
+
+  if p_team_id is not null and not exists (
+    select 1 from public.teams t where t.id = p_team_id and t.org_id = v_caller_org
+  ) then
+    raise exception 'team not found in this organization';
+  end if;
+  if v_username = '' then
+    raise exception 'a username is required';
+  end if;
+  if coalesce(length(p_password), 0) < 6 then
+    raise exception 'password must be at least 6 characters';
+  end if;
+  if exists (
+    select 1 from public.profiles p
+    where p.org_id = v_caller_org and lower(p.username) = v_username
+  ) then
+    raise exception 'that username is already taken in this organization';
+  end if;
+
+  select o.org_code into v_org_code
+  from public.organizations o where o.id = v_caller_org;
+
+  -- Globally unique: org_code is unique across orgs, username is unique
+  -- within an org. Never a real mailbox — see recovery_email for that.
+  v_email := v_username || '.' || v_org_code || '@users.orgtasks.internal';
+
+  -- confirmed_at is a generated column and must not be inserted into. The
+  -- token columns must be '' rather than NULL: GoTrue scans them into
+  -- non-nullable Go strings and errors out on NULL at login.
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_new_id, 'authenticated', 'authenticated',
+    v_email, crypt(p_password, gen_salt('bf', 10)),
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+
+  -- GoTrue's password grant checks identities as well as users; without this
+  -- row the account exists but cannot sign in.
+  insert into auth.identities (
+    provider_id, user_id, identity_data, provider,
+    last_sign_in_at, created_at, updated_at
+  ) values (
+    v_new_id::text, v_new_id,
+    jsonb_build_object(
+      'sub', v_new_id::text,
+      'email', v_email,
+      'email_verified', true,
+      'phone_verified', false
+    ),
+    'email', now(), now(), now()
+  );
+
+  insert into public.profiles (
+    id, org_id, team_id, name, title, username, role,
+    must_change_password, active
+  ) values (
+    v_new_id, v_caller_org, p_team_id, p_name,
+    nullif(trim(coalesce(p_title, '')), ''), v_username, p_role,
+    true, true
+  );
+
+  return v_new_id;
+end;
+$$;
+
+-- Shared authorization check for the admin user-management RPCs: the caller
+-- must be the org owner (any member) or a team leader acting on someone on
+-- their own team. Returns silently when allowed, raises when not.
+create function public.assert_can_manage_user(p_target_profile_id uuid)
+returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_org_id uuid;
+  v_caller_role text;
+  v_caller_org uuid;
+  v_caller_team uuid;
+  v_target_org uuid;
+  v_target_team uuid;
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
   end if;
-  if exists (select 1 from public.profiles where id = auth.uid()) then
-    raise exception 'this account already belongs to an organization';
+
+  select p.role, p.org_id, p.team_id
+    into v_caller_role, v_caller_org, v_caller_team
+  from public.profiles p where p.id = auth.uid();
+
+  select p.org_id, p.team_id into v_target_org, v_target_team
+  from public.profiles p where p.id = p_target_profile_id;
+
+  if v_target_org is null then
+    raise exception 'user not found';
+  end if;
+  if v_target_org is distinct from v_caller_org then
+    raise exception 'that user is not in your organization';
+  end if;
+  if v_caller_role = 'owner' then
+    return;
+  end if;
+  if v_caller_role = 'team_admin' and v_target_team is not distinct from v_caller_team then
+    return;
+  end if;
+  raise exception 'only an admin or the user''s team leader can manage this account';
+end;
+$$;
+
+-- Sets a new password for another user without knowing the old one, and
+-- re-forces a password change so the user picks their own again.
+create function public.admin_reset_password(
+  p_target_profile_id uuid,
+  p_new_password text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  perform public.assert_can_manage_user(p_target_profile_id);
+
+  if coalesce(length(p_new_password), 0) < 6 then
+    raise exception 'password must be at least 6 characters';
   end if;
 
-  select o.id into v_org_id from public.organizations o where o.org_code = upper(p_org_code);
+  update auth.users
+  set encrypted_password = crypt(p_new_password, gen_salt('bf', 10)),
+      updated_at = now()
+  where id = p_target_profile_id;
 
-  if v_org_id is null then
-    raise exception 'organization not found';
+  update public.profiles
+  set must_change_password = true
+  where id = p_target_profile_id;
+end;
+$$;
+
+-- Deactivating also bans the auth user and drops their sessions, so an
+-- already-signed-in device is cut off at its next token refresh rather than
+-- lingering until the account is touched again.
+create function public.admin_set_user_active(
+  p_target_profile_id uuid,
+  p_active boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.assert_can_manage_user(p_target_profile_id);
+
+  if p_target_profile_id = auth.uid() then
+    raise exception 'you cannot deactivate your own account';
   end if;
-  if not exists (select 1 from public.teams t where t.id = p_team_id and t.org_id = v_org_id) then
-    raise exception 'team not found in this organization';
-  end if;
-  if exists (select 1 from public.profiles p where p.org_id = v_org_id and lower(p.username) = lower(p_username)) then
-    raise exception 'that username is already taken in this organization';
+  if exists (
+    select 1 from public.profiles p
+    where p.id = p_target_profile_id and p.role = 'owner'
+  ) then
+    raise exception 'the organization owner cannot be deactivated';
   end if;
 
-  insert into public.profiles (id, org_id, team_id, name, title, username, role)
-  values (auth.uid(), v_org_id, p_team_id, p_name, p_title, p_username, 'employee');
+  update public.profiles
+  set active = p_active
+  where id = p_target_profile_id;
 
-  return query select v_org_id, p_team_id, 'employee'::text;
+  if p_active then
+    update auth.users set banned_until = null, updated_at = now()
+    where id = p_target_profile_id;
+  else
+    update auth.users set banned_until = 'infinity'::timestamptz, updated_at = now()
+    where id = p_target_profile_id;
+    delete from auth.sessions where user_id = p_target_profile_id;
+    delete from auth.refresh_tokens where user_id = p_target_profile_id::text;
+  end if;
+end;
+$$;
+
+-- Called by the client right after supabase.auth.updateUser({ password })
+-- succeeds on the forced-change screen.
+create function public.clear_must_change_password()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  update public.profiles
+  set must_change_password = false
+  where id = auth.uid();
 end;
 $$;
 
@@ -358,19 +625,24 @@ begin
 
   insert into public.login_lookup_attempts (org_code, username) values (v_org_code, v_username);
 
+  -- A deactivated account must not even resolve to an email, so a banned
+  -- user cannot start a sign-in at all.
   select u.email into v_email
   from public.profiles p
   join public.organizations o on o.id = p.org_id
   join auth.users u on u.id = p.id
   where o.org_code = v_org_code
     and lower(p.username) = v_username
+    and coalesce(p.active, true)
   limit 1;
 
   return v_email;
 end;
 $$;
 
-create function public.create_team(p_name text, p_admin_profile_id uuid default null)
+-- Team leaders are now created directly through admin_create_user with
+-- p_role => 'team_admin', so this no longer promotes an existing profile.
+create function public.create_team(p_name text)
 returns uuid
 language plpgsql
 security definer
@@ -381,18 +653,19 @@ declare
   v_role text;
   v_team_id uuid;
 begin
-  select org_id, role into v_org_id, v_role from public.profiles where id = auth.uid();
+  select p.org_id, p.role into v_org_id, v_role
+  from public.profiles p where p.id = auth.uid();
+
   if v_role is distinct from 'owner' then
     raise exception 'only the org owner can create teams';
   end if;
-
-  insert into public.teams (org_id, name) values (v_org_id, p_name) returning id into v_team_id;
-
-  if p_admin_profile_id is not null then
-    update public.profiles
-    set role = 'team_admin', team_id = v_team_id
-    where id = p_admin_profile_id and org_id = v_org_id;
+  if coalesce(trim(p_name), '') = '' then
+    raise exception 'a team name is required';
   end if;
+
+  insert into public.teams (org_id, name)
+  values (v_org_id, trim(p_name))
+  returning id into v_team_id;
 
   return v_team_id;
 end;
@@ -439,10 +712,15 @@ $$;
 
 grant execute on function public.create_organization(text, text, text, text) to authenticated;
 grant execute on function public.get_org_by_code(text) to authenticated;
-grant execute on function public.join_organization(text, uuid, text, text, text) to authenticated;
 grant execute on function public.get_login_email(text, text) to anon, authenticated;
-grant execute on function public.create_team(text, uuid) to authenticated;
+grant execute on function public.create_team(text) to authenticated;
+grant execute on function public.admin_create_user(text, text, text, text, uuid, text) to authenticated;
+grant execute on function public.admin_reset_password(uuid, text) to authenticated;
+grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;
+grant execute on function public.clear_must_change_password() to authenticated;
 grant execute on function public.set_task_completion(uuid, boolean, text, text) to authenticated;
+-- assert_can_manage_user is deliberately NOT granted: it is an internal
+-- helper called only from the other SECURITY DEFINER functions.
 
 -- ── Storage bucket for proof photos ───────────────────────────────────
 

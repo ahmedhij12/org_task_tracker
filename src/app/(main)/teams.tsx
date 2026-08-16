@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
-import { Card, FieldInput, FieldLabel, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
+import { Card, FieldInput, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { initials } from '@/lib/taskUtils';
 
 export default function TeamsScreen() {
@@ -12,20 +12,16 @@ export default function TeamsScreen() {
   const { teams, members, tasks, createTeam } = useOrgData();
   const [creating, setCreating] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
-  const [adminId, setAdminId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const unassignedAsAdmin = members.filter((m) => m.role === 'employee');
 
   const handleCreate = async () => {
     if (!newTeamName.trim() || loading) return;
     setLoading(true);
     setError(null);
     try {
-      await createTeam(newTeamName.trim(), adminId ?? undefined);
+      await createTeam(newTeamName.trim());
       setNewTeamName('');
-      setAdminId(null);
       setCreating(false);
     } catch (e: any) {
       setError(e?.message ?? 'Could not create team.');
@@ -98,29 +94,9 @@ export default function TeamsScreen() {
             {error ? <ErrorBanner message={error} /> : null}
             <FieldInput label="Team name" placeholder="e.g. Branch 2 - Downtown" value={newTeamName} onChangeText={setNewTeamName} />
 
-            {unassignedAsAdmin.length > 0 ? (
-              <View style={{ marginBottom: 14 }}>
-                <FieldLabel>Team admin (optional, can assign later)</FieldLabel>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {unassignedAsAdmin.map((m) => (
-                    <Pressable
-                      key={m.id}
-                      onPress={() => setAdminId(adminId === m.id ? null : m.id)}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 999,
-                        backgroundColor: adminId === m.id ? c.indigo : c.bgSubtle,
-                        borderWidth: 1,
-                        borderColor: adminId === m.id ? c.indigo : c.border,
-                      }}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: adminId === m.id ? '#fff' : c.text }}>{m.name}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
+            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
+              After you create the team, add its leader from the People tab.
+            </Text>
 
             <PrimaryButton title="Create team" onPress={handleCreate} loading={loading} disabled={!newTeamName.trim()} />
             <View style={{ height: 10 }} />

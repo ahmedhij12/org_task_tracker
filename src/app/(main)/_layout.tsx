@@ -36,6 +36,15 @@ export default function MainLayout() {
           }}
         />
         <Tabs.Screen
+          name="people"
+          options={{
+            title: 'People',
+            // Employees have no one to manage, so the tab is hidden for them.
+            href: isEmployee ? null : undefined,
+            tabBarIcon: ({ color, size }) => <Ionicons name="person-add" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
           name="create-task"
           options={{
             href: null, // pushed programmatically, not a tab destination
