@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import type { OrgTask, Priority, Profile, Team } from '../types';
@@ -40,7 +40,35 @@ function mapProfile(row: any): Profile {
   };
 }
 
-export function useOrgData() {
+interface OrgDataContextValue {
+  tasks: OrgTask[];
+  teams: Team[];
+  members: Profile[];
+  loading: boolean;
+  refresh: () => Promise<void>;
+  createTask: (input: {
+    title: string;
+    notes?: string;
+    due?: string | null;
+    priority: Priority;
+    assigneeId: string | null;
+    requiresProof: boolean;
+    teamId: string;
+  }) => Promise<void>;
+  setTaskCompletion: (taskId: string, completed: boolean, note?: string, photoUrl?: string) => Promise<void>;
+  createTeam: (name: string, adminProfileId?: string) => Promise<void>;
+}
+
+const OrgDataContext = createContext<OrgDataContextValue | null>(null);
+
+// One instance of this provider lives above every (main) screen, so there is
+// exactly one fetch and one Realtime subscription per org — not one per
+// screen. Supabase's realtime client dedupes channels by topic name, so two
+// independent hook instances both calling .channel(sameName).on(...).subscribe()
+// throws ("cannot add postgres_changes callbacks ... after subscribe()") the
+// moment a second screen mounts alongside the first (normal in a tab navigator,
+// where previously-visited tabs stay mounted).
+export function OrgDataProvider({ children }: { children: ReactNode }) {
   const { profile, organization } = useAuth();
   const [tasks, setTasks] = useState<OrgTask[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -71,9 +99,6 @@ export function useOrgData() {
     refresh();
   }, [refresh]);
 
-  // Realtime: any task change in this org refreshes the list. Scoping the
-  // subscription to org_id (not team_id) keeps this one hook correct for
-  // both the owner's cross-team view and a team member's own view.
   useEffect(() => {
     if (!organization) return;
     const channel = supabase
@@ -89,16 +114,8 @@ export function useOrgData() {
     };
   }, [organization, refresh]);
 
-  const createTask = useCallback(
-    async (input: {
-      title: string;
-      notes?: string;
-      due?: string | null;
-      priority: Priority;
-      assigneeId: string | null;
-      requiresProof: boolean;
-      teamId: string;
-    }) => {
+  const createTask = useCallback<OrgDataContextValue['createTask']>(
+    async (input) => {
       if (!profile || !organization) return;
       const { error } = await supabase.from('tasks').insert({
         org_id: organization.id,
@@ -117,8 +134,8 @@ export function useOrgData() {
     [profile, organization, refresh]
   );
 
-  const setTaskCompletion = useCallback(
-    async (taskId: string, completed: boolean, note?: string, photoUrl?: string) => {
+  const setTaskCompletion = useCallback<OrgDataContextValue['setTaskCompletion']>(
+    async (taskId, completed, note, photoUrl) => {
       const { error } = await supabase.rpc('set_task_completion', {
         p_task_id: taskId,
         p_completed: completed,
@@ -131,8 +148,8 @@ export function useOrgData() {
     [refresh]
   );
 
-  const createTeam = useCallback(
-    async (name: string, adminProfileId?: string) => {
+  const createTeam = useCallback<OrgDataContextValue['createTeam']>(
+    async (name, adminProfileId) => {
       const { error } = await supabase.rpc('create_team', {
         p_name: name,
         p_admin_profile_id: adminProfileId ?? null,
@@ -143,5 +160,16 @@ export function useOrgData() {
     [refresh]
   );
 
-  return { tasks, teams, members, loading, refresh, createTask, setTaskCompletion, createTeam };
+  const value = useMemo<OrgDataContextValue>(
+    () => ({ tasks, teams, members, loading, refresh, createTask, setTaskCompletion, createTeam }),
+    [tasks, teams, members, loading, refresh, createTask, setTaskCompletion, createTeam]
+  );
+
+  return <OrgDataContext.Provider value={value}>{children}</OrgDataContext.Provider>;
+}
+
+export function useOrgData(): OrgDataContextValue {
+  const ctx = useContext(OrgDataContext);
+  if (!ctx) throw new Error('useOrgData must be used within OrgDataProvider');
+  return ctx;
 }

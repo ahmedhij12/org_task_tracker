@@ -93,6 +93,8 @@ function AdminDashboard() {
 
       <Pressable
         onPress={() => router.push('/(main)/create-task')}
+        accessibilityRole="button"
+        accessibilityLabel="Add task"
         style={{
           position: 'absolute',
           right: 20,

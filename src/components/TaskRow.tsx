@@ -37,6 +37,9 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
           <Pressable
             onPress={onPressCheckbox}
             hitSlop={8}
+            accessibilityRole="checkbox"
+            accessibilityLabel={`Mark "${task.title}" ${task.completed ? 'incomplete' : 'complete'}`}
+            accessibilityState={{ checked: task.completed }}
             style={{
               marginTop: 2,
               width: 24,
