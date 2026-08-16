@@ -320,7 +320,7 @@ begin
   if not exists (select 1 from public.teams t where t.id = p_team_id and t.org_id = v_org_id) then
     raise exception 'team not found in this organization';
   end if;
-  if exists (select 1 from public.profiles where org_id = v_org_id and lower(username) = lower(p_username)) then
+  if exists (select 1 from public.profiles p where p.org_id = v_org_id and lower(p.username) = lower(p_username)) then
     raise exception 'that username is already taken in this organization';
   end if;
 
