@@ -24,6 +24,7 @@ interface AuthContextValue extends AuthState {
   createOrganization: (args: {
     orgName: string;
     ownerName: string;
+    username: string;
     email: string;
     password: string;
   }) => Promise<void>;
@@ -33,10 +34,12 @@ interface AuthContextValue extends AuthState {
     teamId: string;
     name: string;
     title: string;
+    username: string;
     email: string;
     password: string;
   }) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Sign in with Org ID + username + password — no email retyping. */
+  signInWithUsername: (orgCode: string, username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
@@ -50,6 +53,7 @@ function mapProfile(row: {
   team_id: string | null;
   name: string;
   title: string | null;
+  username: string | null;
   role: Role;
   created_at: string;
 }): Profile {
@@ -59,6 +63,7 @@ function mapProfile(row: {
     teamId: row.team_id,
     name: row.name,
     title: row.title,
+    username: row.username,
     role: row.role,
     createdAt: row.created_at,
   };
@@ -136,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearError = () => setState((s) => ({ ...s, error: null }));
 
-  const createOrganization: AuthContextValue['createOrganization'] = async ({ orgName, ownerName, email, password }) => {
+  const createOrganization: AuthContextValue['createOrganization'] = async ({ orgName, ownerName, username, email, password }) => {
     setState((s) => ({ ...s, error: null }));
     const { error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError) throw signUpError;
@@ -151,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error: rpcError } = await supabase.rpc('create_organization', {
       p_org_name: orgName,
       p_owner_name: ownerName,
+      p_username: username,
     });
     if (rpcError) throw rpcError;
 
@@ -169,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const joinOrganization: AuthContextValue['joinOrganization'] = async ({ orgCode, teamId, name, title, email, password }) => {
+  const joinOrganization: AuthContextValue['joinOrganization'] = async ({ orgCode, teamId, name, title, username, email, password }) => {
     setState((s) => ({ ...s, error: null }));
     const { error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError) throw signUpError;
@@ -185,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       p_org_code: orgCode.trim().toUpperCase(),
       p_team_id: teamId,
       p_name: name,
+      p_username: username,
       p_title: title || null,
     });
     if (rpcError) throw rpcError;
@@ -192,8 +199,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
-  const signIn: AuthContextValue['signIn'] = async (email, password) => {
+  const signInWithUsername: AuthContextValue['signInWithUsername'] = async (orgCode, username, password) => {
     setState((s) => ({ ...s, error: null }));
+    const { data: email, error: lookupError } = await supabase.rpc('get_login_email', {
+      p_org_code: orgCode.trim().toUpperCase(),
+      p_username: username.trim(),
+    });
+    if (lookupError) throw lookupError;
+    if (!email) throw new Error('No account found with that Organization ID and username.');
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
@@ -208,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createOrganization,
       lookupOrgByCode,
       joinOrganization,
-      signIn,
+      signInWithUsername,
       signOut,
       refreshProfile,
       clearError,

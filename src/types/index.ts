@@ -8,6 +8,7 @@ export interface Profile {
   teamId: string | null; // null only for an org owner not attached to a team
   name: string;
   title: string | null; // job title, e.g. "IT", "Accountant" — separate from permission role
+  username: string | null;
   role: Role;
   createdAt: string;
 }

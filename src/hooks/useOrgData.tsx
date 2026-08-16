@@ -35,6 +35,7 @@ function mapProfile(row: any): Profile {
     teamId: row.team_id,
     name: row.name,
     title: row.title,
+    username: row.username,
     role: row.role,
     createdAt: row.created_at,
   };

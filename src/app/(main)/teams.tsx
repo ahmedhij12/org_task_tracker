@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
@@ -92,6 +92,7 @@ export default function TeamsScreen() {
 
       <Modal visible={creating} animationType="slide" transparent onRequestClose={() => setCreating(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 }}>
             <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 16 }}>New team</Text>
             {error ? <ErrorBanner message={error} /> : null}
@@ -125,6 +126,7 @@ export default function TeamsScreen() {
             <View style={{ height: 10 }} />
             <SecondaryButton title="Cancel" onPress={() => setCreating(false)} />
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

@@ -43,6 +43,12 @@ export default function LandingScreen() {
           subtitle="Enter an Organization ID shared with you."
           onPress={() => router.push('/(auth)/join')}
         />
+
+        <Pressable onPress={() => router.push('/(auth)/signin')} style={{ marginTop: 24, alignItems: 'center' }}>
+          <Text style={{ fontSize: 14, color: c.textMuted }}>
+            Already have an account? <Text style={{ color: c.indigo, fontWeight: '700' }}>Sign in</Text>
+          </Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,10 +1,12 @@
-import { useColorScheme, View, Text, Pressable, TextInput, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, TextInput, ActivityIndicator, StyleSheet } from 'react-native';
 import type { ReactNode } from 'react';
 import { Colors, type ThemeColors } from '@/theme';
+import { sanitizeUsername } from '@/lib/username';
+import { useThemePref } from '@/hooks/useThemePref';
 
 export function useThemeColors(): ThemeColors {
-  const scheme = useColorScheme();
-  return scheme === 'dark' ? Colors.dark : Colors.light;
+  const { isDark } = useThemePref();
+  return isDark ? Colors.dark : Colors.light;
 }
 
 export function ScreenTitle({ children }: { children: ReactNode }) {
@@ -45,6 +47,47 @@ export function FieldInput(props: React.ComponentProps<typeof TextInput> & { lab
         ]}
         {...rest}
       />
+    </View>
+  );
+}
+
+export function UsernameInput({
+  label = 'Username',
+  value,
+  onChangeText,
+  placeholder = 'e.g. ahmed_h',
+}: {
+  label?: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder?: string;
+}) {
+  const c = useThemeColors();
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <FieldLabel>{label}</FieldLabel>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: c.border,
+          borderRadius: 14,
+          backgroundColor: c.card,
+          paddingLeft: 14,
+        }}
+      >
+        <Text style={{ fontSize: 15, color: c.textFaint, fontWeight: '600' }}>@</Text>
+        <TextInput
+          value={value}
+          onChangeText={(t) => onChangeText(sanitizeUsername(t))}
+          placeholder={placeholder}
+          placeholderTextColor={c.textFaint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{ flex: 1, paddingHorizontal: 6, paddingVertical: 12, fontSize: 15, color: c.text }}
+        />
+      </View>
     </View>
   );
 }

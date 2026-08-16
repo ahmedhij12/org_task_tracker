@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
-import { FieldInput, PrimaryButton, SecondaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
+import { FieldInput, UsernameInput, PrimaryButton, SecondaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
 
 interface TeamOption {
   teamId: string;
@@ -24,6 +24,7 @@ export default function JoinOrgScreen() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,7 +50,7 @@ export default function JoinOrgScreen() {
     }
   };
 
-  const canSubmit = selectedTeamId && name.trim() && email.trim() && password.length >= 6;
+  const canSubmit = selectedTeamId && name.trim() && username.trim() && email.trim() && password.length >= 6;
 
   const handleJoin = async () => {
     if (!canSubmit || loading) return;
@@ -61,6 +62,7 @@ export default function JoinOrgScreen() {
         teamId: selectedTeamId!,
         name: name.trim(),
         title: title.trim(),
+        username: username.trim(),
         email: email.trim(),
         password,
       });
@@ -134,6 +136,7 @@ export default function JoinOrgScreen() {
 
               <FieldInput label="Your name" placeholder="e.g. Ali" value={name} onChangeText={setName} />
               <FieldInput label="Your role" placeholder="e.g. IT, Accountant, Cashier" value={title} onChangeText={setTitle} />
+              <UsernameInput value={username} onChangeText={setUsername} />
               <FieldInput
                 label="Email"
                 placeholder="you@example.com"

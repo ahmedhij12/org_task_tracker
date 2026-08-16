@@ -4,11 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useThemePref } from '@/hooks/useThemePref';
 import { Card, useThemeColors } from '@/components/ui';
+import type { ThemePref } from '@/types';
 
 export default function SettingsScreen() {
   const c = useThemeColors();
   const { profile, organization, team, signOut } = useAuth();
+  const { themePref, setThemePref } = useThemePref();
   const [copied, setCopied] = useState(false);
 
   const roleLabel = profile?.role === 'owner' ? 'Owner' : profile?.role === 'team_admin' ? 'Team Admin' : 'Employee';
@@ -40,6 +43,7 @@ export default function SettingsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{profile?.name}</Text>
               <Text style={{ fontSize: 12, color: c.textMuted }}>
+                {profile?.username ? `@${profile.username} • ` : ''}
                 {profile?.title ? `${profile.title} • ` : ''}
                 {roleLabel}
                 {team ? ` • ${team.name}` : ''}
@@ -57,6 +61,39 @@ export default function SettingsScreen() {
               <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={c.textMuted} />
             </Pressable>
           ) : null}
+        </Card>
+
+        <Card style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 10 }}>Appearance</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(
+              [
+                { key: 'light', label: 'Light', icon: 'sunny' },
+                { key: 'dark', label: 'Dark', icon: 'moon' },
+                { key: 'auto', label: 'Auto', icon: 'phone-portrait' },
+              ] as { key: ThemePref; label: string; icon: keyof typeof Ionicons.glyphMap }[]
+            ).map((opt) => {
+              const active = themePref === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => setThemePref(opt.key)}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: active ? c.indigo : c.bgSubtle,
+                    borderWidth: 1,
+                    borderColor: active ? c.indigo : c.border,
+                  }}
+                >
+                  <Ionicons name={opt.icon} size={18} color={active ? '#fff' : c.textMuted} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#fff' : c.text, marginTop: 4 }}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </Card>
 
         <Pressable
