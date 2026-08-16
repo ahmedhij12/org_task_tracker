@@ -44,7 +44,7 @@ export default function SettingsScreen() {
               <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{profile?.name}</Text>
               <Text style={{ fontSize: 12, color: c.textMuted }}>
                 {profile?.username ? `@${profile.username} • ` : ''}
-                {profile?.title ? `${profile.title} • ` : ''}
+                {profile?.title && profile.title.toLowerCase() !== roleLabel.toLowerCase() ? `${profile.title} • ` : ''}
                 {roleLabel}
                 {team ? ` • ${team.name}` : ''}
               </Text>
