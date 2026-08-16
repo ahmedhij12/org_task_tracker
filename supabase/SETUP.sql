@@ -27,10 +27,12 @@ drop function if exists public.get_login_email(text, text) cascade;
 drop function if exists public.create_team(text, uuid) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text) cascade;
 
+-- Supabase blocks direct DELETE on storage tables (its own protect_delete()
+-- trigger — "Use the Storage API instead"), so the bucket and any old test
+-- photos in it are left alone; bucket creation below is made idempotent
+-- with ON CONFLICT instead of trying to delete-then-recreate it.
 drop policy if exists "org members can upload their own proof photos" on storage.objects;
 drop policy if exists "anyone can read proof photos (bucket is public)" on storage.objects;
-delete from storage.objects where bucket_id = 'task-proofs';
-delete from storage.buckets where id = 'task-proofs';
 
 delete from auth.users;
 
@@ -444,7 +446,8 @@ grant execute on function public.set_task_completion(uuid, boolean, text, text) 
 
 -- ── Storage bucket for proof photos ───────────────────────────────────
 
-insert into storage.buckets (id, name, public) values ('task-proofs', 'task-proofs', true);
+insert into storage.buckets (id, name, public) values ('task-proofs', 'task-proofs', true)
+on conflict (id) do nothing;
 
 create policy "org members can upload their own proof photos"
   on storage.objects for insert
