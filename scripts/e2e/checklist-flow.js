@@ -175,7 +175,7 @@ async function setOwnPassword(page, newPassword) {
   await pageB.waitForTimeout(3000);
 
   const afterSubmit = await pageB.locator('body').innerText();
-  if (/Opening Checklist/.test(afterSubmit.split('Due now')[1]?.split('Not due yet')[0] ?? '')) {
+  if (/Opening Checklist/.test(afterSubmit.split('DUE NOW')[1]?.split('NOT DUE YET')[0] ?? '')) {
     throw new Error('FAIL: Opening Checklist should have left the Due now list after submitting');
   }
   if (!/1 yes \/ 1 no/.test(afterSubmit)) {
@@ -206,7 +206,7 @@ async function setOwnPassword(page, newPassword) {
   await pageA.waitForTimeout(1500);
 
   const ownerView = await pageA.locator('body').innerText();
-  if (!/Needs review/.test(ownerView) || !/Checklist Worker says off duty/.test(ownerView)) {
+  if (!/Needs review/i.test(ownerView) || !/Checklist Worker says off duty/.test(ownerView)) {
     throw new Error('FAIL: owner should see the pending off-duty claim, got: ' + ownerView.slice(0, 500));
   }
   if (!/Opening Checklist/.test(ownerView)) {
@@ -216,7 +216,7 @@ async function setOwnPassword(page, newPassword) {
 
   await pageA.getByText('Checklist Worker says off duty', { exact: true }).last().click();
   await pageA.waitForTimeout(800);
-  await pageA.getByPlaceholder('Note (optional)', { exact: true }).fill('HR shows no approved day off on file');
+  await pageA.getByPlaceholder('Note (optional) — e.g. what HR confirmed', { exact: true }).fill('HR shows no approved day off on file');
   await pageA.getByText('Not confirmed', { exact: true }).last().click();
   await pageA.waitForTimeout(2500);
   console.log('PASS: owner rejected the off-duty claim');
@@ -227,7 +227,7 @@ async function setOwnPassword(page, newPassword) {
   await pageB.getByText('Checklists', { exact: true }).last().click();
   await pageB.waitForTimeout(1500);
   const empAfterReject = await pageB.locator('body').innerText();
-  const dueSection = empAfterReject.split('Due now')[1]?.split('Not due yet')[0] ?? '';
+  const dueSection = empAfterReject.split('DUE NOW')[1]?.split('NOT DUE YET')[0] ?? '';
   if (!/Evening Checklist/.test(dueSection)) {
     throw new Error('FAIL: a rejected off-duty claim should make the checklist due again immediately, got: ' + empAfterReject.slice(0, 500));
   }
