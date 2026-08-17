@@ -9,6 +9,7 @@
 
 -- ── Clean slate ─────────────────────────────────────────────────────
 
+drop table if exists public.task_completions cascade;
 drop table if exists public.tasks cascade;
 drop table if exists public.profiles cascade;
 drop table if exists public.teams cascade;
@@ -36,7 +37,9 @@ drop function if exists public.assert_can_manage_user(uuid) cascade;
 drop function if exists public.admin_reset_password(uuid, text) cascade;
 drop function if exists public.admin_set_user_active(uuid, boolean) cascade;
 drop function if exists public.clear_must_change_password() cascade;
+-- Both signatures: the old one took a single photo url, the new one an array.
 drop function if exists public.set_task_completion(uuid, boolean, text, text) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[]) cascade;
 
 -- Supabase blocks direct DELETE on storage tables (its own protect_delete()
 -- trigger — "Use the Storage API instead"), so the bucket and any old test
@@ -103,12 +106,40 @@ create table public.tasks (
   completed_by uuid references public.profiles(id) on delete set null,
   completed_at timestamptz,
   proof_note text,
-  proof_photo_url text,
+  -- Several photos per completion, all taken with the camera at the time.
+  -- Replaces the old single proof_photo_url.
+  proof_photo_urls text[] not null default '{}',
   created_at timestamptz not null default now(),
   created_by uuid not null references public.profiles(id) on delete cascade
 );
 
+-- Append-only audit log. tasks holds only the CURRENT state, which is wiped
+-- when a task is reopened; this keeps every completion and reopen forever so
+-- the org can look back at who did what, when, and with what proof.
+create table public.task_completions (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  -- Kept even if the task is later renamed or deleted-and-recreated.
+  task_title text not null,
+  actor_id uuid not null references public.profiles(id) on delete cascade,
+  action text not null check (action in ('completed', 'reopened')),
+  note text,
+  photo_urls text[] not null default '{}',
+  -- Snapshot of the deadline at that moment, so later edits to the task's due
+  -- date cannot rewrite history.
+  due_at timestamptz,
+  -- Completed after the deadline had already passed.
+  was_late boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 create index tasks_team_id_idx on public.tasks(team_id);
+create index task_completions_org_idx on public.task_completions(org_id, created_at desc);
+create index task_completions_team_idx on public.task_completions(team_id, created_at desc);
+create index task_completions_actor_idx on public.task_completions(actor_id, created_at desc);
+create index task_completions_task_idx on public.task_completions(task_id, created_at desc);
 create index tasks_org_id_idx on public.tasks(org_id);
 create index tasks_assignee_id_idx on public.tasks(assignee_id);
 create index profiles_org_id_idx on public.profiles(org_id);
@@ -136,6 +167,7 @@ alter table public.organizations enable row level security;
 alter table public.teams enable row level security;
 alter table public.profiles enable row level security;
 alter table public.tasks enable row level security;
+alter table public.task_completions enable row level security;
 -- No policies on these two on purpose — only the SECURITY DEFINER
 -- functions (running as owner) can touch them, never clients directly.
 alter table public.login_lookup_attempts enable row level security;
@@ -240,6 +272,21 @@ create policy "team admin or owner can delete their team's tasks"
     and (
       public.my_role() = 'owner'
       or (public.my_role() = 'team_admin' and team_id = public.my_team_id())
+    )
+  );
+
+-- History visibility, exactly three levels: the owner sees the whole org, a
+-- team leader sees their own team, an employee sees only what they did.
+-- Read-only for everyone — rows are written solely by set_task_completion,
+-- which runs as SECURITY DEFINER, so nobody can forge or edit history.
+create policy "history is scoped to the reader's role"
+  on public.task_completions for select
+  using (
+    org_id = public.my_org_id()
+    and (
+      public.my_role() = 'owner'
+      or (public.my_role() = 'team_admin' and team_id = public.my_team_id())
+      or actor_id = auth.uid()
     )
   );
 
@@ -675,7 +722,7 @@ create function public.set_task_completion(
   p_task_id uuid,
   p_completed boolean,
   p_note text default null,
-  p_photo_url text default null
+  p_photo_urls text[] default '{}'
 )
 returns void
 language plpgsql
@@ -686,18 +733,36 @@ declare
   v_task public.tasks;
   v_my_profile_id uuid := auth.uid();
   v_my_team_id uuid;
+  v_my_role text;
+  v_photos text[] := coalesce(p_photo_urls, '{}');
+  v_was_late boolean := false;
 begin
-  select team_id into v_my_team_id from public.profiles where id = v_my_profile_id;
+  select p.team_id, p.role into v_my_team_id, v_my_role
+  from public.profiles p where p.id = v_my_profile_id;
+
   select * into v_task from public.tasks where id = p_task_id;
 
   if v_task.id is null then
     raise exception 'task not found';
   end if;
-  if v_task.team_id is distinct from v_my_team_id then
+  -- The owner is not on a team but still oversees every task in the org.
+  if v_my_role <> 'owner' and v_task.team_id is distinct from v_my_team_id then
     raise exception 'not your team''s task';
   end if;
-  if v_task.assignee_id is not null and v_task.assignee_id is distinct from v_my_profile_id then
+  if v_task.assignee_id is not null
+     and v_task.assignee_id is distinct from v_my_profile_id
+     and v_my_role = 'employee' then
     raise exception 'this task is not assigned to you';
+  end if;
+
+  -- Enforced here and not only in the UI: a task that requires proof cannot
+  -- be closed without at least one photo, no matter what calls this.
+  if p_completed and v_task.requires_proof and coalesce(array_length(v_photos, 1), 0) < 1 then
+    raise exception 'this task needs at least one photo before it can be marked done';
+  end if;
+
+  if p_completed then
+    v_was_late := v_task.due is not null and now() > v_task.due;
   end if;
 
   update public.tasks
@@ -705,8 +770,22 @@ begin
       completed_by = case when p_completed then v_my_profile_id else null end,
       completed_at = case when p_completed then now() else null end,
       proof_note = case when p_completed then p_note else null end,
-      proof_photo_url = case when p_completed then p_photo_url else null end
+      proof_photo_urls = case when p_completed then v_photos else '{}' end
   where id = p_task_id;
+
+  -- Every open and close is recorded, so reopening a task never erases the
+  -- fact that it was completed, by whom, or with what proof.
+  insert into public.task_completions (
+    task_id, org_id, team_id, task_title, actor_id, action,
+    note, photo_urls, due_at, was_late
+  ) values (
+    v_task.id, v_task.org_id, v_task.team_id, v_task.title, v_my_profile_id,
+    case when p_completed then 'completed' else 'reopened' end,
+    case when p_completed then p_note else null end,
+    case when p_completed then v_photos else '{}' end,
+    v_task.due,
+    v_was_late
+  );
 end;
 $$;
 
@@ -718,7 +797,7 @@ grant execute on function public.admin_create_user(text, text, text, text, uuid,
 grant execute on function public.admin_reset_password(uuid, text) to authenticated;
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
-grant execute on function public.set_task_completion(uuid, boolean, text, text) to authenticated;
+grant execute on function public.set_task_completion(uuid, boolean, text, text[]) to authenticated;
 -- assert_can_manage_user is deliberately NOT granted: it is an internal
 -- helper called only from the other SECURITY DEFINER functions.
 

@@ -48,9 +48,34 @@ export interface OrgTask {
   completedBy: string | null;
   completedAt: string | null;
   proofNote: string | null;
-  proofPhotoUrl: string | null;
+  /** Photos from the current completion. Cleared when the task is reopened — the permanent copy lives in TaskCompletion. */
+  proofPhotoUrls: string[];
   createdAt: string;
   createdBy: string;
+}
+
+/** One entry in the permanent audit log: a task being completed or reopened. */
+export interface TaskCompletion {
+  id: string;
+  taskId: string;
+  orgId: string;
+  teamId: string;
+  /** Snapshot of the title, so history stays readable if the task is renamed. */
+  taskTitle: string;
+  actorId: string;
+  action: 'completed' | 'reopened';
+  note: string | null;
+  photoUrls: string[];
+  /** The deadline as it stood at that moment. */
+  dueAt: string | null;
+  wasLate: boolean;
+  createdAt: string;
+}
+
+/** Derived, never stored: a task is failed once its deadline passes while still open. */
+export function isFailed(task: Pick<OrgTask, 'completed' | 'due'>, now: Date = new Date()): boolean {
+  if (task.completed || !task.due) return false;
+  return new Date(task.due).getTime() < now.getTime();
 }
 
 export type ThemePref = 'light' | 'dark' | 'auto';

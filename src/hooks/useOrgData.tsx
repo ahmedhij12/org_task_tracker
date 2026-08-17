@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import type { OrgTask, Priority, Profile, Team } from '../types';
+import type { OrgTask, Priority, Profile, Team, TaskCompletion } from '../types';
 
 function mapTask(row: any): OrgTask {
   return {
@@ -18,9 +18,26 @@ function mapTask(row: any): OrgTask {
     completedBy: row.completed_by,
     completedAt: row.completed_at,
     proofNote: row.proof_note,
-    proofPhotoUrl: row.proof_photo_url,
+    proofPhotoUrls: row.proof_photo_urls ?? [],
     createdAt: row.created_at,
     createdBy: row.created_by,
+  };
+}
+
+function mapCompletion(row: any): TaskCompletion {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    orgId: row.org_id,
+    teamId: row.team_id,
+    taskTitle: row.task_title,
+    actorId: row.actor_id,
+    action: row.action,
+    note: row.note,
+    photoUrls: row.photo_urls ?? [],
+    dueAt: row.due_at,
+    wasLate: row.was_late,
+    createdAt: row.created_at,
   };
 }
 
@@ -48,6 +65,8 @@ interface OrgDataContextValue {
   tasks: OrgTask[];
   teams: Team[];
   members: Profile[];
+  /** Audit log, already scoped by RLS to what this role is allowed to see. */
+  history: TaskCompletion[];
   loading: boolean;
   refresh: () => Promise<void>;
   createTask: (input: {
@@ -59,7 +78,7 @@ interface OrgDataContextValue {
     requiresProof: boolean;
     teamId: string;
   }) => Promise<void>;
-  setTaskCompletion: (taskId: string, completed: boolean, note?: string, photoUrl?: string) => Promise<void>;
+  setTaskCompletion: (taskId: string, completed: boolean, note?: string, photoUrls?: string[]) => Promise<void>;
   createTeam: (name: string) => Promise<void>;
 }
 
@@ -77,6 +96,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<OrgTask[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [history, setHistory] = useState<TaskCompletion[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -84,18 +104,23 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       setTasks([]);
       setTeams([]);
       setMembers([]);
+      setHistory([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [tasksRes, teamsRes, membersRes] = await Promise.all([
+    const [tasksRes, teamsRes, membersRes, historyRes] = await Promise.all([
       supabase.from('tasks').select('*').order('due', { ascending: true, nullsFirst: false }),
       supabase.from('teams').select('*').eq('org_id', organization.id).order('created_at', { ascending: true }),
       supabase.from('profiles').select('*').eq('org_id', organization.id),
+      // No role filter here on purpose — the RLS policy already narrows this
+      // to the whole org, one team, or just this user.
+      supabase.from('task_completions').select('*').order('created_at', { ascending: false }).limit(500),
     ]);
     if (!tasksRes.error) setTasks((tasksRes.data ?? []).map(mapTask));
     if (!teamsRes.error) setTeams((teamsRes.data ?? []).map(mapTeam));
     if (!membersRes.error) setMembers((membersRes.data ?? []).map(mapProfile));
+    if (!historyRes.error) setHistory((historyRes.data ?? []).map(mapCompletion));
     setLoading(false);
   }, [profile, organization]);
 
@@ -139,12 +164,12 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const setTaskCompletion = useCallback<OrgDataContextValue['setTaskCompletion']>(
-    async (taskId, completed, note, photoUrl) => {
+    async (taskId, completed, note, photoUrls) => {
       const { error } = await supabase.rpc('set_task_completion', {
         p_task_id: taskId,
         p_completed: completed,
         p_note: note ?? null,
-        p_photo_url: photoUrl ?? null,
+        p_photo_urls: photoUrls ?? [],
       });
       if (error) throw error;
       await refresh();
@@ -162,8 +187,8 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<OrgDataContextValue>(
-    () => ({ tasks, teams, members, loading, refresh, createTask, setTaskCompletion, createTeam }),
-    [tasks, teams, members, loading, refresh, createTask, setTaskCompletion, createTeam]
+    () => ({ tasks, teams, members, history, loading, refresh, createTask, setTaskCompletion, createTeam }),
+    [tasks, teams, members, history, loading, refresh, createTask, setTaskCompletion, createTeam]
   );
 
   return <OrgDataContext.Provider value={value}>{children}</OrgDataContext.Provider>;

@@ -181,8 +181,8 @@ function EmployeeHome() {
           orgId={organization!.id}
           visible={!!proofTask}
           onCancel={() => setProofTask(null)}
-          onSubmit={async (note, photoUrl) => {
-            await setTaskCompletion(proofTask.id, true, note || undefined, photoUrl || undefined);
+          onSubmit={async (note, photoUrls) => {
+            await setTaskCompletion(proofTask.id, true, note || undefined, photoUrls);
             setProofTask(null);
           }}
         />

@@ -36,6 +36,13 @@ export default function MainLayout() {
           }}
         />
         <Tabs.Screen
+          name="history"
+          options={{
+            title: 'History',
+            tabBarIcon: ({ color, size }) => <Ionicons name="time" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
           name="people"
           options={{
             title: 'People',

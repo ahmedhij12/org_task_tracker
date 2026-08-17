@@ -422,4 +422,161 @@ begin
 end;
 $$;
 
+-- ── Proof photos are enforced, and history is written and scoped ────────
+
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_org_code text;
+  v_team_id uuid;
+  v_other_team_id uuid;
+  v_emp_id uuid;
+  v_other_emp_id uuid;
+  v_proof_task uuid;
+  v_plain_task uuid;
+  v_late_task uuid;
+  v_raised boolean;
+  v_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'owner5.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, org_code, team_id into v_org_id, v_org_code, v_team_id
+  from public.create_organization('Proof Co', 'Owner Five', 'ownerfive');
+
+  v_emp_id := public.admin_create_user('Worker', 'worker', 'initial123', 'employee', v_team_id);
+  insert into public.teams (org_id, name) values (v_org_id, 'Far Team') returning id into v_other_team_id;
+  v_other_emp_id := public.admin_create_user('Faraway', 'faraway', 'initial123', 'employee', v_other_team_id);
+
+  insert into public.tasks (org_id, team_id, title, requires_proof, assignee_id, created_by, due)
+  values (v_org_id, v_team_id, 'Needs a photo', true, v_emp_id, v_owner_id, now() + interval '1 day')
+  returning id into v_proof_task;
+
+  insert into public.tasks (org_id, team_id, title, requires_proof, assignee_id, created_by)
+  values (v_org_id, v_team_id, 'No proof needed', false, v_emp_id, v_owner_id)
+  returning id into v_plain_task;
+
+  insert into public.tasks (org_id, team_id, title, requires_proof, assignee_id, created_by, due)
+  values (v_org_id, v_team_id, 'Overdue one', false, v_emp_id, v_owner_id, now() - interval '2 days')
+  returning id into v_late_task;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+
+  -- ── A proof task cannot be closed with no photos, note or not ──
+  v_raised := false;
+  begin
+    perform public.set_task_completion(v_proof_task, true, 'I did it, trust me', '{}');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a task requiring proof was closed with no photos';
+  end if;
+  if (select completed from public.tasks where id = v_proof_task) then
+    raise exception 'FAIL: the proof task should still be open';
+  end if;
+  raise notice 'PASS: a task requiring proof cannot be completed without a photo';
+
+  -- ── With photos it closes, and all of them are kept ──
+  perform public.set_task_completion(
+    v_proof_task, true, 'Done properly',
+    array['https://x/one.jpg', 'https://x/two.jpg', 'https://x/three.jpg']
+  );
+  if not (select completed from public.tasks where id = v_proof_task) then
+    raise exception 'FAIL: the proof task should be completed';
+  end if;
+  if (select array_length(proof_photo_urls, 1) from public.tasks where id = v_proof_task) <> 3 then
+    raise exception 'FAIL: all three photos should have been stored on the task';
+  end if;
+  raise notice 'PASS: multiple photos are stored on the task';
+
+  -- ── A task without requires_proof still closes with no photos ──
+  perform public.set_task_completion(v_plain_task, true, 'no photo needed', '{}');
+  if not (select completed from public.tasks where id = v_plain_task) then
+    raise exception 'FAIL: a task not requiring proof should close without photos';
+  end if;
+  raise notice 'PASS: a task not requiring proof closes without photos';
+
+  -- ── Completing after the deadline is recorded as late ──
+  perform public.set_task_completion(v_late_task, true, 'sorry, late', '{}');
+  if not (select was_late from public.task_completions
+          where task_id = v_late_task and action = 'completed') then
+    raise exception 'FAIL: completing an overdue task should be flagged late';
+  end if;
+  if (select was_late from public.task_completions
+      where task_id = v_plain_task and action = 'completed') then
+    raise exception 'FAIL: a task with no deadline must not be flagged late';
+  end if;
+  raise notice 'PASS: late completion is flagged, on-time is not';
+
+  -- ── Reopening keeps the history but clears the live proof ──
+  perform public.set_task_completion(v_proof_task, false, null, '{}');
+  if (select completed from public.tasks where id = v_proof_task) then
+    raise exception 'FAIL: the task should be reopened';
+  end if;
+  if (select coalesce(array_length(proof_photo_urls, 1), 0)
+      from public.tasks where id = v_proof_task) <> 0 then
+    raise exception 'FAIL: reopening should clear the live proof photos';
+  end if;
+  select count(*) into v_count from public.task_completions where task_id = v_proof_task;
+  if v_count <> 2 then
+    raise exception 'FAIL: expected a completed and a reopened row in history, got %', v_count;
+  end if;
+  if (select array_length(photo_urls, 1) from public.task_completions
+      where task_id = v_proof_task and action = 'completed') <> 3 then
+    raise exception 'FAIL: history must keep the photos even after the task is reopened';
+  end if;
+  raise notice 'PASS: reopening clears live proof but history keeps everything';
+
+  -- ── An employee sees only their own history ──
+  select count(*) into v_count from public.task_completions;
+  if v_count <> 4 then
+    raise exception 'FAIL: the employee should see their own 4 history rows, saw %', v_count;
+  end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_emp_id)::text, true);
+  select count(*) into v_count from public.task_completions;
+  if v_count <> 0 then
+    raise exception 'FAIL: an employee on another team must see no history, saw %', v_count;
+  end if;
+  raise notice 'PASS: an employee sees only their own history';
+
+  -- ── The owner sees everything in the org ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select count(*) into v_count from public.task_completions;
+  if v_count <> 4 then
+    raise exception 'FAIL: the owner should see all 4 history rows, saw %', v_count;
+  end if;
+  raise notice 'PASS: the owner sees the whole org history';
+
+  -- ── History cannot be forged or edited by a client ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    insert into public.task_completions (
+      task_id, org_id, team_id, task_title, actor_id, action
+    ) values (v_plain_task, v_org_id, v_team_id, 'forged', v_emp_id, 'completed');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a client must not be able to insert history rows directly';
+  end if;
+  raise notice 'PASS: history is append-only through the RPC, not writable by clients';
+end;
+$$;
+
 rollback;

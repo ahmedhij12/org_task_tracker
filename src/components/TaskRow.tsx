@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Image } from 'react-native';
+import { View, Text, Pressable, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { OrgTask, Profile } from '@/types';
 import { formatDue, isOverdue, initials } from '@/lib/taskUtils';
@@ -25,7 +25,8 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
   const assigneeLabel = task.assigneeId ? assignee?.name ?? 'Someone' : 'Everyone';
   const completedByProfile = task.completedBy ? members.find((m) => m.id === task.completedBy) : null;
 
-  const hasProof = task.completed && (task.proofNote || task.proofPhotoUrl);
+  const photoCount = task.proofPhotoUrls.length;
+  const hasProof = task.completed && (!!task.proofNote || photoCount > 0);
 
   return (
     <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.border, marginBottom: 8, overflow: 'hidden' }}>
@@ -114,9 +115,11 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
 
           {hasProof ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-              {task.proofPhotoUrl ? <Ionicons name="image-outline" size={11} color={c.textFaint} /> : null}
+              {photoCount > 0 ? <Ionicons name="image-outline" size={11} color={c.textFaint} /> : null}
               {task.proofNote ? <Ionicons name="document-text-outline" size={11} color={c.textFaint} /> : null}
-              <Text style={{ fontSize: 11, color: c.textFaint }}>Tap to view proof</Text>
+              <Text style={{ fontSize: 11, color: c.textFaint }}>
+                {photoCount > 0 ? `Tap to view ${photoCount} photo${photoCount === 1 ? '' : 's'}` : 'Tap to view proof'}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -124,8 +127,19 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
 
       {expanded && hasProof ? (
         <View style={{ borderTopWidth: 1, borderTopColor: c.border, padding: 12 }}>
-          {task.proofPhotoUrl ? (
-            <Image source={{ uri: task.proofPhotoUrl }} style={{ width: '100%', height: 160, borderRadius: 12, marginBottom: 8 }} resizeMode="cover" />
+          {photoCount > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {task.proofPhotoUrls.map((url) => (
+                  <Image
+                    key={url}
+                    source={{ uri: url }}
+                    style={{ width: photoCount === 1 ? 260 : 160, height: 160, borderRadius: 12 }}
+                    resizeMode="cover"
+                  />
+                ))}
+              </View>
+            </ScrollView>
           ) : null}
           {task.proofNote ? <Text style={{ fontSize: 13, color: c.textMuted }}>"{task.proofNote}"</Text> : null}
           {task.completedAt ? (
