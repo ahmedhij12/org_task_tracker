@@ -63,6 +63,9 @@ async function signIn(page, orgCode, username, password) {
   await pageA.getByPlaceholder('e.g. Ali', { exact: true }).fill('Proof Worker');
   await pageA.getByPlaceholder('e.g. ahmed_h', { exact: true }).fill(empUsername);
   await pageA.getByPlaceholder('At least 6 characters', { exact: true }).fill(temp);
+  // Team defaults to "No team" for an owner-created account — must pick one
+  // explicitly, or this employee ends up unattached and can't see org tasks.
+  await pageA.getByText('Main Team', { exact: true }).last().click();
   await pageA.getByText('Create account', { exact: true }).last().click();
   await pageA.waitForTimeout(3000);
   await pageA.getByText('Done', { exact: true }).last().click();
