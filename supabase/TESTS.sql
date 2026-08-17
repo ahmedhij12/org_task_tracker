@@ -11,6 +11,19 @@
 -- How it fakes a signed-in user: auth.uid() reads the request.jwt.claims
 -- setting, so set_config('request.jwt.claims', '{"sub":"<uuid>"}', true) makes
 -- every SECURITY DEFINER function behave as if that user is the caller.
+--
+-- That's enough for testing an RPC's own internal authorization logic (a
+-- plpgsql "if ... raise exception" reading auth.uid()), but NOT for testing
+-- raw table access governed by RLS policies: the SQL Editor connects as the
+-- table owner, which Postgres exempts from row-level security entirely,
+-- regardless of what request.jwt.claims says. A handful of blocks below test
+-- actual RLS enforcement (visibility of task/checklist history, whether a
+-- raw insert is rejected) — those add `set role authenticated;` before the
+-- assertions and `reset role;` after, so the check runs as the same
+-- unprivileged role the real app connects as. Without that, every one of
+-- those checks would silently "pass" by seeing every row regardless of
+-- policy — found the hard way when "an employee sees only their own
+-- history" reported seeing someone else's row.
 
 begin;
 
@@ -541,6 +554,15 @@ begin
   end if;
   raise notice 'PASS: reopening clears live proof but history keeps everything';
 
+  -- ── Everything from here down depends on RLS actually being enforced.
+  --    The SQL Editor connects as the table owner, which Postgres exempts
+  --    from RLS entirely — auth.uid()/my_role() would still read the right
+  --    impersonated values, but every row would stay visible regardless of
+  --    policy, silently passing checks that prove nothing. SET ROLE switches
+  --    the real Postgres role so RLS is actually exercised, the same way
+  --    the app's own connection (as `authenticated`) is. ──
+  set role authenticated;
+
   -- ── An employee sees only their own history ──
   select count(*) into v_count from public.task_completions;
   if v_count <> 4 then
@@ -576,6 +598,8 @@ begin
     raise exception 'FAIL: a client must not be able to insert history rows directly';
   end if;
   raise notice 'PASS: history is append-only through the RPC, not writable by clients';
+
+  reset role;
 end;
 $$;
 
@@ -614,6 +638,11 @@ begin
 
   v_leader_id := public.admin_create_user('Lead Six', 'leadsix', 'initial123', 'team_admin', v_team_id);
   v_emp_id := public.admin_create_user('Emp Six', 'empsix', 'initial123', 'employee', v_team_id);
+
+  -- Every insert below is testing RLS directly (not an RPC's own logic), so
+  -- it needs the real Postgres role, not just the owner-bypassed one the SQL
+  -- Editor connects as — see the note in the "Proof photos" block above.
+  set role authenticated;
 
   -- ── An owner may assign down to a team leader ──
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
@@ -708,6 +737,8 @@ begin
     raise exception 'FAIL: the proof photos should survive the task being deleted';
   end if;
   raise notice 'PASS: history and its photos survive the task being deleted';
+
+  reset role;
 end;
 $$;
 
@@ -914,6 +945,10 @@ begin
   raise notice 'PASS: a reviewed off-duty claim cannot be reviewed again';
 
   -- ── Visibility: the employee sees only their own submissions ──
+  -- Genuine RLS enforcement from here on — see the note in the "Proof
+  -- photos" block for why SET ROLE (not just the impersonated claims) is
+  -- required for this to mean anything from the SQL Editor.
+  set role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
   select count(*) into v_count from public.checklist_submissions;
   if v_count <> 2 then
@@ -938,6 +973,11 @@ begin
     raise exception 'FAIL: the owner should see all 3 answers, saw %', v_count;
   end if;
   raise notice 'PASS: the owner sees every submission and answer in the org';
+
+  -- checklist_assignments has no DELETE policy at all — mutations only ever
+  -- go through assign_checklist/unassign_checklist — so this raw delete is
+  -- pure test scaffolding, back on the owner-bypassed role deliberately.
+  reset role;
 
   -- ── Deleting the assignment does not delete submission history ──
   delete from public.checklist_assignments where id = v_assignment_id;
@@ -984,7 +1024,12 @@ begin
   select org_id, org_code, team_id into v_org_id, v_org_code, v_hygiene_team
   from public.create_organization('Multi Co', 'Owner Eight', 'ownereight');
 
-  insert into public.teams (org_id, name) values (v_org_id, 'Kitchen') returning id into v_kitchen_team;
+  -- This whole block is exactly the scenario the "each leader sees only
+  -- their own" design decision has to hold up under, so it runs on the real
+  -- Postgres role throughout — see the note in the "Proof photos" block.
+  set role authenticated;
+
+  select public.create_team('Kitchen') into v_kitchen_team;
 
   v_hygiene_leader := public.admin_create_user('Hygiene Lead', 'hygieneleader', 'initial123', 'team_admin', v_hygiene_team);
   v_kitchen_leader := public.admin_create_user('Kitchen Lead', 'kitchenleader', 'initial123', 'team_admin', v_kitchen_team);
@@ -1000,11 +1045,14 @@ begin
   raise notice 'PASS: a team leader can add an existing employee to their own team';
 
   -- ── A leader cannot add someone to a team that is not their own ──
-  perform set_config('request.jwt.claims', json_build_object('sub', v_hygiene_leader)::text, true);
   declare
     v_third_team uuid;
   begin
-    insert into public.teams (org_id, name) values (v_org_id, 'Delivery') returning id into v_third_team;
+    -- create_team requires the owner, so this fixture team is created as her
+    -- before switching to the hygiene leader for the actual assertion.
+    perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+    select public.create_team('Delivery') into v_third_team;
+    perform set_config('request.jwt.claims', json_build_object('sub', v_hygiene_leader)::text, true);
     v_raised := false;
     begin
       perform public.add_profile_to_team(v_supervisor, v_third_team);
@@ -1064,6 +1112,8 @@ begin
     raise exception 'FAIL: removing one team should not remove the other';
   end if;
   raise notice 'PASS: removing one team membership leaves the other intact';
+
+  reset role;
 end;
 $$;
 
