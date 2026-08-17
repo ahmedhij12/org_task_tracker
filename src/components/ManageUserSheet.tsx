@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { Modal, View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
@@ -21,11 +21,16 @@ export function ManageUserSheet({ member, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Deliberately an in-app confirmation rather than Alert.alert: react-native-web
+  // does not implement Alert with buttons, so on web the callback never fires and
+  // the deactivation silently does nothing.
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
 
   useEffect(() => {
     setPassword('');
     setError(null);
     setNotice(null);
+    setConfirmingDeactivate(false);
   }, [member?.id]);
 
   if (!member) return null;
@@ -57,26 +62,13 @@ export function ManageUserSheet({ member, onClose }: Props) {
     try {
       await adminSetUserActive(member.id, next);
       await refresh();
+      setConfirmingDeactivate(false);
       onClose();
     } catch (e: any) {
       setError(e?.message ?? 'Could not update that account. Please try again.');
+      setConfirmingDeactivate(false);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleToggleActive = () => {
-    if (member.active) {
-      Alert.alert(
-        'Deactivate account',
-        `${member.name} will be signed out and will not be able to sign in again until you reactivate them.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Deactivate', style: 'destructive', onPress: () => applyActive(false) },
-        ]
-      );
-    } else {
-      applyActive(true);
     }
   };
 
@@ -154,31 +146,69 @@ export function ManageUserSheet({ member, onClose }: Props) {
               {canDeactivate ? (
                 <>
                   <View style={{ height: 20 }} />
-                  <Pressable
-                    onPress={handleToggleActive}
-                    disabled={loading}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      borderWidth: 1,
-                      borderColor: member.active ? c.roseSoft : c.border,
-                      backgroundColor: member.active ? c.roseSoft : 'transparent',
-                      borderRadius: 14,
-                      paddingVertical: 14,
-                      opacity: loading ? 0.5 : 1,
-                    }}
-                  >
-                    <Ionicons
-                      name={member.active ? 'ban-outline' : 'checkmark-circle-outline'}
-                      size={18}
-                      color={member.active ? c.rose : c.text}
-                    />
-                    <Text style={{ color: member.active ? c.rose : c.text, fontWeight: '700', fontSize: 15 }}>
-                      {member.active ? 'Deactivate account' : 'Reactivate account'}
-                    </Text>
-                  </Pressable>
+                  {confirmingDeactivate ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: c.roseSoft,
+                        backgroundColor: c.roseSoft,
+                        borderRadius: 14,
+                        padding: 14,
+                      }}
+                    >
+                      <Text style={{ color: c.rose, fontSize: 13, marginBottom: 12 }}>
+                        {member.name} will be signed out and will not be able to sign in again until you reactivate
+                        them.
+                      </Text>
+                      <Pressable
+                        onPress={() => applyActive(false)}
+                        disabled={loading}
+                        style={{
+                          alignItems: 'center',
+                          backgroundColor: c.rose,
+                          borderRadius: 12,
+                          paddingVertical: 12,
+                          opacity: loading ? 0.5 : 1,
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Yes, deactivate</Text>
+                      </Pressable>
+                      <View style={{ height: 8 }} />
+                      <Pressable
+                        onPress={() => setConfirmingDeactivate(false)}
+                        disabled={loading}
+                        style={{ alignItems: 'center', paddingVertical: 10 }}
+                      >
+                        <Text style={{ color: c.rose, fontWeight: '600', fontSize: 14 }}>Keep active</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => (member.active ? setConfirmingDeactivate(true) : applyActive(true))}
+                      disabled={loading}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        borderWidth: 1,
+                        borderColor: member.active ? c.roseSoft : c.border,
+                        backgroundColor: member.active ? c.roseSoft : 'transparent',
+                        borderRadius: 14,
+                        paddingVertical: 14,
+                        opacity: loading ? 0.5 : 1,
+                      }}
+                    >
+                      <Ionicons
+                        name={member.active ? 'ban-outline' : 'checkmark-circle-outline'}
+                        size={18}
+                        color={member.active ? c.rose : c.text}
+                      />
+                      <Text style={{ color: member.active ? c.rose : c.text, fontWeight: '700', fontSize: 15 }}>
+                        {member.active ? 'Deactivate account' : 'Reactivate account'}
+                      </Text>
+                    </Pressable>
+                  )}
                 </>
               ) : null}
 

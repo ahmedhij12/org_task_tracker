@@ -8,7 +8,7 @@ Core flow tested and working end-to-end: org creation, org-code lookup, self-ser
 join, username+password sign-in. `SETUP.sql` is the single source of truth for schema
 — re-run it in Supabase SQL Editor whenever schema changes.
 
-## Built, awaiting verification: Admin-provisioned signup & login
+## Done and verified: Admin-provisioned signup & login
 
 Employees no longer self-register. Owners create accounts for anyone in the org
 (choosing role and team); team leaders create employees on their own team only.
@@ -20,15 +20,23 @@ by the user from Settings.
 Spec: `docs/superpowers/specs/2026-08-17-admin-provisioned-accounts-design.md`
 Plan: `docs/superpowers/plans/2026-08-17-admin-provisioned-accounts.md`
 
-**BEFORE TESTING — required, in this order:**
-1. Paste `supabase/SETUP.sql` into Supabase SQL Editor and Run. This wipes all data
-   and accounts (expected — the schema changed). Nothing works until this is done.
-2. Paste `supabase/TESTS.sql` and Run. Expect a list of `PASS:` notices and no error.
-3. Then create an org in the app and try the People tab.
+**Applying schema changes:** paste `supabase/SETUP.sql` into the Supabase SQL Editor
+and Run (wipes all data — intended), then `supabase/TESTS.sql` to check the
+permission rules.
 
-Code is verified only as far as `npm run typecheck` (clean). The database tests and
-the three Playwright end-to-end scripts in the plan have NOT been run yet — the SQL
-has to be applied first, and that needs a human in the Supabase dashboard.
+Verified 2026-08-17: `npm run typecheck` clean, `supabase/TESTS.sql` green, and all
+three end-to-end scripts in `scripts/e2e/` pass against the real Supabase project —
+including the part that was genuinely uncertain, that GoTrue accepts a login for an
+account whose `auth.users` row was written by `admin_create_user` instead of by
+`supabase.auth.signUp()`.
+
+## Known issue — not yet fixed
+
+`Alert.alert` does nothing on react-native-web (no dialog, callback never fires).
+`ManageUserSheet` was switched to an in-app confirmation because of this, but
+**sign-out in `settings.tsx` still uses `Alert.alert`**, so it is silently dead when
+running `npm run web`. It works fine on the Android build. Same one-line-ish fix
+pattern as the deactivate confirm if it becomes worth doing.
 
 ## Parked — come back after signup/login rework
 
