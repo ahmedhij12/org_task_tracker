@@ -41,3 +41,6 @@ yarn-error.*
 /ios
 /android
 secrets.txt
+
+# Local shared-testing session artifacts (scripts/dev/watch.js)
+.dev-session/

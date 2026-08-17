@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -17,6 +17,9 @@ export default function SettingsScreen() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  // In-app rather than Alert.alert: react-native-web does not implement Alert
+  // with buttons, so the callback never fires and sign-out silently did nothing.
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   const roleLabel = profile?.role === 'owner' ? 'Owner' : profile?.role === 'team_admin' ? 'Team Admin' : 'Employee';
 
@@ -43,12 +46,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
-    ]);
-  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -144,23 +141,42 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
-        <Pressable
-          onPress={handleSignOut}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            borderWidth: 1,
-            borderColor: c.roseSoft,
-            backgroundColor: c.roseSoft,
-            borderRadius: 14,
-            paddingVertical: 14,
-          }}
-        >
-          <Ionicons name="log-out-outline" size={18} color={c.rose} />
-          <Text style={{ color: c.rose, fontWeight: '700', fontSize: 15 }}>Sign out</Text>
-        </Pressable>
+        {confirmingSignOut ? (
+          <View style={{ borderWidth: 1, borderColor: c.roseSoft, backgroundColor: c.roseSoft, borderRadius: 14, padding: 14 }}>
+            <Text style={{ color: c.rose, fontSize: 13, marginBottom: 12 }}>
+              Sign out of {organization?.name ?? 'this organization'}? You'll need your Organization ID, username, and
+              password to get back in.
+            </Text>
+            <Pressable
+              onPress={() => signOut()}
+              style={{ alignItems: 'center', backgroundColor: c.rose, borderRadius: 12, paddingVertical: 12 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Yes, sign out</Text>
+            </Pressable>
+            <View style={{ height: 8 }} />
+            <Pressable onPress={() => setConfirmingSignOut(false)} style={{ alignItems: 'center', paddingVertical: 10 }}>
+              <Text style={{ color: c.rose, fontWeight: '600', fontSize: 14 }}>Stay signed in</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => setConfirmingSignOut(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              borderWidth: 1,
+              borderColor: c.roseSoft,
+              backgroundColor: c.roseSoft,
+              borderRadius: 14,
+              paddingVertical: 14,
+            }}
+          >
+            <Ionicons name="log-out-outline" size={18} color={c.rose} />
+            <Text style={{ color: c.rose, fontWeight: '700', fontSize: 15 }}>Sign out</Text>
+          </Pressable>
+        )}
 
         <Text style={{ fontSize: 11, color: c.textFaint, textAlign: 'center', marginTop: 24 }}>OrgTasks • v1.0.0</Text>
       </ScrollView>

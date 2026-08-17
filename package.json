@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
+    "playwright": "^1.62.1",
     "typescript": "~5.9.2"
   },
   "scripts": {
@@ -41,7 +42,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "watch": "node scripts/dev/watch.js",
+    "peek": "node scripts/dev/peek.js"
   },
   "private": true
 }
