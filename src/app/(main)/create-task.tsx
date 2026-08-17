@@ -3,9 +3,9 @@ import { View, Text, ScrollView, Pressable, Switch, Platform, KeyboardAvoidingVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
+import { DueDateField } from '@/components/DueDateField';
 import { FieldInput, FieldLabel, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import type { Priority } from '@/types';
 
@@ -17,17 +17,26 @@ export default function CreateTaskScreen() {
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [teamId, setTeamId] = useState<string>(profile?.teamId ?? teams[0]?.id ?? '');
+  const [teamId, setTeamId] = useState<string>(profile?.teamIds[0] ?? teams[0]?.id ?? '');
   const [assigneeId, setAssigneeId] = useState<string | null>(null); // null = everyone
   const [priority, setPriority] = useState<Priority>('medium');
   const [requiresProof, setRequiresProof] = useState(false);
   const [due, setDue] = useState<Date | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const effectiveTeamId = teamId || profile?.teamId || teams[0]?.id || '';
-  const teamMembers = members.filter((m) => m.teamId === effectiveTeamId && m.role !== 'owner');
+  const effectiveTeamId = teamId || profile?.teamIds[0] || teams[0]?.id || '';
+  // Work is handed down, never sideways or to yourself. An owner may assign to
+  // team leaders and employees; a team leader only to their own employees, so
+  // nobody ends up signing off on their own work. Mirrored in the RLS policy.
+  // A multi-team employee shows up here whenever this is one of their teams.
+  const teamMembers = members.filter((m) => {
+    if (!m.teamIds.includes(effectiveTeamId)) return false;
+    if (m.id === profile?.id) return false;
+    if (m.role === 'owner') return false;
+    if (isOwner) return true;
+    return m.role === 'employee';
+  });
 
   const canSubmit = title.trim() && effectiveTeamId;
 
@@ -155,33 +164,14 @@ export default function CreateTaskScreen() {
           </View>
         </View>
 
-        <View style={{ marginBottom: 14 }}>
-          <FieldLabel>Due date & time (optional)</FieldLabel>
-          <Pressable
-            onPress={() => setShowPicker(true)}
-            style={{ borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 12, backgroundColor: c.card }}
-          >
-            <Text style={{ fontSize: 14, color: due ? c.text : c.textFaint }}>
-              {due ? due.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No due date'}
-            </Text>
-          </Pressable>
-          {showPicker ? (
-            <DateTimePicker
-              value={due ?? new Date()}
-              mode="datetime"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              onChange={(_, selected) => {
-                setShowPicker(Platform.OS === 'ios');
-                if (selected) setDue(selected);
-              }}
-            />
-          ) : null}
-        </View>
+        <DueDateField value={due} onChange={setDue} />
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <View style={{ flex: 1 }}>
             <FieldLabel>Requires proof</FieldLabel>
-            <Text style={{ fontSize: 12, color: c.textMuted }}>A note or photo is required before this can be marked done.</Text>
+            <Text style={{ fontSize: 12, color: c.textMuted }}>
+              At least one photo, taken with the camera at the time, before this can be marked done.
+            </Text>
           </View>
           <Switch value={requiresProof} onValueChange={setRequiresProof} trackColor={{ true: c.indigo }} />
         </View>

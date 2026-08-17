@@ -141,7 +141,7 @@ begin
   if not (select active from public.profiles where id = v_leader_id) then
     raise exception 'FAIL: a newly created account should be active';
   end if;
-  if (select team_id from public.profiles where id = v_leader_id) is distinct from v_team_id then
+  if not exists (select 1 from public.profile_teams where profile_id = v_leader_id and team_id = v_team_id) then
     raise exception 'FAIL: created leader is on the wrong team';
   end if;
   raise notice 'PASS: owner can create a team leader with forced password change';
@@ -576,6 +576,494 @@ begin
     raise exception 'FAIL: a client must not be able to insert history rows directly';
   end if;
   raise notice 'PASS: history is append-only through the RPC, not writable by clients';
+end;
+$$;
+
+-- ── Assignment only flows downward, and history outlives its task ───────
+
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_org_code text;
+  v_team_id uuid;
+  v_leader_id uuid;
+  v_emp_id uuid;
+  v_task_id uuid;
+  v_doomed_task uuid;
+  v_raised boolean;
+  v_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'owner6.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, org_code, team_id into v_org_id, v_org_code, v_team_id
+  from public.create_organization('Chain Co', 'Owner Six', 'ownersix');
+
+  v_leader_id := public.admin_create_user('Lead Six', 'leadsix', 'initial123', 'team_admin', v_team_id);
+  v_emp_id := public.admin_create_user('Emp Six', 'empsix', 'initial123', 'employee', v_team_id);
+
+  -- ── An owner may assign down to a team leader ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+  values (v_org_id, v_team_id, 'Owner to leader', v_leader_id, v_owner_id)
+  returning id into v_task_id;
+  raise notice 'PASS: an owner can assign a task to a team leader';
+
+  -- ── Nobody may assign a task to themselves ──
+  v_raised := false;
+  begin
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+    values (v_org_id, v_team_id, 'Owner to self', v_owner_id, v_owner_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an owner must not be able to assign a task to themselves';
+  end if;
+  raise notice 'PASS: an owner cannot assign a task to themselves';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+
+  v_raised := false;
+  begin
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+    values (v_org_id, v_team_id, 'Leader to self', v_leader_id, v_leader_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team leader must not be able to assign a task to themselves';
+  end if;
+  raise notice 'PASS: a team leader cannot assign a task to themselves';
+
+  -- ── A team leader may assign down to an employee ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+  values (v_org_id, v_team_id, 'Leader to employee', v_emp_id, v_leader_id)
+  returning id into v_doomed_task;
+  raise notice 'PASS: a team leader can assign a task to an employee';
+
+  -- ── A team leader may not promote work sideways to another leader ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  declare
+    v_leader_b uuid;
+  begin
+    v_leader_b := public.admin_create_user('Lead B', 'leadb', 'initial123', 'team_admin', v_team_id);
+    perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+    v_raised := false;
+    begin
+      insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+      values (v_org_id, v_team_id, 'Leader to leader', v_leader_b, v_leader_id);
+    exception when others then
+      v_raised := true;
+    end;
+    if not v_raised then
+      raise exception 'FAIL: a team leader must not assign work to another team leader';
+    end if;
+  end;
+  raise notice 'PASS: a team leader cannot assign work sideways to another leader';
+
+  -- ── An employee cannot create tasks at all ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+    values (v_org_id, v_team_id, 'Employee made this', null, v_emp_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an employee must not be able to create tasks';
+  end if;
+  raise notice 'PASS: an employee cannot create tasks';
+
+  -- ── History survives the task being deleted ──
+  perform public.set_task_completion(v_doomed_task, true, 'finished before deletion', array['https://x/proof.jpg']);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  delete from public.tasks where id = v_doomed_task;
+
+  select count(*) into v_count
+  from public.task_completions
+  where task_title = 'Leader to employee' and action = 'completed';
+  if v_count <> 1 then
+    raise exception 'FAIL: deleting a task erased its history, expected 1 row, got %', v_count;
+  end if;
+  if (select task_id from public.task_completions where task_title = 'Leader to employee') is not null then
+    raise exception 'FAIL: the history row should have been unlinked, not left dangling';
+  end if;
+  if (select array_length(photo_urls, 1) from public.task_completions
+      where task_title = 'Leader to employee') <> 1 then
+    raise exception 'FAIL: the proof photos should survive the task being deleted';
+  end if;
+  raise notice 'PASS: history and its photos survive the task being deleted';
+end;
+$$;
+
+-- ── Checklists: templates, downward-only assignment, note-on-لا, off-duty ──
+
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_org_code text;
+  v_team_id uuid;
+  v_other_team_id uuid;
+  v_leader_id uuid;
+  v_emp_id uuid;
+  v_other_emp_id uuid;
+  v_template_id uuid;
+  v_assignment_id uuid;
+  v_submission_id uuid;
+  v_off_duty_id uuid;
+  v_raised boolean;
+  v_count int;
+  v_status text;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'owner7.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, org_code, team_id into v_org_id, v_org_code, v_team_id
+  from public.create_organization('Checklist Co', 'Owner Seven', 'ownerseven');
+
+  v_leader_id := public.admin_create_user('Lead Seven', 'leadseven', 'initial123', 'team_admin', v_team_id);
+  v_emp_id := public.admin_create_user('Emp Seven', 'empseven', 'initial123', 'employee', v_team_id);
+  insert into public.teams (org_id, name) values (v_org_id, 'Other Team') returning id into v_other_team_id;
+  v_other_emp_id := public.admin_create_user('Other Seven', 'otherseven', 'initial123', 'employee', v_other_team_id);
+
+  -- ── An employee cannot create a template ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.create_checklist_template('Hygiene', 7, true, '[{"section_title":"","question":"Clean?"}]'::jsonb);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an employee must not be able to create a checklist template';
+  end if;
+  raise notice 'PASS: an employee cannot create a checklist template';
+
+  -- ── A team leader can create one, with sections ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  v_template_id := public.create_checklist_template(
+    'Daily Hygiene', 7, true,
+    '[
+      {"section_title":"Kitchen","question":"Is the fire extinguisher valid?"},
+      {"section_title":"Kitchen","question":"Are the fridges clean?"},
+      {"section_title":"Bathrooms","question":"Are the bathrooms clean?"}
+    ]'::jsonb
+  );
+  select count(*) into v_count from public.checklist_template_items where template_id = v_template_id;
+  if v_count <> 3 then
+    raise exception 'FAIL: expected 3 template items, got %', v_count;
+  end if;
+  raise notice 'PASS: a team leader can create a sectioned checklist template';
+
+  -- ── Nobody can assign a checklist to themselves ──
+  v_raised := false;
+  begin
+    perform public.assign_checklist(v_template_id, v_leader_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team leader must not be able to assign a checklist to themselves';
+  end if;
+  raise notice 'PASS: cannot assign a checklist to yourself';
+
+  -- ── A team leader cannot assign outside their own team ──
+  v_raised := false;
+  begin
+    perform public.assign_checklist(v_template_id, v_other_emp_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team leader must not assign a checklist to another team''s employee';
+  end if;
+  raise notice 'PASS: a team leader cannot assign a checklist outside their team';
+
+  -- ── A team leader can assign to their own employee ──
+  v_assignment_id := public.assign_checklist(v_template_id, v_emp_id);
+  raise notice 'PASS: a team leader can assign a checklist to their own employee';
+
+  -- ── The assignee cannot submit with "لا" and no note, when required ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.submit_checklist(
+      v_assignment_id,
+      '[
+        {"section_title":"Kitchen","question":"Is the fire extinguisher valid?","sort_order":0,"answer":true},
+        {"section_title":"Kitchen","question":"Are the fridges clean?","sort_order":1,"answer":false}
+      ]'::jsonb
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a "لا" answer with no note should have been rejected';
+  end if;
+  raise notice 'PASS: a "لا" answer without a note is rejected when the template requires one';
+
+  -- ── With the note, it submits and counts correctly ──
+  v_submission_id := public.submit_checklist(
+    v_assignment_id,
+    '[
+      {"section_title":"Kitchen","question":"Is the fire extinguisher valid?","sort_order":0,"answer":true},
+      {"section_title":"Kitchen","question":"Are the fridges clean?","sort_order":1,"answer":false,"note":"Door seal broken"},
+      {"section_title":"Bathrooms","question":"Are the bathrooms clean?","sort_order":2,"answer":true}
+    ]'::jsonb,
+    '[{"section_title":"Kitchen","photo_url":"https://x/fridge.jpg"}]'::jsonb
+  );
+  if (select yes_count from public.checklist_submissions where id = v_submission_id) <> 2
+     or (select no_count from public.checklist_submissions where id = v_submission_id) <> 1 then
+    raise exception 'FAIL: yes/no counts are wrong on the submission';
+  end if;
+  if (select count(*) from public.checklist_answers where submission_id = v_submission_id) <> 3 then
+    raise exception 'FAIL: expected 3 saved answers';
+  end if;
+  if (select count(*) from public.checklist_section_photos where submission_id = v_submission_id) <> 1 then
+    raise exception 'FAIL: expected 1 saved section photo';
+  end if;
+  raise notice 'PASS: a valid submission saves answers, photos, and correct yes/no counts';
+
+  -- ── Someone else cannot submit on this assignment ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_emp_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.submit_checklist(
+      v_assignment_id,
+      '[{"section_title":"","question":"x","sort_order":0,"answer":true}]'::jsonb
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: only the assignee should be able to submit this checklist';
+  end if;
+  raise notice 'PASS: only the assignee can submit their checklist';
+
+  -- ── Off-duty: a claim, not an escape — stays pending until reviewed ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_off_duty_id := public.declare_checklist_off_duty(v_assignment_id, 'On approved leave today');
+  select status into v_status from public.checklist_submissions where id = v_off_duty_id;
+  if v_status <> 'off_duty_pending' then
+    raise exception 'FAIL: expected off_duty_pending, got %', v_status;
+  end if;
+  raise notice 'PASS: declaring off-duty creates a pending claim, not an immediate excuse';
+
+  -- ── An employee cannot review their own claim ──
+  v_raised := false;
+  begin
+    perform public.review_checklist_off_duty(v_off_duty_id, true, null);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an employee must not be able to review their own off-duty claim';
+  end if;
+  raise notice 'PASS: an employee cannot review their own off-duty claim';
+
+  -- ── The team leader rejects it ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  perform public.review_checklist_off_duty(v_off_duty_id, false, 'HR shows no leave on file');
+  select status into v_status from public.checklist_submissions where id = v_off_duty_id;
+  if v_status <> 'off_duty_rejected' then
+    raise exception 'FAIL: expected off_duty_rejected, got %', v_status;
+  end if;
+  if (select reviewed_by from public.checklist_submissions where id = v_off_duty_id) <> v_leader_id then
+    raise exception 'FAIL: reviewed_by was not recorded';
+  end if;
+  raise notice 'PASS: a team leader can reject an off-duty claim, with a reason recorded';
+
+  -- ── A resolved claim cannot be reviewed twice ──
+  v_raised := false;
+  begin
+    perform public.review_checklist_off_duty(v_off_duty_id, true, null);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an already-reviewed claim should not be reviewable again';
+  end if;
+  raise notice 'PASS: a reviewed off-duty claim cannot be reviewed again';
+
+  -- ── Visibility: the employee sees only their own submissions ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  select count(*) into v_count from public.checklist_submissions;
+  if v_count <> 2 then
+    raise exception 'FAIL: the employee should see their own 2 submissions, saw %', v_count;
+  end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_emp_id)::text, true);
+  select count(*) into v_count from public.checklist_submissions;
+  if v_count <> 0 then
+    raise exception 'FAIL: an employee on another team must see no submissions, saw %', v_count;
+  end if;
+  raise notice 'PASS: an employee sees only their own submissions';
+
+  -- ── The owner sees everything in the org ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select count(*) into v_count from public.checklist_submissions;
+  if v_count <> 2 then
+    raise exception 'FAIL: the owner should see all 2 submissions, saw %', v_count;
+  end if;
+  select count(*) into v_count from public.checklist_answers;
+  if v_count <> 3 then
+    raise exception 'FAIL: the owner should see all 3 answers, saw %', v_count;
+  end if;
+  raise notice 'PASS: the owner sees every submission and answer in the org';
+
+  -- ── Deleting the assignment does not delete submission history ──
+  delete from public.checklist_assignments where id = v_assignment_id;
+  select count(*) into v_count from public.checklist_submissions where template_name = 'Daily Hygiene';
+  if v_count <> 2 then
+    raise exception 'FAIL: deleting the assignment should not delete its submission history';
+  end if;
+  raise notice 'PASS: submission history survives the assignment being removed';
+end;
+$$;
+
+-- ── Multi-team membership: a shared supervisor, two independent leaders ──
+
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_org_code text;
+  v_hygiene_team uuid;
+  v_kitchen_team uuid;
+  v_hygiene_leader uuid;
+  v_kitchen_leader uuid;
+  v_supervisor uuid;
+  v_hygiene_task uuid;
+  v_kitchen_task uuid;
+  v_raised boolean;
+  v_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'owner8.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, org_code, team_id into v_org_id, v_org_code, v_hygiene_team
+  from public.create_organization('Multi Co', 'Owner Eight', 'ownereight');
+
+  insert into public.teams (org_id, name) values (v_org_id, 'Kitchen') returning id into v_kitchen_team;
+
+  v_hygiene_leader := public.admin_create_user('Hygiene Lead', 'hygieneleader', 'initial123', 'team_admin', v_hygiene_team);
+  v_kitchen_leader := public.admin_create_user('Kitchen Lead', 'kitchenleader', 'initial123', 'team_admin', v_kitchen_team);
+  v_supervisor := public.admin_create_user('Fatima', 'fatima', 'initial123', 'employee', v_hygiene_team);
+
+  -- ── The Kitchen leader adds Fatima to her second team ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_kitchen_leader)::text, true);
+  perform public.add_profile_to_team(v_supervisor, v_kitchen_team);
+
+  if (select count(*) from public.profile_teams where profile_id = v_supervisor) <> 2 then
+    raise exception 'FAIL: Fatima should now be on 2 teams';
+  end if;
+  raise notice 'PASS: a team leader can add an existing employee to their own team';
+
+  -- ── A leader cannot add someone to a team that is not their own ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_hygiene_leader)::text, true);
+  declare
+    v_third_team uuid;
+  begin
+    insert into public.teams (org_id, name) values (v_org_id, 'Delivery') returning id into v_third_team;
+    v_raised := false;
+    begin
+      perform public.add_profile_to_team(v_supervisor, v_third_team);
+    exception when others then
+      v_raised := true;
+    end;
+    if not v_raised then
+      raise exception 'FAIL: a leader must not add someone to a team that is not their own';
+    end if;
+  end;
+  raise notice 'PASS: a team leader cannot add someone to a team they do not lead';
+
+  -- ── Each leader assigns a task to the shared supervisor on their own team ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_hygiene_leader)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+  values (v_org_id, v_hygiene_team, 'Hygiene checklist', v_supervisor, v_hygiene_leader)
+  returning id into v_hygiene_task;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_kitchen_leader)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+  values (v_org_id, v_kitchen_team, 'Kitchen prep check', v_supervisor, v_kitchen_leader)
+  returning id into v_kitchen_task;
+  raise notice 'PASS: two independent leaders can each assign the shared supervisor work on their own team';
+
+  -- ── The supervisor sees both, since they're both hers ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_supervisor)::text, true);
+  select count(*) into v_count from public.tasks where id in (v_hygiene_task, v_kitchen_task);
+  if v_count <> 2 then
+    raise exception 'FAIL: the shared supervisor should see both tasks, saw %', v_count;
+  end if;
+  raise notice 'PASS: the shared supervisor sees work from both of her teams';
+
+  -- ── But each leader sees ONLY what they personally assigned, per the design decision ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_hygiene_leader)::text, true);
+  if not exists (select 1 from public.tasks where id = v_hygiene_task) then
+    raise exception 'FAIL: the hygiene leader should see her own task';
+  end if;
+  if exists (select 1 from public.tasks where id = v_kitchen_task) then
+    raise exception 'FAIL: the hygiene leader must not see the kitchen leader''s task for the same person';
+  end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_kitchen_leader)::text, true);
+  if not exists (select 1 from public.tasks where id = v_kitchen_task) then
+    raise exception 'FAIL: the kitchen leader should see her own task';
+  end if;
+  if exists (select 1 from public.tasks where id = v_hygiene_task) then
+    raise exception 'FAIL: the kitchen leader must not see the hygiene leader''s task for the same person';
+  end if;
+  raise notice 'PASS: each leader sees only the work they personally assigned to the shared supervisor';
+
+  -- ── The Kitchen leader removes Fatima from Kitchen; she keeps Hygiene ──
+  perform public.remove_profile_from_team(v_supervisor, v_kitchen_team);
+  if exists (select 1 from public.profile_teams where profile_id = v_supervisor and team_id = v_kitchen_team) then
+    raise exception 'FAIL: Fatima should no longer be on the Kitchen team';
+  end if;
+  if not exists (select 1 from public.profile_teams where profile_id = v_supervisor and team_id = v_hygiene_team) then
+    raise exception 'FAIL: removing one team should not remove the other';
+  end if;
+  raise notice 'PASS: removing one team membership leaves the other intact';
 end;
 $$;
 

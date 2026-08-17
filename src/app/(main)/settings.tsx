@@ -10,7 +10,7 @@ import type { ThemePref } from '@/types';
 
 export default function SettingsScreen() {
   const c = useThemeColors();
-  const { profile, organization, team, signOut, addRecoveryEmail } = useAuth();
+  const { profile, organization, teams, signOut, addRecoveryEmail } = useAuth();
   const { themePref, setThemePref } = useThemePref();
   const [copied, setCopied] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState(profile?.recoveryEmail ?? '');
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
                 {profile?.username ? `@${profile.username} • ` : ''}
                 {profile?.title && profile.title.toLowerCase() !== roleLabel.toLowerCase() ? `${profile.title} • ` : ''}
                 {roleLabel}
-                {team ? ` • ${team.name}` : ''}
+                {teams.length > 0 ? ` • ${teams.map((t) => t.name).join(', ')}` : ''}
               </Text>
             </View>
           </View>

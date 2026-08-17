@@ -7,7 +7,8 @@ interface AuthState {
   session: Session | null;
   profile: Profile | null;
   organization: Organization | null;
-  team: Team | null;
+  /** Every team the signed-in profile belongs to. */
+  teams: Team[];
   loading: boolean;
   error: string | null;
 }
@@ -33,6 +34,9 @@ interface AuthContextValue extends AuthState {
   }) => Promise<string>;
   adminResetPassword: (profileId: string, newPassword: string) => Promise<void>;
   adminSetUserActive: (profileId: string, active: boolean) => Promise<void>;
+  /** Adds a further team on top of whatever the person already belongs to. */
+  addProfileToTeam: (profileId: string, teamId: string) => Promise<void>;
+  removeProfileFromTeam: (profileId: string, teamId: string) => Promise<void>;
   /** Used by the forced-change screen; clears mustChangePassword on success. */
   changeOwnPassword: (newPassword: string) => Promise<void>;
   addRecoveryEmail: (email: string) => Promise<void>;
@@ -43,23 +47,25 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function mapProfile(row: {
-  id: string;
-  org_id: string;
-  team_id: string | null;
-  name: string;
-  title: string | null;
-  username: string | null;
-  role: Role;
-  must_change_password: boolean;
-  active: boolean;
-  recovery_email: string | null;
-  created_at: string;
-}): Profile {
+function mapProfile(
+  row: {
+    id: string;
+    org_id: string;
+    name: string;
+    title: string | null;
+    username: string | null;
+    role: Role;
+    must_change_password: boolean;
+    active: boolean;
+    recovery_email: string | null;
+    created_at: string;
+  },
+  teamIds: string[]
+): Profile {
   return {
     id: row.id,
     orgId: row.org_id,
-    teamId: row.team_id,
+    teamIds,
     name: row.name,
     title: row.title,
     username: row.username,
@@ -84,36 +90,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session: null,
     profile: null,
     organization: null,
-    team: null,
+    teams: [],
     loading: true,
     error: null,
   });
 
   const loadProfileAndOrg = async (session: Session | null) => {
     if (!session) {
-      setState((s) => ({ ...s, session: null, profile: null, organization: null, team: null, loading: false }));
+      setState((s) => ({ ...s, session: null, profile: null, organization: null, teams: [], loading: false }));
       return;
     }
 
-    const { data: profileRow, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .maybeSingle();
+    const [{ data: profileRow, error: profileError }, { data: membershipRows }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+      supabase.from('profile_teams').select('team_id').eq('profile_id', session.user.id),
+    ]);
 
     if (profileError || !profileRow) {
       // Signed in but hasn't created/joined an org yet.
-      setState((s) => ({ ...s, session, profile: null, organization: null, team: null, loading: false }));
+      setState((s) => ({ ...s, session, profile: null, organization: null, teams: [], loading: false }));
       return;
     }
 
-    const profile = mapProfile(profileRow);
+    const teamIds = (membershipRows ?? []).map((r) => r.team_id as string);
+    const profile = mapProfile(profileRow, teamIds);
 
-    const [{ data: orgRow }, { data: teamRow }] = await Promise.all([
+    const [{ data: orgRow }, { data: teamRows }] = await Promise.all([
       supabase.from('organizations').select('*').eq('id', profile.orgId).maybeSingle(),
-      profile.teamId
-        ? supabase.from('teams').select('*').eq('id', profile.teamId).maybeSingle()
-        : Promise.resolve({ data: null }),
+      teamIds.length > 0
+        ? supabase.from('teams').select('*').in('id', teamIds)
+        : Promise.resolve({ data: [] as any[] }),
     ]);
 
     setState((s) => ({
@@ -121,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       organization: orgRow ? mapOrg(orgRow) : null,
-      team: teamRow ? mapTeam(teamRow) : null,
+      teams: (teamRows ?? []).map(mapTeam),
       loading: false,
     }));
   };
@@ -201,6 +207,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
+  const addProfileToTeam: AuthContextValue['addProfileToTeam'] = async (profileId, teamId) => {
+    const { error } = await supabase.rpc('add_profile_to_team', { p_profile_id: profileId, p_team_id: teamId });
+    if (error) throw error;
+    if (profileId === state.profile?.id) await refreshProfile();
+  };
+
+  const removeProfileFromTeam: AuthContextValue['removeProfileFromTeam'] = async (profileId, teamId) => {
+    const { error } = await supabase.rpc('remove_profile_from_team', { p_profile_id: profileId, p_team_id: teamId });
+    if (error) throw error;
+    if (profileId === state.profile?.id) await refreshProfile();
+  };
+
   const changeOwnPassword: AuthContextValue['changeOwnPassword'] = async (newPassword) => {
     setState((s) => ({ ...s, error: null }));
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
@@ -253,6 +271,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       adminCreateUser,
       adminResetPassword,
       adminSetUserActive,
+      addProfileToTeam,
+      removeProfileFromTeam,
       changeOwnPassword,
       addRecoveryEmail,
       signOut,

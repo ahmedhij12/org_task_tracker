@@ -45,7 +45,7 @@ export default function TeamsScreen() {
         </View>
 
         {teams.map((team) => {
-          const teamMembers = members.filter((m) => m.teamId === team.id);
+          const teamMembers = members.filter((m) => m.teamIds.includes(team.id));
           const admin = teamMembers.find((m) => m.role === 'team_admin');
           const teamTasks = tasks.filter((t) => t.teamId === team.id);
           const pending = teamTasks.filter((t) => !t.completed).length;

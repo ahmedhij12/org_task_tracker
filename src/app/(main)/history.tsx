@@ -34,11 +34,11 @@ export default function HistoryScreen() {
   const failedTasks = useMemo(() => {
     const visible = tasks.filter((t) => {
       if (isOwner) return true;
-      if (isLeader) return t.teamId === profile?.teamId;
+      if (isLeader) return !!profile?.teamIds.includes(t.teamId);
       return t.assigneeId === profile?.id || t.assigneeId === null;
     });
     return visible.filter((t) => isFailed(t));
-  }, [tasks, isOwner, isLeader, profile?.teamId, profile?.id]);
+  }, [tasks, isOwner, isLeader, profile?.teamIds, profile?.id]);
 
   const shown = useMemo(() => {
     if (filter === 'failed') return [];

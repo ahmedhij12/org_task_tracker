@@ -45,11 +45,11 @@ function mapTeam(row: any): Team {
   return { id: row.id, orgId: row.org_id, name: row.name, createdAt: row.created_at };
 }
 
-function mapProfile(row: any): Profile {
+function mapProfile(row: any, teamIds: string[]): Profile {
   return {
     id: row.id,
     orgId: row.org_id,
-    teamId: row.team_id,
+    teamIds,
     name: row.name,
     title: row.title,
     username: row.username,
@@ -117,9 +117,25 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       // to the whole org, one team, or just this user.
       supabase.from('task_completions').select('*').order('created_at', { ascending: false }).limit(500),
     ]);
-    if (!tasksRes.error) setTasks((tasksRes.data ?? []).map(mapTask));
     if (!teamsRes.error) setTeams((teamsRes.data ?? []).map(mapTeam));
-    if (!membersRes.error) setMembers((membersRes.data ?? []).map(mapProfile));
+
+    if (!membersRes.error) {
+      const rows = membersRes.data ?? [];
+      // Fetched separately so every member's memberships are known, not just
+      // the signed-in profile's — People/Teams/task-assignment all need it.
+      const { data: membershipRows } = rows.length
+        ? await supabase.from('profile_teams').select('profile_id, team_id').in('profile_id', rows.map((r) => r.id))
+        : { data: [] as { profile_id: string; team_id: string }[] };
+      const byProfile = new Map<string, string[]>();
+      for (const m of membershipRows ?? []) {
+        const list = byProfile.get(m.profile_id) ?? [];
+        list.push(m.team_id);
+        byProfile.set(m.profile_id, list);
+      }
+      setMembers(rows.map((row) => mapProfile(row, byProfile.get(row.id) ?? [])));
+    }
+
+    if (!tasksRes.error) setTasks((tasksRes.data ?? []).map(mapTask));
     if (!historyRes.error) setHistory((historyRes.data ?? []).map(mapCompletion));
     setLoading(false);
   }, [profile, organization]);

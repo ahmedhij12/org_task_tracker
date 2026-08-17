@@ -24,7 +24,7 @@ function AdminDashboard() {
   const { profile, organization } = useAuth();
   const { tasks, teams, members, loading, refresh } = useOrgData();
   const isOwner = profile?.role === 'owner';
-  const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(isOwner ? 'all' : profile?.teamId ?? 'all');
+  const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(isOwner ? 'all' : profile?.teamIds[0] ?? 'all');
   const [copied, setCopied] = useState(false);
 
   const scopedTasks = selectedTeamId === 'all' ? tasks : tasks.filter((t) => t.teamId === selectedTeamId);

@@ -46,9 +46,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
     if (!visible) return;
     if (!isOwner) {
       setRole('employee');
-      setTeamId(profile?.teamId ?? null);
+      setTeamId(profile?.teamIds[0] ?? null);
     }
-  }, [visible, isOwner, profile?.teamId]);
+  }, [visible, isOwner, profile?.teamIds]);
 
   const reset = () => {
     setName('');
@@ -56,7 +56,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
     setUsername('');
     setPassword(generatePassword());
     setRole('employee');
-    setTeamId(isOwner ? null : (profile?.teamId ?? null));
+    setTeamId(isOwner ? null : (profile?.teamIds[0] ?? null));
     setError(null);
     setCreated(null);
     setCopied(false);

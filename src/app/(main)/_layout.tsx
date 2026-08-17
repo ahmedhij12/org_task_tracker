@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { OrgDataProvider } from '@/hooks/useOrgData';
+import { ChecklistDataProvider } from '@/hooks/useChecklists';
 import { useThemeColors } from '@/components/ui';
 
 export default function MainLayout() {
@@ -12,6 +13,7 @@ export default function MainLayout() {
 
   return (
     <OrgDataProvider>
+    <ChecklistDataProvider>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -43,6 +45,13 @@ export default function MainLayout() {
           }}
         />
         <Tabs.Screen
+          name="checklists"
+          options={{
+            title: 'Checklists',
+            tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
           name="people"
           options={{
             title: 'People',
@@ -65,6 +74,7 @@ export default function MainLayout() {
           }}
         />
       </Tabs>
+    </ChecklistDataProvider>
     </OrgDataProvider>
   );
 }

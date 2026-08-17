@@ -24,8 +24,12 @@ export default function PeopleScreen() {
   const [managing, setManaging] = useState<Profile | null>(null);
 
   const isOwner = profile?.role === 'owner';
-  // An owner manages the whole org; a team leader only their own team.
-  const visible = isOwner ? members : members.filter((m) => m.teamId === profile?.teamId);
+  // An owner manages the whole org; a team leader only people who share at
+  // least one team with them (a multi-team employee can show up for more
+  // than one leader).
+  const visible = isOwner
+    ? members
+    : members.filter((m) => m.teamIds.some((t) => profile?.teamIds.includes(t)));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -56,7 +60,7 @@ export default function PeopleScreen() {
         ) : null}
 
         {visible.map((m) => {
-          const team = teams.find((t) => t.id === m.teamId);
+          const memberTeams = teams.filter((t) => m.teamIds.includes(t.id));
           return (
             <Pressable key={m.id} onPress={() => setManaging(m)}>
               <Card style={{ marginBottom: 10 }}>
@@ -78,7 +82,7 @@ export default function PeopleScreen() {
                     <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
                       {m.username ? `@${m.username} • ` : ''}
                       {roleLabel(m.role)}
-                      {team ? ` • ${team.name}` : ''}
+                      {memberTeams.length > 0 ? ` • ${memberTeams.map((t) => t.name).join(', ')}` : ''}
                     </Text>
                   </View>
                   {!m.active ? (
