@@ -109,7 +109,14 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ maxHeight: '92%' }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ maxHeight: '92%', flexShrink: 1 }}
+        >
+          {/* flexShrink + minHeight: 0 is what actually lets the ScrollView below
+              shrink to fit inside this card instead of growing to fit 79 questions
+              worth of content — without it, maxHeight on a parent doesn't bound a
+              non-flex child on web, so nothing was ever scrollable, just clipped. */}
           <View
             style={{
               backgroundColor: c.bg,
@@ -118,6 +125,8 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 32,
+              flexShrink: 1,
+              minHeight: 0,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -129,7 +138,7 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
 
             {error ? <ErrorBanner message={error} /> : null}
 
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1, minHeight: 0 }}>
               <FieldLabel>Start from</FieldLabel>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                 <Pressable

@@ -158,7 +158,14 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ maxHeight: '92%' }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ maxHeight: '92%', flexShrink: 1 }}
+        >
+          {/* flexShrink + minHeight: 0 all the way down is what lets the question
+              ScrollView actually shrink to fit inside the card instead of growing
+              to its full content height — without it, a 79-question checklist has
+              nothing scrollable, it's just clipped at the modal's edge. */}
           <View
             style={{
               backgroundColor: c.bg,
@@ -167,6 +174,8 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 32,
+              flexShrink: 1,
+              minHeight: 0,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -184,7 +193,7 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
 
                 {error ? <ErrorBanner message={error} /> : null}
 
-                <ScrollView keyboardShouldPersistTaps="handled" style={{ marginBottom: 14 }}>
+                <ScrollView keyboardShouldPersistTaps="handled" style={{ marginBottom: 14, flexShrink: 1, minHeight: 0 }}>
                   {sections.map(([sectionTitle, sectionItems]) => (
                     <View key={sectionTitle || '_'} style={{ marginBottom: 18 }}>
                       {sectionTitle ? (
