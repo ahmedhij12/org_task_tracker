@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import type { OrgTask, Priority, Profile, Team, TaskCompletion } from '../types';
+import type { ChecklistAnswer, ChecklistSectionPhoto, OrgTask, Priority, Profile, Team, TaskCompletion } from '../types';
 
 function mapTask(row: any): OrgTask {
   return {
@@ -14,6 +14,9 @@ function mapTask(row: any): OrgTask {
     priority: row.priority as Priority,
     assigneeId: row.assignee_id,
     requiresProof: row.requires_proof,
+    templateId: row.template_id,
+    cooldownHours: row.cooldown_hours,
+    requiresReview: row.requires_review,
     completed: row.completed,
     completedBy: row.completed_by,
     completedAt: row.completed_at,
@@ -37,6 +40,13 @@ function mapCompletion(row: any): TaskCompletion {
     photoUrls: row.photo_urls ?? [],
     dueAt: row.due_at,
     wasLate: row.was_late,
+    status: row.status,
+    offDutyReason: row.off_duty_reason,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    reviewNote: row.review_note,
+    yesCount: row.yes_count,
+    noCount: row.no_count,
     createdAt: row.created_at,
   };
 }
@@ -61,6 +71,41 @@ function mapProfile(row: any, teamIds: string[]): Profile {
   };
 }
 
+function mapAnswer(row: any): ChecklistAnswer {
+  return {
+    id: row.id,
+    taskCompletionId: row.task_completion_id,
+    sectionTitle: row.section_title,
+    question: row.question,
+    sortOrder: row.sort_order,
+    answer: row.answer,
+    note: row.note,
+  };
+}
+
+function mapPhoto(row: any): ChecklistSectionPhoto {
+  return {
+    id: row.id,
+    taskCompletionId: row.task_completion_id,
+    sectionTitle: row.section_title,
+    photoUrl: row.photo_url,
+    createdAt: row.created_at,
+  };
+}
+
+export interface SubmitAnswerInput {
+  sectionTitle: string;
+  question: string;
+  sortOrder: number;
+  answer: boolean;
+  note?: string;
+}
+
+export interface SubmitPhotoInput {
+  sectionTitle: string;
+  photoUrl: string;
+}
+
 interface OrgDataContextValue {
   tasks: OrgTask[];
   teams: Team[];
@@ -77,8 +122,22 @@ interface OrgDataContextValue {
     assigneeId: string | null;
     requiresProof: boolean;
     teamId: string;
+    templateId?: string | null;
+    cooldownHours?: number | null;
+    requiresReview: boolean;
   }) => Promise<void>;
-  setTaskCompletion: (taskId: string, completed: boolean, note?: string, photoUrls?: string[]) => Promise<void>;
+  setTaskCompletion: (
+    taskId: string,
+    completed: boolean,
+    note?: string,
+    photoUrls?: string[],
+    answers?: SubmitAnswerInput[],
+    sectionPhotos?: SubmitPhotoInput[]
+  ) => Promise<void>;
+  declareTaskOffDuty: (taskId: string, reason: string) => Promise<void>;
+  reviewOffDuty: (completionId: string, approve: boolean, reviewNote?: string) => Promise<void>;
+  reviewTaskCompletion: (completionId: string, reviewNote?: string) => Promise<void>;
+  loadCompletionDetail: (completionId: string) => Promise<{ answers: ChecklistAnswer[]; photos: ChecklistSectionPhoto[] }>;
   createTeam: (name: string) => Promise<void>;
 }
 
@@ -171,6 +230,9 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
         priority: input.priority,
         assignee_id: input.assigneeId,
         requires_proof: input.requiresProof,
+        template_id: input.templateId ?? null,
+        cooldown_hours: input.cooldownHours ?? null,
+        requires_review: input.requiresReview,
         created_by: profile.id,
       });
       if (error) throw error;
@@ -180,18 +242,75 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const setTaskCompletion = useCallback<OrgDataContextValue['setTaskCompletion']>(
-    async (taskId, completed, note, photoUrls) => {
+    async (taskId, completed, note, photoUrls, answers, sectionPhotos) => {
       const { error } = await supabase.rpc('set_task_completion', {
         p_task_id: taskId,
         p_completed: completed,
         p_note: note ?? null,
         p_photo_urls: photoUrls ?? [],
+        p_answers: answers
+          ? answers.map((a) => ({
+              section_title: a.sectionTitle,
+              question: a.question,
+              sort_order: a.sortOrder,
+              answer: a.answer,
+              note: a.note ?? null,
+            }))
+          : null,
+        p_section_photos: (sectionPhotos ?? []).map((p) => ({ section_title: p.sectionTitle, photo_url: p.photoUrl })),
       });
       if (error) throw error;
       await refresh();
     },
     [refresh]
   );
+
+  const declareTaskOffDuty = useCallback<OrgDataContextValue['declareTaskOffDuty']>(
+    async (taskId, reason) => {
+      const { error } = await supabase.rpc('declare_task_off_duty', { p_task_id: taskId, p_reason: reason });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const reviewOffDuty = useCallback<OrgDataContextValue['reviewOffDuty']>(
+    async (completionId, approve, reviewNote) => {
+      const { error } = await supabase.rpc('review_off_duty', {
+        p_completion_id: completionId,
+        p_approve: approve,
+        p_review_note: reviewNote ?? null,
+      });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const reviewTaskCompletion = useCallback<OrgDataContextValue['reviewTaskCompletion']>(
+    async (completionId, reviewNote) => {
+      const { error } = await supabase.rpc('review_task_completion', {
+        p_completion_id: completionId,
+        p_review_note: reviewNote ?? null,
+      });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const loadCompletionDetail = useCallback<OrgDataContextValue['loadCompletionDetail']>(async (completionId) => {
+    const [answersRes, photosRes] = await Promise.all([
+      supabase.from('checklist_answers').select('*').eq('task_completion_id', completionId).order('sort_order', { ascending: true }),
+      supabase.from('checklist_section_photos').select('*').eq('task_completion_id', completionId),
+    ]);
+    if (answersRes.error) throw answersRes.error;
+    if (photosRes.error) throw photosRes.error;
+    return {
+      answers: (answersRes.data ?? []).map(mapAnswer),
+      photos: (photosRes.data ?? []).map(mapPhoto),
+    };
+  }, []);
 
   const createTeam = useCallback<OrgDataContextValue['createTeam']>(
     async (name) => {
@@ -203,8 +322,36 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<OrgDataContextValue>(
-    () => ({ tasks, teams, members, history, loading, refresh, createTask, setTaskCompletion, createTeam }),
-    [tasks, teams, members, history, loading, refresh, createTask, setTaskCompletion, createTeam]
+    () => ({
+      tasks,
+      teams,
+      members,
+      history,
+      loading,
+      refresh,
+      createTask,
+      setTaskCompletion,
+      declareTaskOffDuty,
+      reviewOffDuty,
+      reviewTaskCompletion,
+      loadCompletionDetail,
+      createTeam,
+    }),
+    [
+      tasks,
+      teams,
+      members,
+      history,
+      loading,
+      refresh,
+      createTask,
+      setTaskCompletion,
+      declareTaskOffDuty,
+      reviewOffDuty,
+      reviewTaskCompletion,
+      loadCompletionDetail,
+      createTeam,
+    ]
   );
 
   return <OrgDataContext.Provider value={value}>{children}</OrgDataContext.Provider>;

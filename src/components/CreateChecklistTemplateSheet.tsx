@@ -24,7 +24,6 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
   const { createTemplate } = useChecklists();
 
   const [name, setName] = useState('');
-  const [cooldownHours, setCooldownHours] = useState('7');
   const [requiresNoteOnNo, setRequiresNoteOnNo] = useState(true);
   const [rows, setRows] = useState<Row[]>([]);
   const [newQuestion, setNewQuestion] = useState('');
@@ -34,7 +33,6 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
 
   const reset = () => {
     setName('');
-    setCooldownHours('7');
     setRequiresNoteOnNo(true);
     setRows([]);
     setNewQuestion('');
@@ -56,7 +54,6 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
     const preset = BUILT_IN_CHECKLISTS.find((p) => p.key === key);
     if (!preset) return;
     setName(preset.name);
-    setCooldownHours(String(preset.cooldownHours));
     setRows(toRows(preset.items));
   };
 
@@ -74,8 +71,7 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
     setNewQuestion('');
   };
 
-  const cooldownNum = parseInt(cooldownHours, 10);
-  const canSubmit = name.trim().length > 0 && rows.length > 0 && cooldownNum > 0 && !loading;
+  const canSubmit = name.trim().length > 0 && rows.length > 0 && !loading;
 
   const handleCreate = async () => {
     if (!canSubmit) return;
@@ -84,7 +80,6 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
     try {
       await createTemplate(
         name.trim(),
-        cooldownNum,
         requiresNoteOnNo,
         rows.map((r) => ({ sectionTitle: r.sectionTitle, question: r.question }))
       );
@@ -173,13 +168,6 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
               </View>
 
               <FieldInput label="Template name" placeholder="e.g. Daily Hygiene Checklist" value={name} onChangeText={setName} />
-              <FieldInput
-                label="Reappears after (hours)"
-                placeholder="7"
-                value={cooldownHours}
-                onChangeText={(t) => setCooldownHours(t.replace(/[^0-9]/g, ''))}
-                keyboardType="number-pad"
-              />
 
               <Pressable
                 onPress={() => setRequiresNoteOnNo((v) => !v)}

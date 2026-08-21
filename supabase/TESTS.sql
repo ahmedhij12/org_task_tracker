@@ -742,7 +742,12 @@ begin
 end;
 $$;
 
--- ── Checklists: templates, downward-only assignment, note-on-لا, off-duty ──
+-- ── Checklists: a task with a template, note-on-لا, off-duty, review ─────
+-- A checklist is not a separate model any more (Option B merge): creating
+-- one is creating a row in public.tasks with template_id/cooldown_hours set,
+-- and filling one out is set_task_completion with p_answers attached. This
+-- block runs on the real Postgres role throughout — see the "Proof photos"
+-- block for why SET ROLE (not just impersonated claims) is required.
 
 do $$
 declare
@@ -755,12 +760,13 @@ declare
   v_emp_id uuid;
   v_other_emp_id uuid;
   v_template_id uuid;
-  v_assignment_id uuid;
-  v_submission_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
   v_off_duty_id uuid;
   v_raised boolean;
   v_count int;
   v_status text;
+  v_reviewed_by uuid;
 begin
   insert into auth.users (
     instance_id, id, aud, role, email, encrypted_password,
@@ -785,11 +791,13 @@ begin
   insert into public.teams (org_id, name) values (v_org_id, 'Other Team') returning id into v_other_team_id;
   v_other_emp_id := public.admin_create_user('Other Seven', 'otherseven', 'initial123', 'employee', v_other_team_id);
 
+  set role authenticated;
+
   -- ── An employee cannot create a template ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
   v_raised := false;
   begin
-    perform public.create_checklist_template('Hygiene', 7, true, '[{"section_title":"","question":"Clean?"}]'::jsonb);
+    perform public.create_checklist_template('Hygiene', true, '[{"section_title":"","question":"Clean?"}]'::jsonb);
   exception when others then
     v_raised := true;
   end;
@@ -798,10 +806,11 @@ begin
   end if;
   raise notice 'PASS: an employee cannot create a checklist template';
 
-  -- ── A team leader can create one, with sections ──
+  -- ── A team leader can create one, with sections. Cooldown is not a
+  -- template property any more — it lives on the task that uses it ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
   v_template_id := public.create_checklist_template(
-    'Daily Hygiene', 7, true,
+    'Daily Hygiene', true,
     '[
       {"section_title":"Kitchen","question":"Is the fire extinguisher valid?"},
       {"section_title":"Kitchen","question":"Are the fridges clean?"},
@@ -814,40 +823,34 @@ begin
   end if;
   raise notice 'PASS: a team leader can create a sectioned checklist template';
 
-  -- ── Nobody can assign a checklist to themselves ──
+  -- ── A checklist is just a task with a template attached: creating one
+  -- goes through the exact same downward-only insert policy as any other
+  -- task, already proven generically in the "Assignment only flows
+  -- downward" block above — here we only prove the template/cooldown wiring ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, cooldown_hours, priority, requires_review)
+  values (v_org_id, v_team_id, 'Daily Hygiene', v_emp_id, v_leader_id, v_template_id, 7, 'high', true)
+  returning id into v_task_id;
+  raise notice 'PASS: a checklist is created as an ordinary task with template_id and cooldown_hours set';
+
+  -- ── The database itself refuses a high-priority task with review off ──
   v_raised := false;
   begin
-    perform public.assign_checklist(v_template_id, v_leader_id);
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by, priority, requires_review)
+    values (v_org_id, v_team_id, 'Bad', v_emp_id, v_leader_id, 'high', false);
   exception when others then
     v_raised := true;
   end;
   if not v_raised then
-    raise exception 'FAIL: a team leader must not be able to assign a checklist to themselves';
+    raise exception 'FAIL: a high-priority task must always require review, enforced by a CHECK constraint';
   end if;
-  raise notice 'PASS: cannot assign a checklist to yourself';
-
-  -- ── A team leader cannot assign outside their own team ──
-  v_raised := false;
-  begin
-    perform public.assign_checklist(v_template_id, v_other_emp_id);
-  exception when others then
-    v_raised := true;
-  end;
-  if not v_raised then
-    raise exception 'FAIL: a team leader must not assign a checklist to another team''s employee';
-  end if;
-  raise notice 'PASS: a team leader cannot assign a checklist outside their team';
-
-  -- ── A team leader can assign to their own employee ──
-  v_assignment_id := public.assign_checklist(v_template_id, v_emp_id);
-  raise notice 'PASS: a team leader can assign a checklist to their own employee';
+  raise notice 'PASS: the priority <-> requires_review relationship is enforced at the database level';
 
   -- ── The assignee cannot submit with "لا" and no note, when required ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
   v_raised := false;
   begin
-    perform public.submit_checklist(
-      v_assignment_id,
+    perform public.set_task_completion(
+      v_task_id, true, null, '{}',
       '[
         {"section_title":"Kitchen","question":"Is the fire extinguisher valid?","sort_order":0,"answer":true},
         {"section_title":"Kitchen","question":"Are the fridges clean?","sort_order":1,"answer":false}
@@ -862,8 +865,8 @@ begin
   raise notice 'PASS: a "لا" answer without a note is rejected when the template requires one';
 
   -- ── With the note, it submits and counts correctly ──
-  v_submission_id := public.submit_checklist(
-    v_assignment_id,
+  v_completion_id := public.set_task_completion(
+    v_task_id, true, null, '{}',
     '[
       {"section_title":"Kitchen","question":"Is the fire extinguisher valid?","sort_order":0,"answer":true},
       {"section_title":"Kitchen","question":"Are the fridges clean?","sort_order":1,"answer":false,"note":"Door seal broken"},
@@ -871,24 +874,27 @@ begin
     ]'::jsonb,
     '[{"section_title":"Kitchen","photo_url":"https://x/fridge.jpg"}]'::jsonb
   );
-  if (select yes_count from public.checklist_submissions where id = v_submission_id) <> 2
-     or (select no_count from public.checklist_submissions where id = v_submission_id) <> 1 then
-    raise exception 'FAIL: yes/no counts are wrong on the submission';
+  if (select yes_count from public.task_completions where id = v_completion_id) <> 2
+     or (select no_count from public.task_completions where id = v_completion_id) <> 1 then
+    raise exception 'FAIL: yes/no counts are wrong on the completion';
   end if;
-  if (select count(*) from public.checklist_answers where submission_id = v_submission_id) <> 3 then
+  if (select count(*) from public.checklist_answers where task_completion_id = v_completion_id) <> 3 then
     raise exception 'FAIL: expected 3 saved answers';
   end if;
-  if (select count(*) from public.checklist_section_photos where submission_id = v_submission_id) <> 1 then
+  if (select count(*) from public.checklist_section_photos where task_completion_id = v_completion_id) <> 1 then
     raise exception 'FAIL: expected 1 saved section photo';
   end if;
-  raise notice 'PASS: a valid submission saves answers, photos, and correct yes/no counts';
+  if (select reviewed_by from public.task_completions where id = v_completion_id) is not null then
+    raise exception 'FAIL: a completion should start unreviewed even though the task requires review';
+  end if;
+  raise notice 'PASS: a valid submission saves answers, photos, correct yes/no counts, and starts unreviewed';
 
-  -- ── Someone else cannot submit on this assignment ──
+  -- ── Someone else cannot submit on this task ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_other_emp_id)::text, true);
   v_raised := false;
   begin
-    perform public.submit_checklist(
-      v_assignment_id,
+    perform public.set_task_completion(
+      v_task_id, true, null, '{}',
       '[{"section_title":"","question":"x","sort_order":0,"answer":true}]'::jsonb
     );
   exception when others then
@@ -899,10 +905,32 @@ begin
   end if;
   raise notice 'PASS: only the assignee can submit their checklist';
 
+  -- ── An employee cannot mark their own completion reviewed ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.review_task_completion(v_completion_id, null);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an employee must not be able to review their own completion';
+  end if;
+  raise notice 'PASS: an employee cannot review their own completion';
+
+  -- ── The team leader reviews it, since this task is high priority ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  perform public.review_task_completion(v_completion_id, 'Checked in person');
+  select reviewed_by into v_reviewed_by from public.task_completions where id = v_completion_id;
+  if v_reviewed_by <> v_leader_id then
+    raise exception 'FAIL: reviewed_by was not recorded';
+  end if;
+  raise notice 'PASS: a team leader can review a completion and it is recorded';
+
   -- ── Off-duty: a claim, not an escape — stays pending until reviewed ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
-  v_off_duty_id := public.declare_checklist_off_duty(v_assignment_id, 'On approved leave today');
-  select status into v_status from public.checklist_submissions where id = v_off_duty_id;
+  v_off_duty_id := public.declare_task_off_duty(v_task_id, 'On approved leave today');
+  select status into v_status from public.task_completions where id = v_off_duty_id;
   if v_status <> 'off_duty_pending' then
     raise exception 'FAIL: expected off_duty_pending, got %', v_status;
   end if;
@@ -911,7 +939,7 @@ begin
   -- ── An employee cannot review their own claim ──
   v_raised := false;
   begin
-    perform public.review_checklist_off_duty(v_off_duty_id, true, null);
+    perform public.review_off_duty(v_off_duty_id, true, null);
   exception when others then
     v_raised := true;
   end;
@@ -922,12 +950,12 @@ begin
 
   -- ── The team leader rejects it ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
-  perform public.review_checklist_off_duty(v_off_duty_id, false, 'HR shows no leave on file');
-  select status into v_status from public.checklist_submissions where id = v_off_duty_id;
+  perform public.review_off_duty(v_off_duty_id, false, 'HR shows no leave on file');
+  select status into v_status from public.task_completions where id = v_off_duty_id;
   if v_status <> 'off_duty_rejected' then
     raise exception 'FAIL: expected off_duty_rejected, got %', v_status;
   end if;
-  if (select reviewed_by from public.checklist_submissions where id = v_off_duty_id) <> v_leader_id then
+  if (select reviewed_by from public.task_completions where id = v_off_duty_id) <> v_leader_id then
     raise exception 'FAIL: reviewed_by was not recorded';
   end if;
   raise notice 'PASS: a team leader can reject an off-duty claim, with a reason recorded';
@@ -935,7 +963,7 @@ begin
   -- ── A resolved claim cannot be reviewed twice ──
   v_raised := false;
   begin
-    perform public.review_checklist_off_duty(v_off_duty_id, true, null);
+    perform public.review_off_duty(v_off_duty_id, true, null);
   exception when others then
     v_raised := true;
   end;
@@ -944,48 +972,49 @@ begin
   end if;
   raise notice 'PASS: a reviewed off-duty claim cannot be reviewed again';
 
-  -- ── Visibility: the employee sees only their own submissions ──
-  -- Genuine RLS enforcement from here on — see the note in the "Proof
-  -- photos" block for why SET ROLE (not just the impersonated claims) is
-  -- required for this to mean anything from the SQL Editor.
-  set role authenticated;
+  -- ── Visibility: the employee sees only their own completions/answers ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
-  select count(*) into v_count from public.checklist_submissions;
+  select count(*) into v_count from public.task_completions where task_id = v_task_id;
   if v_count <> 2 then
-    raise exception 'FAIL: the employee should see their own 2 submissions, saw %', v_count;
+    raise exception 'FAIL: the employee should see their own 2 completions on this task, saw %', v_count;
+  end if;
+  select count(*) into v_count from public.checklist_answers where task_completion_id = v_completion_id;
+  if v_count <> 3 then
+    raise exception 'FAIL: the employee should see their own 3 answers, saw %', v_count;
   end if;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_other_emp_id)::text, true);
-  select count(*) into v_count from public.checklist_submissions;
+  select count(*) into v_count from public.task_completions where task_id = v_task_id;
   if v_count <> 0 then
-    raise exception 'FAIL: an employee on another team must see no submissions, saw %', v_count;
+    raise exception 'FAIL: an employee on another team must see no completions for this task, saw %', v_count;
   end if;
-  raise notice 'PASS: an employee sees only their own submissions';
+  select count(*) into v_count from public.checklist_answers where task_completion_id = v_completion_id;
+  if v_count <> 0 then
+    raise exception 'FAIL: an employee on another team must see no answers for this task, saw %', v_count;
+  end if;
+  raise notice 'PASS: an employee sees only their own completions and answers';
 
   -- ── The owner sees everything in the org ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
-  select count(*) into v_count from public.checklist_submissions;
+  select count(*) into v_count from public.task_completions where task_id = v_task_id;
   if v_count <> 2 then
-    raise exception 'FAIL: the owner should see all 2 submissions, saw %', v_count;
+    raise exception 'FAIL: the owner should see both completions, saw %', v_count;
   end if;
-  select count(*) into v_count from public.checklist_answers;
-  if v_count <> 3 then
-    raise exception 'FAIL: the owner should see all 3 answers, saw %', v_count;
-  end if;
-  raise notice 'PASS: the owner sees every submission and answer in the org';
+  raise notice 'PASS: the owner sees every completion on the checklist task';
 
-  -- checklist_assignments has no DELETE policy at all — mutations only ever
-  -- go through assign_checklist/unassign_checklist — so this raw delete is
-  -- pure test scaffolding, back on the owner-bypassed role deliberately.
   reset role;
 
-  -- ── Deleting the assignment does not delete submission history ──
-  delete from public.checklist_assignments where id = v_assignment_id;
-  select count(*) into v_count from public.checklist_submissions where template_name = 'Daily Hygiene';
+  -- ── Deleting the task does not delete its completion history ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  delete from public.tasks where id = v_task_id;
+  select count(*) into v_count from public.task_completions where task_title = 'Daily Hygiene';
   if v_count <> 2 then
-    raise exception 'FAIL: deleting the assignment should not delete its submission history';
+    raise exception 'FAIL: deleting the task should not delete its completion history';
   end if;
-  raise notice 'PASS: submission history survives the assignment being removed';
+  if exists (select 1 from public.task_completions where task_title = 'Daily Hygiene' and task_id is not null) then
+    raise exception 'FAIL: task_id should be cleared to null on the orphaned history rows';
+  end if;
+  raise notice 'PASS: completion history survives the task being deleted';
 end;
 $$;
 

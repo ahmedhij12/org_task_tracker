@@ -5,14 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
 import { useChecklists } from '@/hooks/useChecklists';
+import { useOrgData } from '@/hooks/useOrgData';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
-import type { ChecklistAssignment, ChecklistTemplate, ChecklistTemplateItem } from '@/types';
+import type { OrgTask } from '@/types';
 
 interface Props {
-  assignment: ChecklistAssignment;
-  template: ChecklistTemplate;
-  items: ChecklistTemplateItem[];
+  task: OrgTask;
   orgId: string;
   visible: boolean;
   onClose: () => void;
@@ -25,9 +24,13 @@ interface Shot {
 
 const MAX_PHOTOS_PER_SECTION = 4;
 
-export function FillChecklistSheet({ assignment, template, items, orgId, visible, onClose }: Props) {
+export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const c = useThemeColors();
-  const { submitChecklist, declareOffDuty } = useChecklists();
+  const { templates, templateItems } = useChecklists();
+  const { setTaskCompletion, declareTaskOffDuty } = useOrgData();
+
+  const template = templates.find((t) => t.id === task.templateId);
+  const items = useMemo(() => templateItems.filter((it) => it.templateId === task.templateId), [templateItems, task.templateId]);
 
   const [mode, setMode] = useState<'fill' | 'off_duty'>('fill');
   const [answers, setAnswers] = useState<Record<string, { answer: boolean | null; note: string }>>({});
@@ -37,7 +40,7 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
   const [error, setError] = useState<string | null>(null);
 
   const sections = useMemo(() => {
-    const map = new Map<string, ChecklistTemplateItem[]>();
+    const map = new Map<string, typeof items>();
     for (const it of items) {
       const list = map.get(it.sectionTitle) ?? [];
       list.push(it);
@@ -100,10 +103,10 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
   };
 
   const unanswered = items.filter((it) => answers[it.id]?.answer == null);
-  const missingNotes = template.requiresNoteOnNo
+  const missingNotes = template?.requiresNoteOnNo
     ? items.filter((it) => answers[it.id]?.answer === false && !answers[it.id]?.note.trim())
     : [];
-  const canSubmit = unanswered.length === 0 && missingNotes.length === 0 && !submitting;
+  const canSubmit = unanswered.length === 0 && missingNotes.length === 0 && !submitting && !!template;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -114,7 +117,7 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
       for (const [sectionTitle, shots] of Object.entries(sectionPhotos)) {
         for (let i = 0; i < shots.length; i += 1) {
           const safeSection = sectionTitle.replace(/[^a-zA-Z0-9]/g, '') || 'section';
-          const path = `${orgId}/checklist-${assignment.id}-${Date.now()}-${safeSection}-${i}.jpg`;
+          const path = `${orgId}/checklist-${task.id}-${Date.now()}-${safeSection}-${i}.jpg`;
           const { error: uploadError } = await supabase.storage
             .from('task-proofs')
             .upload(path, decode(shots[i].base64), { contentType: 'image/jpeg' });
@@ -132,7 +135,7 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
         note: answers[it.id]!.note.trim() || undefined,
       }));
 
-      await submitChecklist(assignment.id, payload, uploadedPhotos);
+      await setTaskCompletion(task.id, true, undefined, [], payload, uploadedPhotos);
       handleClose();
     } catch (e: any) {
       setError(e?.message ?? 'Could not submit this checklist. Please try again.');
@@ -146,7 +149,7 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
     setError(null);
     setSubmitting(true);
     try {
-      await declareOffDuty(assignment.id, offDutyReason.trim());
+      await declareTaskOffDuty(task.id, offDutyReason.trim());
       handleClose();
     } catch (e: any) {
       setError(e?.message ?? 'Could not send this. Please try again.');
@@ -154,6 +157,8 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
       setSubmitting(false);
     }
   };
+
+  if (!template) return null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
@@ -179,7 +184,7 @@ export function FillChecklistSheet({ assignment, template, items, orgId, visible
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, flex: 1 }}>{template.name}</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, flex: 1 }}>{task.title}</Text>
               <Pressable onPress={handleClose} hitSlop={8}>
                 <Ionicons name="close" size={24} color={c.textMuted} />
               </Pressable>

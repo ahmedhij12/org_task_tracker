@@ -1,4 +1,5 @@
-import type { OrgTask } from '@/types';
+import type { OrgTask, TaskCompletion } from '@/types';
+import { isChecklistDue } from '@/types';
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -57,6 +58,25 @@ export function bucketTasks(tasks: OrgTask[]) {
     upcoming: upcoming.sort(byPriority),
     completed: completed.sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
   };
+}
+
+/** history is newest-first, so the first match for this task is the latest. */
+export function latestCompletionForTask(taskId: string, history: TaskCompletion[]): TaskCompletion | null {
+  return history.find((h) => h.taskId === taskId) ?? null;
+}
+
+/**
+ * A plain task's completed flag is the source of truth. A checklist task's
+ * completed flag is not — the database leaves it true forever after the
+ * first submission, so "is it done right now" has to be derived from the
+ * cooldown instead: a rejected off-duty claim or an elapsed cooldown means
+ * it's due again regardless of what the row says.
+ */
+export function effectiveTaskCompleted(task: OrgTask, history: TaskCompletion[], now: Date = new Date()): boolean {
+  if (!task.templateId) return task.completed;
+  const last = latestCompletionForTask(task.id, history);
+  if (!last || last.action === 'reopened') return false;
+  return !isChecklistDue(task, last, now);
 }
 
 export function initials(name: string): string {

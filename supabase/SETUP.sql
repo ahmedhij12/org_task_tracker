@@ -51,14 +51,23 @@ drop function if exists public.admin_reset_password(uuid, text) cascade;
 drop function if exists public.admin_set_user_active(uuid, boolean) cascade;
 drop function if exists public.clear_must_change_password() cascade;
 -- Both signatures: the old one took a single photo url, the new one an array.
+-- Every prior signature of set_task_completion, so re-running this script
+-- cleans up whichever version an older database still has.
 drop function if exists public.set_task_completion(uuid, boolean, text, text) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[]) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb) cascade;
 drop function if exists public.create_checklist_template(text, int, boolean, jsonb) cascade;
+drop function if exists public.create_checklist_template(text, boolean, jsonb) cascade;
+-- Checklists are no longer a separate assignable thing — a checklist is a
+-- task with template_id set, created the same way any task is.
 drop function if exists public.assign_checklist(uuid, uuid) cascade;
 drop function if exists public.unassign_checklist(uuid) cascade;
 drop function if exists public.submit_checklist(uuid, jsonb, jsonb) cascade;
 drop function if exists public.declare_checklist_off_duty(uuid, text) cascade;
+drop function if exists public.declare_task_off_duty(uuid, text) cascade;
 drop function if exists public.review_checklist_off_duty(uuid, boolean, text) cascade;
+drop function if exists public.review_off_duty(uuid, boolean, text) cascade;
+drop function if exists public.review_task_completion(uuid, text) cascade;
 
 -- Supabase blocks direct DELETE on storage tables (its own protect_delete()
 -- trigger — "Use the Storage API instead"), so the bucket and any old test
@@ -122,64 +131,16 @@ create table public.profile_teams (
   primary key (profile_id, team_id)
 );
 
-create table public.tasks (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  team_id uuid not null references public.teams(id) on delete cascade,
-  title text not null,
-  notes text,
-  due timestamptz,
-  priority text not null default 'medium' check (priority in ('low', 'medium', 'high')),
-  assignee_id uuid references public.profiles(id) on delete set null,
-  requires_proof boolean not null default false,
-  completed boolean not null default false,
-  completed_by uuid references public.profiles(id) on delete set null,
-  completed_at timestamptz,
-  proof_note text,
-  -- Several photos per completion, all taken with the camera at the time.
-  -- Replaces the old single proof_photo_url.
-  proof_photo_urls text[] not null default '{}',
-  created_at timestamptz not null default now(),
-  created_by uuid not null references public.profiles(id) on delete cascade
-);
-
--- Append-only audit log. tasks holds only the CURRENT state, which is wiped
--- when a task is reopened; this keeps every completion and reopen forever so
--- the org can look back at who did what, when, and with what proof.
-create table public.task_completions (
-  id uuid primary key default gen_random_uuid(),
-  -- Nullable, and set null rather than cascade, so deleting a task cannot
-  -- erase the record that it was done, by whom, or with what proof. The
-  -- snapshot columns below keep the row readable once the task is gone.
-  task_id uuid references public.tasks(id) on delete set null,
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  team_id uuid not null references public.teams(id) on delete cascade,
-  -- Kept even if the task is later renamed or deleted-and-recreated.
-  task_title text not null,
-  actor_id uuid not null references public.profiles(id) on delete cascade,
-  action text not null check (action in ('completed', 'reopened')),
-  note text,
-  photo_urls text[] not null default '{}',
-  -- Snapshot of the deadline at that moment, so later edits to the task's due
-  -- date cannot rewrite history.
-  due_at timestamptz,
-  -- Completed after the deadline had already passed.
-  was_late boolean not null default false,
-  created_at timestamptz not null default now()
-);
-
--- ── Checklists ─────────────────────────────────────────────────────
--- A repeating inspection form (e.g. the daily hygiene sheet). Reused across
--- however many supervisors it's assigned to, rather than one task per person.
+-- ── Checklist templates ─────────────────────────────────────────────
+-- A repeating inspection form (e.g. the daily hygiene sheet), authored once
+-- and reused by attaching it to however many tasks need it. A "checklist" is
+-- not a separate concept from a task — it's a task with template_id set;
+-- see the tasks table below.
 
 create table public.checklist_templates (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
-  -- How long after a submission before it's due again. No calendar/shift
-  -- concept on purpose — a supervisor working a double just sees it come
-  -- back mid-shift, instead of being falsely marked late for a shift swap.
-  cooldown_hours int not null default 7 check (cooldown_hours > 0),
   -- A note is required to explain a "لا" answer; never required on "نعم".
   -- Photos are always optional, whatever this is set to.
   requires_note_on_no boolean not null default true,
@@ -197,43 +158,89 @@ create table public.checklist_template_items (
   question text not null
 );
 
-create table public.checklist_assignments (
+create index checklist_template_items_template_idx on public.checklist_template_items(template_id, sort_order);
+
+create table public.tasks (
   id uuid primary key default gen_random_uuid(),
-  template_id uuid not null references public.checklist_templates(id) on delete cascade,
   org_id uuid not null references public.organizations(id) on delete cascade,
-  team_id uuid references public.teams(id) on delete set null,
-  assignee_id uuid not null references public.profiles(id) on delete cascade,
-  -- A leader can pause someone's assignment without losing their submission
-  -- history, the same way a task isn't deleted just to stop assigning it.
-  active boolean not null default true,
-  created_by uuid not null references public.profiles(id) on delete cascade,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  title text not null,
+  notes text,
+  due timestamptz,
+  priority text not null default 'medium' check (priority in ('low', 'medium', 'high')),
+  assignee_id uuid references public.profiles(id) on delete set null,
+  requires_proof boolean not null default false,
+  completed boolean not null default false,
+  completed_by uuid references public.profiles(id) on delete set null,
+  completed_at timestamptz,
+  proof_note text,
+  -- Several photos per completion, all taken with the camera at the time.
+  proof_photo_urls text[] not null default '{}',
+  -- Null means an ordinary task. Set means this task is a checklist: filling
+  -- it out means answering every question on the template, not just ticking
+  -- a box, and cooldown_hours makes it a repeating assignment rather than a
+  -- one-off — a supervisor working a double just sees it come back mid-shift
+  -- instead of being falsely marked late for a shift swap. No calendar/shift
+  -- concept on purpose.
+  template_id uuid references public.checklist_templates(id) on delete set null,
+  cooldown_hours int,
+  -- Whether a leader/owner has to sign off before this counts as truly done.
+  -- Driven by priority at creation time: low never needs review, high always
+  -- does, medium is the creator's choice — enforced below, not just in the UI.
+  requires_review boolean not null default false,
   created_at timestamptz not null default now(),
-  unique (template_id, assignee_id)
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  check (template_id is not null or cooldown_hours is null),
+  check (priority <> 'low' or requires_review = false),
+  check (priority <> 'high' or requires_review = true)
 );
 
-create table public.checklist_submissions (
+-- Append-only audit log. tasks holds only the CURRENT state, which is wiped
+-- when a task is reopened; this keeps every completion and reopen forever so
+-- the org can look back at who did what, when, and with what proof — and, for
+-- a checklist task, every answer given each time it was filled out.
+create table public.task_completions (
   id uuid primary key default gen_random_uuid(),
-  assignment_id uuid references public.checklist_assignments(id) on delete set null,
+  -- Nullable, and set null rather than cascade, so deleting a task cannot
+  -- erase the record that it was done, by whom, or with what proof. The
+  -- snapshot columns below keep the row readable once the task is gone.
+  task_id uuid references public.tasks(id) on delete set null,
   org_id uuid not null references public.organizations(id) on delete cascade,
-  team_id uuid references public.teams(id) on delete set null,
-  -- Snapshot, so renaming the template later doesn't rewrite old submissions.
-  template_name text not null,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  -- Kept even if the task is later renamed or deleted-and-recreated.
+  task_title text not null,
   actor_id uuid not null references public.profiles(id) on delete cascade,
-  status text not null check (
-    status in ('completed', 'off_duty_pending', 'off_duty_approved', 'off_duty_rejected')
-  ),
+  -- off_duty is a checklist-only claim ("I'm not on duty today"), distinct
+  -- from actually completing the task — see status below.
+  action text not null check (action in ('completed', 'reopened', 'off_duty')),
+  -- Only meaningful when action = 'off_duty'; null otherwise.
+  status text check (status in ('off_duty_pending', 'off_duty_approved', 'off_duty_rejected')),
   off_duty_reason text,
+  note text,
+  photo_urls text[] not null default '{}',
+  -- Snapshot of the deadline at that moment, so later edits to the task's due
+  -- date cannot rewrite history.
+  due_at timestamptz,
+  -- Completed after the deadline had already passed.
+  was_late boolean not null default false,
+  -- Only meaningful for a checklist task's 'completed' rows.
+  yes_count int,
+  no_count int,
+  -- The unified review gate: for a 'completed' row, set only when the task
+  -- required review and a leader/owner has signed off. For an 'off_duty' row,
+  -- always required regardless of the task's own requires_review — whether
+  -- someone was really off is an attendance question, not a work-quality one.
   reviewed_by uuid references public.profiles(id) on delete set null,
   reviewed_at timestamptz,
   review_note text,
-  yes_count int not null default 0,
-  no_count int not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (action = 'off_duty' or status is null),
+  check (action <> 'off_duty' or status is not null)
 );
 
 create table public.checklist_answers (
   id uuid primary key default gen_random_uuid(),
-  submission_id uuid not null references public.checklist_submissions(id) on delete cascade,
+  task_completion_id uuid not null references public.task_completions(id) on delete cascade,
   section_title text not null default '',
   -- Snapshot of the question text at the moment it was answered.
   question text not null,
@@ -244,28 +251,24 @@ create table public.checklist_answers (
 
 create table public.checklist_section_photos (
   id uuid primary key default gen_random_uuid(),
-  submission_id uuid not null references public.checklist_submissions(id) on delete cascade,
+  task_completion_id uuid not null references public.task_completions(id) on delete cascade,
   section_title text not null default '',
   photo_url text not null,
   created_at timestamptz not null default now()
 );
 
-create index checklist_template_items_template_idx on public.checklist_template_items(template_id, sort_order);
-create index checklist_assignments_assignee_idx on public.checklist_assignments(assignee_id) where active;
-create index checklist_assignments_template_idx on public.checklist_assignments(template_id);
-create index checklist_submissions_assignment_idx on public.checklist_submissions(assignment_id, created_at desc);
-create index checklist_submissions_org_idx on public.checklist_submissions(org_id, created_at desc);
-create index checklist_submissions_team_idx on public.checklist_submissions(team_id, created_at desc);
-create index checklist_submissions_actor_idx on public.checklist_submissions(actor_id, created_at desc);
-create index checklist_submissions_pending_idx on public.checklist_submissions(org_id) where status = 'off_duty_pending';
-create index checklist_answers_submission_idx on public.checklist_answers(submission_id, sort_order);
-create index checklist_section_photos_submission_idx on public.checklist_section_photos(submission_id);
+create index checklist_answers_completion_idx on public.checklist_answers(task_completion_id, sort_order);
+create index checklist_section_photos_completion_idx on public.checklist_section_photos(task_completion_id);
 
 create index tasks_team_id_idx on public.tasks(team_id);
+create index tasks_template_id_idx on public.tasks(template_id) where template_id is not null;
 create index task_completions_org_idx on public.task_completions(org_id, created_at desc);
 create index task_completions_team_idx on public.task_completions(team_id, created_at desc);
 create index task_completions_actor_idx on public.task_completions(actor_id, created_at desc);
 create index task_completions_task_idx on public.task_completions(task_id, created_at desc);
+create index task_completions_needs_review_idx
+  on public.task_completions(org_id, created_at desc)
+  where reviewed_by is null and (status = 'off_duty_pending' or action = 'completed');
 create index tasks_org_id_idx on public.tasks(org_id);
 create index tasks_assignee_id_idx on public.tasks(assignee_id);
 create index profiles_org_id_idx on public.profiles(org_id);
@@ -289,8 +292,6 @@ alter table public.tasks enable row level security;
 alter table public.task_completions enable row level security;
 alter table public.checklist_templates enable row level security;
 alter table public.checklist_template_items enable row level security;
-alter table public.checklist_assignments enable row level security;
-alter table public.checklist_submissions enable row level security;
 alter table public.checklist_answers enable row level security;
 alter table public.checklist_section_photos enable row level security;
 -- No policy on this one on purpose — only the SECURITY DEFINER function
@@ -484,56 +485,35 @@ create policy "org members can read their org's template items"
     )
   );
 
--- Same three levels as everywhere else: the owner sees the whole org, a team
--- leader their own team, an employee only what's assigned to them.
-create policy "checklist assignments are scoped to the reader's role"
-  on public.checklist_assignments for select
-  using (
-    org_id = public.my_org_id()
-    and (
-      public.my_role() = 'owner'
-      or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()))
-      or assignee_id = auth.uid()
-    )
-  );
-
-create policy "checklist submissions are scoped to the reader's role"
-  on public.checklist_submissions for select
-  using (
-    org_id = public.my_org_id()
-    and (
-      public.my_role() = 'owner'
-      or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()))
-      or actor_id = auth.uid()
-    )
-  );
-
-create policy "checklist answers follow their submission's visibility"
+-- checklist_answers/checklist_section_photos follow whatever task_completions
+-- visibility already is (owner/team leader/actor, defined below) — they're
+-- just the detail rows for a 'completed' history entry.
+create policy "checklist answers follow their completion's visibility"
   on public.checklist_answers for select
   using (
     exists (
-      select 1 from public.checklist_submissions s
-      where s.id = submission_id
-        and s.org_id = public.my_org_id()
+      select 1 from public.task_completions tc
+      where tc.id = task_completion_id
+        and tc.org_id = public.my_org_id()
         and (
           public.my_role() = 'owner'
-          or (public.my_role() = 'team_admin' and s.team_id = any(public.my_team_ids()))
-          or s.actor_id = auth.uid()
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or tc.actor_id = auth.uid()
         )
     )
   );
 
-create policy "checklist photos follow their submission's visibility"
+create policy "checklist photos follow their completion's visibility"
   on public.checklist_section_photos for select
   using (
     exists (
-      select 1 from public.checklist_submissions s
-      where s.id = submission_id
-        and s.org_id = public.my_org_id()
+      select 1 from public.task_completions tc
+      where tc.id = task_completion_id
+        and tc.org_id = public.my_org_id()
         and (
           public.my_role() = 'owner'
-          or (public.my_role() = 'team_admin' and s.team_id = any(public.my_team_ids()))
-          or s.actor_id = auth.uid()
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or tc.actor_id = auth.uid()
         )
     )
   );
@@ -1044,24 +1024,38 @@ begin
 end;
 $$;
 
+-- p_answers/p_section_photos only apply when the task is a checklist
+-- (template_id set) — null/empty otherwise, and ignored either way if the
+-- task has no template. p_answers shape:
+-- [{ "section_title": "...", "question": "...", "sort_order": 0,
+--    "answer": true|false, "note": "..." }, ...]
+-- p_section_photos: [{ "section_title": "...", "photo_url": "..." }, ...]
 create function public.set_task_completion(
   p_task_id uuid,
   p_completed boolean,
   p_note text default null,
-  p_photo_urls text[] default '{}'
+  p_photo_urls text[] default '{}',
+  p_answers jsonb default null,
+  p_section_photos jsonb default '[]'
 )
-returns void
+returns uuid
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   v_task public.tasks;
+  v_template public.checklist_templates;
   v_my_profile_id uuid := auth.uid();
   v_my_teams uuid[];
   v_my_role text;
   v_photos text[] := coalesce(p_photo_urls, '{}');
   v_was_late boolean := false;
+  v_completion_id uuid;
+  v_answer jsonb;
+  v_photo jsonb;
+  v_yes int;
+  v_no int;
 begin
   select p.role into v_my_role from public.profiles p where p.id = v_my_profile_id;
   v_my_teams := public.my_team_ids();
@@ -1088,6 +1082,30 @@ begin
     raise exception 'this task needs at least one photo before it can be marked done';
   end if;
 
+  if p_completed and v_task.template_id is not null then
+    select * into v_template from public.checklist_templates where id = v_task.template_id;
+    if p_answers is null or jsonb_array_length(p_answers) < 1 then
+      raise exception 'at least one answer is required';
+    end if;
+    -- Enforced here, not just in the UI: a "لا" answer needs its note
+    -- whenever the template requires one, and the check can't be skipped by
+    -- the client.
+    if v_template.requires_note_on_no then
+      for v_answer in select * from jsonb_array_elements(p_answers)
+      loop
+        if (v_answer ->> 'answer')::boolean = false
+           and coalesce(trim(v_answer ->> 'note'), '') = '' then
+          raise exception 'a note is required to explain a "لا" answer';
+        end if;
+      end loop;
+    end if;
+    select
+      count(*) filter (where (a ->> 'answer')::boolean = true),
+      count(*) filter (where (a ->> 'answer')::boolean = false)
+    into v_yes, v_no
+    from jsonb_array_elements(p_answers) a;
+  end if;
+
   if p_completed then
     v_was_late := v_task.due is not null and now() > v_task.due;
   end if;
@@ -1101,18 +1119,181 @@ begin
   where id = p_task_id;
 
   -- Every open and close is recorded, so reopening a task never erases the
-  -- fact that it was completed, by whom, or with what proof.
+  -- fact that it was completed, by whom, or with what proof. reviewed_by
+  -- starts null on a 'completed' row and stays null forever unless the task
+  -- requires review — the "needs review" list filters on exactly that, so a
+  -- task that never needed review is simply never in it.
   insert into public.task_completions (
     task_id, org_id, team_id, task_title, actor_id, action,
-    note, photo_urls, due_at, was_late
+    note, photo_urls, due_at, was_late, yes_count, no_count
   ) values (
     v_task.id, v_task.org_id, v_task.team_id, v_task.title, v_my_profile_id,
     case when p_completed then 'completed' else 'reopened' end,
     case when p_completed then p_note else null end,
     case when p_completed then v_photos else '{}' end,
     v_task.due,
-    v_was_late
-  );
+    v_was_late,
+    case when p_completed then v_yes else null end,
+    case when p_completed then v_no else null end
+  )
+  returning id into v_completion_id;
+
+  if p_completed and v_task.template_id is not null then
+    for v_answer in select * from jsonb_array_elements(p_answers)
+    loop
+      insert into public.checklist_answers (task_completion_id, section_title, question, sort_order, answer, note)
+      values (
+        v_completion_id,
+        coalesce(v_answer ->> 'section_title', ''),
+        v_answer ->> 'question',
+        coalesce((v_answer ->> 'sort_order')::int, 0),
+        (v_answer ->> 'answer')::boolean,
+        nullif(trim(coalesce(v_answer ->> 'note', '')), '')
+      );
+    end loop;
+
+    for v_photo in select * from jsonb_array_elements(coalesce(p_section_photos, '[]'))
+    loop
+      insert into public.checklist_section_photos (task_completion_id, section_title, photo_url)
+      values (v_completion_id, coalesce(v_photo ->> 'section_title', ''), v_photo ->> 'photo_url');
+    end loop;
+  end if;
+
+  return v_completion_id;
+end;
+$$;
+
+-- A claim, not an escape: this does not clear or complete the task. It sits
+-- as off_duty_pending until an admin or the team's leader reviews it. Only a
+-- rejection makes the checklist immediately due again; an approval behaves
+-- like a normal completion for cooldown purposes. Checklist-only — a plain
+-- task has no template_id and no cooldown, so "off duty" doesn't apply.
+create function public.declare_task_off_duty(
+  p_task_id uuid,
+  p_reason text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_task public.tasks;
+  v_completion_id uuid;
+begin
+  select * into v_task from public.tasks where id = p_task_id;
+  if v_task.id is null then
+    raise exception 'task not found';
+  end if;
+  if v_task.template_id is null then
+    raise exception 'only a checklist task can be declared off duty';
+  end if;
+  if v_task.assignee_id is distinct from auth.uid() then
+    raise exception 'this task is not assigned to you';
+  end if;
+  if coalesce(trim(p_reason), '') = '' then
+    raise exception 'a reason is required';
+  end if;
+
+  insert into public.task_completions (
+    task_id, org_id, team_id, task_title, actor_id, action, status, off_duty_reason
+  ) values (
+    v_task.id, v_task.org_id, v_task.team_id, v_task.title,
+    auth.uid(), 'off_duty', 'off_duty_pending', trim(p_reason)
+  )
+  returning id into v_completion_id;
+
+  return v_completion_id;
+end;
+$$;
+
+-- Approve/reject an off-duty claim. Attendance, not work quality, so this is
+-- always required regardless of the task's own requires_review setting.
+create function public.review_off_duty(
+  p_completion_id uuid,
+  p_approve boolean,
+  p_review_note text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_caller_teams uuid[];
+  v_completion public.task_completions;
+begin
+  select p.role, p.org_id into v_caller_role, v_caller_org
+  from public.profiles p where p.id = auth.uid();
+  v_caller_teams := public.my_team_ids();
+
+  select * into v_completion from public.task_completions where id = p_completion_id;
+  if v_completion.id is null or v_completion.org_id is distinct from v_caller_org then
+    raise exception 'not found';
+  end if;
+  if v_completion.action <> 'off_duty' or v_completion.status <> 'off_duty_pending' then
+    raise exception 'this off-duty claim has already been reviewed';
+  end if;
+  if not (
+    v_caller_role = 'owner'
+    or (v_caller_role = 'team_admin' and v_completion.team_id = any(v_caller_teams))
+  ) then
+    raise exception 'only an admin or the team''s leader can review this';
+  end if;
+
+  update public.task_completions
+  set status = case when p_approve then 'off_duty_approved' else 'off_duty_rejected' end,
+      reviewed_by = auth.uid(),
+      reviewed_at = now(),
+      review_note = nullif(trim(coalesce(p_review_note, '')), '')
+  where id = p_completion_id;
+end;
+$$;
+
+-- Signs off on a normal completion — the priority-driven "a leader has to
+-- look at this before it's really done" rule. No approve/reject dimension
+-- like off-duty has: the work happened, this just marks that someone with
+-- authority saw it.
+create function public.review_task_completion(
+  p_completion_id uuid,
+  p_review_note text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_caller_teams uuid[];
+  v_completion public.task_completions;
+begin
+  select p.role, p.org_id into v_caller_role, v_caller_org
+  from public.profiles p where p.id = auth.uid();
+  v_caller_teams := public.my_team_ids();
+
+  select * into v_completion from public.task_completions where id = p_completion_id;
+  if v_completion.id is null or v_completion.org_id is distinct from v_caller_org then
+    raise exception 'not found';
+  end if;
+  if v_completion.action <> 'completed' then
+    raise exception 'only a completed task can be reviewed this way';
+  end if;
+  if not (
+    v_caller_role = 'owner'
+    or (v_caller_role = 'team_admin' and v_completion.team_id = any(v_caller_teams))
+  ) then
+    raise exception 'only an admin or the team''s leader can review this';
+  end if;
+
+  update public.task_completions
+  set reviewed_by = auth.uid(),
+      reviewed_at = now(),
+      review_note = nullif(trim(coalesce(p_review_note, '')), '')
+  where id = p_completion_id;
 end;
 $$;
 
@@ -1120,9 +1301,10 @@ $$;
 
 -- p_items: [{ "section_title": "...", "question": "..." }, ...] in display
 -- order. section_title "" means no section, matching a flat template.
+-- Cooldown lives on the task that uses this template, not the template
+-- itself — the same template can back tasks with different repeat rates.
 create function public.create_checklist_template(
   p_name text,
-  p_cooldown_hours int,
   p_requires_note_on_no boolean,
   p_items jsonb
 )
@@ -1147,15 +1329,12 @@ begin
   if coalesce(trim(p_name), '') = '' then
     raise exception 'a checklist name is required';
   end if;
-  if coalesce(p_cooldown_hours, 0) < 1 then
-    raise exception 'cooldown hours must be at least 1';
-  end if;
   if jsonb_array_length(p_items) < 1 then
     raise exception 'a checklist needs at least one question';
   end if;
 
-  insert into public.checklist_templates (org_id, name, cooldown_hours, requires_note_on_no, created_by)
-  values (v_caller_org, trim(p_name), p_cooldown_hours, p_requires_note_on_no, auth.uid())
+  insert into public.checklist_templates (org_id, name, requires_note_on_no, created_by)
+  values (v_caller_org, trim(p_name), p_requires_note_on_no, auth.uid())
   returning id into v_template_id;
 
   for v_item in select * from jsonb_array_elements(p_items)
@@ -1174,284 +1353,6 @@ begin
 end;
 $$;
 
--- Assignment only flows downward, same rule as task assignment: an owner may
--- assign to anyone, a team leader only to an employee on their own team.
-create function public.assign_checklist(
-  p_template_id uuid,
-  p_assignee_id uuid
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_caller_role text;
-  v_caller_org uuid;
-  v_caller_teams uuid[];
-  v_assignee_org uuid;
-  v_assignee_teams uuid[];
-  v_assignee_role text;
-  v_assignment_team uuid;
-  v_assignment_id uuid;
-begin
-  select p.role, p.org_id into v_caller_role, v_caller_org
-  from public.profiles p where p.id = auth.uid();
-  v_caller_teams := public.my_team_ids();
-
-  if not exists (select 1 from public.checklist_templates t where t.id = p_template_id and t.org_id = v_caller_org) then
-    raise exception 'checklist template not found in this organization';
-  end if;
-
-  select p.org_id, p.role into v_assignee_org, v_assignee_role
-  from public.profiles p where p.id = p_assignee_id;
-  select coalesce(array_agg(team_id), '{}') into v_assignee_teams
-  from public.profile_teams where profile_id = p_assignee_id;
-
-  if v_assignee_org is distinct from v_caller_org then
-    raise exception 'that person is not in your organization';
-  end if;
-  if p_assignee_id = auth.uid() then
-    raise exception 'you cannot assign a checklist to yourself';
-  end if;
-
-  if v_caller_role = 'owner' then
-    if v_assignee_role not in ('team_admin', 'employee') then
-      raise exception 'a checklist can only be assigned to a team leader or employee';
-    end if;
-    -- Only a single, unambiguous team gets recorded on the assignment; a
-    -- person on several teams (or none) still gets assigned fine, it's just
-    -- visible to the owner and to her alone rather than to a specific leader.
-    if array_length(v_assignee_teams, 1) = 1 then
-      v_assignment_team := v_assignee_teams[1];
-    end if;
-  elsif v_caller_role = 'team_admin' then
-    if array_length(v_caller_teams, 1) is null then
-      raise exception 'you are not on a team';
-    end if;
-    v_assignment_team := v_caller_teams[1];
-    if v_assignee_role <> 'employee' or not (v_assignment_team = any(v_assignee_teams)) then
-      raise exception 'a team leader can only assign checklists to their own employees';
-    end if;
-  else
-    raise exception 'only an admin or team leader can assign checklists';
-  end if;
-
-  insert into public.checklist_assignments (template_id, org_id, team_id, assignee_id, created_by)
-  values (p_template_id, v_caller_org, v_assignment_team, p_assignee_id, auth.uid())
-  on conflict (template_id, assignee_id) do update set active = true
-  returning id into v_assignment_id;
-
-  return v_assignment_id;
-end;
-$$;
-
-create function public.unassign_checklist(p_assignment_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_caller_role text;
-  v_caller_org uuid;
-  v_caller_teams uuid[];
-  v_assignment public.checklist_assignments;
-begin
-  select p.role, p.org_id into v_caller_role, v_caller_org
-  from public.profiles p where p.id = auth.uid();
-  v_caller_teams := public.my_team_ids();
-
-  select * into v_assignment from public.checklist_assignments where id = p_assignment_id;
-  if v_assignment.id is null or v_assignment.org_id is distinct from v_caller_org then
-    raise exception 'assignment not found';
-  end if;
-  if v_caller_role = 'owner'
-     or (v_caller_role = 'team_admin' and v_assignment.team_id = any(v_caller_teams)) then
-    update public.checklist_assignments set active = false where id = p_assignment_id;
-  else
-    raise exception 'only an admin or the team''s leader can remove this assignment';
-  end if;
-end;
-$$;
-
--- p_answers: [{ "section_title": "...", "question": "...", "sort_order": 0,
---               "answer": true|false, "note": "..." }, ...]
--- p_section_photos: [{ "section_title": "...", "photo_url": "..." }, ...]
-create function public.submit_checklist(
-  p_assignment_id uuid,
-  p_answers jsonb,
-  p_section_photos jsonb default '[]'
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_assignment public.checklist_assignments;
-  v_template public.checklist_templates;
-  v_submission_id uuid;
-  v_answer jsonb;
-  v_photo jsonb;
-  v_yes int := 0;
-  v_no int := 0;
-begin
-  select * into v_assignment from public.checklist_assignments where id = p_assignment_id;
-  if v_assignment.id is null then
-    raise exception 'checklist assignment not found';
-  end if;
-  if v_assignment.assignee_id is distinct from auth.uid() then
-    raise exception 'this checklist is not assigned to you';
-  end if;
-  if not v_assignment.active then
-    raise exception 'this checklist assignment is no longer active';
-  end if;
-
-  select * into v_template from public.checklist_templates where id = v_assignment.template_id;
-
-  if jsonb_array_length(p_answers) < 1 then
-    raise exception 'at least one answer is required';
-  end if;
-
-  -- Enforced here, not just in the UI: a "لا" answer needs its note whenever
-  -- the template requires one, and the check can't be skipped by the client.
-  if v_template.requires_note_on_no then
-    for v_answer in select * from jsonb_array_elements(p_answers)
-    loop
-      if (v_answer ->> 'answer')::boolean = false
-         and coalesce(trim(v_answer ->> 'note'), '') = '' then
-        raise exception 'a note is required to explain a "لا" answer';
-      end if;
-    end loop;
-  end if;
-
-  select
-    count(*) filter (where (a ->> 'answer')::boolean = true),
-    count(*) filter (where (a ->> 'answer')::boolean = false)
-  into v_yes, v_no
-  from jsonb_array_elements(p_answers) a;
-
-  insert into public.checklist_submissions (
-    assignment_id, org_id, team_id, template_name, actor_id, status, yes_count, no_count
-  ) values (
-    v_assignment.id, v_assignment.org_id, v_assignment.team_id, v_template.name,
-    auth.uid(), 'completed', v_yes, v_no
-  )
-  returning id into v_submission_id;
-
-  for v_answer in select * from jsonb_array_elements(p_answers)
-  loop
-    insert into public.checklist_answers (submission_id, section_title, question, sort_order, answer, note)
-    values (
-      v_submission_id,
-      coalesce(v_answer ->> 'section_title', ''),
-      v_answer ->> 'question',
-      coalesce((v_answer ->> 'sort_order')::int, 0),
-      (v_answer ->> 'answer')::boolean,
-      nullif(trim(coalesce(v_answer ->> 'note', '')), '')
-    );
-  end loop;
-
-  for v_photo in select * from jsonb_array_elements(p_section_photos)
-  loop
-    insert into public.checklist_section_photos (submission_id, section_title, photo_url)
-    values (v_submission_id, coalesce(v_photo ->> 'section_title', ''), v_photo ->> 'photo_url');
-  end loop;
-
-  return v_submission_id;
-end;
-$$;
-
--- A claim, not an escape: this does not clear the assignment. It sits as
--- off_duty_pending until an admin or the team's leader reviews it. Only a
--- rejection makes the checklist immediately due again; an approval behaves
--- like a normal completion for cooldown purposes.
-create function public.declare_checklist_off_duty(
-  p_assignment_id uuid,
-  p_reason text
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_assignment public.checklist_assignments;
-  v_template_name text;
-  v_submission_id uuid;
-begin
-  select * into v_assignment from public.checklist_assignments where id = p_assignment_id;
-  if v_assignment.id is null then
-    raise exception 'checklist assignment not found';
-  end if;
-  if v_assignment.assignee_id is distinct from auth.uid() then
-    raise exception 'this checklist is not assigned to you';
-  end if;
-  if not v_assignment.active then
-    raise exception 'this checklist assignment is no longer active';
-  end if;
-  if coalesce(trim(p_reason), '') = '' then
-    raise exception 'a reason is required';
-  end if;
-
-  select name into v_template_name from public.checklist_templates where id = v_assignment.template_id;
-
-  insert into public.checklist_submissions (
-    assignment_id, org_id, team_id, template_name, actor_id, status, off_duty_reason
-  ) values (
-    v_assignment.id, v_assignment.org_id, v_assignment.team_id, v_template_name,
-    auth.uid(), 'off_duty_pending', trim(p_reason)
-  )
-  returning id into v_submission_id;
-
-  return v_submission_id;
-end;
-$$;
-
-create function public.review_checklist_off_duty(
-  p_submission_id uuid,
-  p_approve boolean,
-  p_review_note text default null
-)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_caller_role text;
-  v_caller_org uuid;
-  v_caller_teams uuid[];
-  v_submission public.checklist_submissions;
-begin
-  select p.role, p.org_id into v_caller_role, v_caller_org
-  from public.profiles p where p.id = auth.uid();
-  v_caller_teams := public.my_team_ids();
-
-  select * into v_submission from public.checklist_submissions where id = p_submission_id;
-  if v_submission.id is null or v_submission.org_id is distinct from v_caller_org then
-    raise exception 'submission not found';
-  end if;
-  if v_submission.status <> 'off_duty_pending' then
-    raise exception 'this off-duty claim has already been reviewed';
-  end if;
-  if not (
-    v_caller_role = 'owner'
-    or (v_caller_role = 'team_admin' and v_submission.team_id = any(v_caller_teams))
-  ) then
-    raise exception 'only an admin or the team''s leader can review this';
-  end if;
-
-  update public.checklist_submissions
-  set status = case when p_approve then 'off_duty_approved' else 'off_duty_rejected' end,
-      reviewed_by = auth.uid(),
-      reviewed_at = now(),
-      review_note = nullif(trim(coalesce(p_review_note, '')), '')
-  where id = p_submission_id;
-end;
-$$;
-
 grant execute on function public.create_organization(text, text, text, text) to authenticated;
 grant execute on function public.get_login_email(text, text) to anon, authenticated;
 grant execute on function public.create_team(text) to authenticated;
@@ -1461,13 +1362,11 @@ grant execute on function public.admin_set_user_active(uuid, boolean) to authent
 grant execute on function public.add_profile_to_team(uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
-grant execute on function public.set_task_completion(uuid, boolean, text, text[]) to authenticated;
-grant execute on function public.create_checklist_template(text, int, boolean, jsonb) to authenticated;
-grant execute on function public.assign_checklist(uuid, uuid) to authenticated;
-grant execute on function public.unassign_checklist(uuid) to authenticated;
-grant execute on function public.submit_checklist(uuid, jsonb, jsonb) to authenticated;
-grant execute on function public.declare_checklist_off_duty(uuid, text) to authenticated;
-grant execute on function public.review_checklist_off_duty(uuid, boolean, text) to authenticated;
+grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb) to authenticated;
+grant execute on function public.create_checklist_template(text, boolean, jsonb) to authenticated;
+grant execute on function public.declare_task_off_duty(uuid, text) to authenticated;
+grant execute on function public.review_off_duty(uuid, boolean, text) to authenticated;
+grant execute on function public.review_task_completion(uuid, text) to authenticated;
 -- assert_can_manage_user is deliberately NOT granted: it is an internal
 -- helper called only from the other SECURITY DEFINER functions.
 

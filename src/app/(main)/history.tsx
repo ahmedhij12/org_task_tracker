@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Image, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
+import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { Card, useThemeColors } from '@/components/ui';
-import { isFailed } from '@/types';
+import { isFailed, needsReview } from '@/types';
 import type { OrgTask, TaskCompletion } from '@/types';
 
-type Filter = 'all' | 'done' | 'late' | 'failed';
+type Filter = 'all' | 'review' | 'done' | 'late' | 'failed';
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -24,10 +25,11 @@ export default function HistoryScreen() {
   const { profile } = useAuth();
   const { history, tasks, members, loading, refresh } = useOrgData();
   const [filter, setFilter] = useState<Filter>('all');
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openEntry, setOpenEntry] = useState<TaskCompletion | null>(null);
 
   const isOwner = profile?.role === 'owner';
   const isLeader = profile?.role === 'team_admin';
+  const isManager = isOwner || isLeader;
 
   // Failed is derived, never stored: still open and past its deadline. Scoped
   // the same way the history rows are, so each role sees a consistent picture.
@@ -40,14 +42,22 @@ export default function HistoryScreen() {
     return visible.filter((t) => isFailed(t));
   }, [tasks, isOwner, isLeader, profile?.teamIds, profile?.id]);
 
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+
+  const needsReviewEntries = useMemo(() => {
+    if (!isManager) return [];
+    return history.filter((h) => needsReview(h, taskById.get(h.taskId) ?? { requiresReview: false }));
+  }, [history, isManager, taskById]);
+
   const shown = useMemo(() => {
     if (filter === 'failed') return [];
+    if (filter === 'review') return needsReviewEntries;
     return history.filter((h) => {
       if (h.action !== 'completed') return filter === 'all';
       if (filter === 'late') return h.wasLate;
       return true;
     });
-  }, [history, filter]);
+  }, [history, filter, needsReviewEntries]);
 
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? 'Someone';
 
@@ -58,6 +68,7 @@ export default function HistoryScreen() {
       : 'Everything you have done.';
 
   const counts = {
+    review: needsReviewEntries.length,
     done: history.filter((h) => h.action === 'completed').length,
     late: history.filter((h) => h.action === 'completed' && h.wasLate).length,
     failed: failedTasks.length,
@@ -76,12 +87,14 @@ export default function HistoryScreen() {
           {(
             [
               { key: 'all', label: 'All' },
+              ...(isManager ? [{ key: 'review' as Filter, label: `Needs review (${counts.review})` }] : []),
               { key: 'done', label: `Done (${counts.done})` },
               { key: 'late', label: `Late (${counts.late})` },
               { key: 'failed', label: `Missed (${counts.failed})` },
             ] as { key: Filter; label: string }[]
           ).map((opt) => {
             const active = filter === opt.key;
+            const isReviewChip = opt.key === 'review';
             return (
               <Pressable
                 key={opt.key}
@@ -90,12 +103,20 @@ export default function HistoryScreen() {
                   paddingHorizontal: 12,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: active ? c.indigo : c.bgSubtle,
+                  backgroundColor: active ? c.indigo : isReviewChip && counts.review > 0 ? c.amberSoft : c.bgSubtle,
                   borderWidth: 1,
-                  borderColor: active ? c.indigo : c.border,
+                  borderColor: active ? c.indigo : isReviewChip && counts.review > 0 ? c.amber : c.border,
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{opt.label}</Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: active ? '#fff' : isReviewChip && counts.review > 0 ? c.amber : c.text,
+                  }}
+                >
+                  {opt.label}
+                </Text>
               </Pressable>
             );
           })}
@@ -109,20 +130,24 @@ export default function HistoryScreen() {
           )
         ) : shown.length === 0 ? (
           <Text style={{ fontSize: 13, color: c.textFaint }}>
-            Nothing here yet. Completed tasks and their photos show up as soon as work gets done.
+            {filter === 'review'
+              ? 'Nothing waiting on your review right now.'
+              : 'Nothing here yet. Completed tasks and their photos show up as soon as work gets done.'}
           </Text>
         ) : (
           shown.map((h) => (
             <HistoryRow
               key={h.id}
               entry={h}
+              task={taskById.get(h.taskId)}
               actorName={nameOf(h.actorId)}
-              open={openId === h.id}
-              onToggle={() => setOpenId(openId === h.id ? null : h.id)}
+              onPress={() => setOpenEntry(h)}
             />
           ))
         )}
       </ScrollView>
+
+      <CompletionDetailSheet completion={openEntry} onClose={() => setOpenEntry(null)} />
     </SafeAreaView>
   );
 }
@@ -149,72 +174,76 @@ function MissedRow({ task, nameOf }: { task: OrgTask; nameOf: (id: string) => st
 
 function HistoryRow({
   entry,
+  task,
   actorName,
-  open,
-  onToggle,
+  onPress,
 }: {
   entry: TaskCompletion;
+  task: OrgTask | undefined;
   actorName: string;
-  open: boolean;
-  onToggle: () => void;
+  onPress: () => void;
 }) {
   const c = useThemeColors();
+  const isOffDuty = entry.action === 'off_duty';
   const reopened = entry.action === 'reopened';
-  const hasDetail = !!entry.note || entry.photoUrls.length > 0;
+  const isChecklist = entry.yesCount != null;
+  const pendingReview = needsReview(entry, task ?? { requiresReview: false });
+
+  const icon = isOffDuty
+    ? entry.status === 'off_duty_approved'
+      ? 'checkmark-circle'
+      : entry.status === 'off_duty_rejected'
+        ? 'close-circle'
+        : 'time'
+    : reopened
+      ? 'refresh-circle'
+      : entry.wasLate
+        ? 'time'
+        : 'checkmark-circle';
+  const iconColor = isOffDuty
+    ? entry.status === 'off_duty_approved'
+      ? c.emerald
+      : entry.status === 'off_duty_rejected'
+        ? c.rose
+        : c.amber
+    : reopened
+      ? c.textMuted
+      : entry.wasLate
+        ? c.amber
+        : c.emerald;
 
   return (
-    <Card style={{ marginBottom: 8 }}>
-      <Pressable onPress={hasDetail ? onToggle : undefined}>
+    <Pressable onPress={onPress}>
+      <Card style={{ marginBottom: 8, borderColor: pendingReview ? c.amberSoft : c.border }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <Ionicons
-            name={reopened ? 'refresh-circle' : entry.wasLate ? 'time' : 'checkmark-circle'}
-            size={18}
-            color={reopened ? c.textMuted : entry.wasLate ? c.amber : c.emerald}
-          />
+          <Ionicons name={icon as any} size={18} color={iconColor} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{entry.taskTitle}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{entry.taskTitle}</Text>
+              {pendingReview ? (
+                <View style={{ backgroundColor: c.amberSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: c.amber }}>NEEDS REVIEW</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-              {reopened ? 'Reopened' : 'Done'} by {actorName} • {when(entry.createdAt)}
+              {isOffDuty ? 'Off duty claimed' : reopened ? 'Reopened' : 'Done'} by {actorName} • {when(entry.createdAt)}
+              {isChecklist ? ` • ${entry.yesCount} yes / ${entry.noCount} no` : ''}
             </Text>
-            {entry.wasLate && !reopened ? (
+            {entry.wasLate && entry.action === 'completed' ? (
               <Text style={{ fontSize: 11, color: c.rose, marginTop: 2 }}>
                 Late — deadline was {entry.dueAt ? when(entry.dueAt) : 'earlier'}
               </Text>
             ) : null}
-            {hasDetail ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                {entry.photoUrls.length > 0 ? <Ionicons name="image-outline" size={11} color={c.textFaint} /> : null}
-                {entry.note ? <Ionicons name="document-text-outline" size={11} color={c.textFaint} /> : null}
-                <Text style={{ fontSize: 11, color: c.textFaint }}>
-                  {entry.photoUrls.length > 0
-                    ? `Tap to view ${entry.photoUrls.length} photo${entry.photoUrls.length === 1 ? '' : 's'}`
-                    : 'Tap to view the note'}
-                </Text>
-              </View>
+            {isOffDuty ? (
+              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }} numberOfLines={1}>
+                "{entry.offDutyReason}"
+              </Text>
             ) : null}
           </View>
+          <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
         </View>
-      </Pressable>
-
-      {open && hasDetail ? (
-        <View style={{ borderTopWidth: 1, borderTopColor: c.border, marginTop: 10, paddingTop: 10 }}>
-          {entry.photoUrls.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {entry.photoUrls.map((url) => (
-                  <Image
-                    key={url}
-                    source={{ uri: url }}
-                    style={{ width: entry.photoUrls.length === 1 ? 260 : 160, height: 160, borderRadius: 12 }}
-                    resizeMode="cover"
-                  />
-                ))}
-              </View>
-            </ScrollView>
-          ) : null}
-          {entry.note ? <Text style={{ fontSize: 13, color: c.textMuted }}>"{entry.note}"</Text> : null}
-        </View>
-      ) : null}
-    </Card>
+      </Card>
+    </Pressable>
   );
 }

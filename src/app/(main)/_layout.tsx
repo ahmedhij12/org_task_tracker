@@ -45,13 +45,6 @@ export default function MainLayout() {
           }}
         />
         <Tabs.Screen
-          name="checklists"
-          options={{
-            title: 'Checklists',
-            tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
-          }}
-        />
-        <Tabs.Screen
           name="people"
           options={{
             title: 'People',

@@ -2,6 +2,28 @@
 
 One milestone at a time. Park mid-stream ideas here instead of building them immediately.
 
+## Status (2026-08-21)
+
+Checklists were merged into tasks (Option B): there is no separate "Checklists"
+tab, table, or hook any more. A checklist is a plain `tasks` row with
+`template_id`/`cooldown_hours` set — creating one is creating a task, filling
+it out is the same `set_task_completion` RPC every task uses, just with
+`p_answers` attached. `checklist_templates` still exists (the reusable
+question set), but assignment/submission tables are gone.
+
+Alongside that, task completion review is now priority-driven and applies to
+every task, checklist or not: **low** never needs review, **high** always
+needs a leader/admin to review it before it's settled (enforced by a DB CHECK
+constraint, not just the UI), **medium** is the creator's choice via a toggle
+at task-creation time. Off-duty claims on a checklist always need review
+regardless of the task's priority (attendance, not work quality). "Needs
+review" surfaces as a filter on the History tab.
+
+`SETUP.sql` and `TESTS.sql` have both been updated for this merge and are
+believed structurally consistent (dollar-quote balance and grants-vs-created
+cross-checked), but have **not yet been re-run against a live Supabase
+instance** — that's the next step before anything else in this list.
+
 ## Status (2026-08-17)
 
 `SETUP.sql` is the single source of truth for schema — it's an idempotent
@@ -28,18 +50,28 @@ longer erases that it was ever done. History tab scoped by role (owner: org-wide
 team leader: own team, employee: own work only). "Failed" = due date passed, still
 open, derived automatically.
 
-**Checklist templates** — a repeating inspection form (e.g. the daily hygiene
-sheet), assigned to however many people need it, each filling their own copy
-independently. Built-in templates seeded from the company's two real PDFs
-(`src/lib/builtInChecklists.ts` — 79 + 15 questions, Arabic, hand-corrected against
-the source after two failed auto-fix attempts mangled the لا ligature). A "No"
-answer requires a note when the template asks for one; photos are always optional.
-No due time or shift concept — a template has a cooldown (hours after submission
-before it's due again), so a double shift just sees it reappear mid-shift instead
-of being falsely marked late. Declaring "off duty" is a claim, not an escape: it
-sits pending until an admin or the team's leader reviews it — approval behaves
-like a normal completion for the cooldown, rejection makes it immediately due
+**Checklists, merged into tasks** — a checklist is a task with a
+`template_id` attached, not a separate model or tab. Creating one means
+picking a template on the create-task screen (each selected person gets
+their own copy, filled independently) and setting a cooldown in hours right
+there — cooldown moved off the template and onto the task, since the same
+template can back tasks with different repeat rates. Built-in templates
+seeded from the company's two real PDFs (`src/lib/builtInChecklists.ts` — 79
++ 15 questions, Arabic, hand-corrected against the source after two failed
+auto-fix attempts mangled the لا ligature). A "No" answer requires a note
+when the template asks for one; photos are always optional. No due time or
+shift concept — the task reappears N hours after the last submission, so a
+double shift just sees it come back mid-shift instead of being falsely
+marked late. Declaring "off duty" is a claim, not an escape: it sits pending
+until an admin or the team's leader reviews it — approval behaves like a
+normal completion for the cooldown, rejection makes it immediately due
 again.
+
+**Priority-driven review** — every task, checklist or plain, can require a
+leader/admin to review and acknowledge each completion before it's settled.
+Low priority never needs it, high priority always does (DB-enforced CHECK
+constraint), medium is a toggle the creator sets. History has a "Needs
+review" filter for owners/team leaders.
 
 **Multi-team membership** — `profiles.team_id` (one team) replaced by
 `profile_teams` (many), so one person (e.g. a supervisor) can be on two teams run
@@ -57,9 +89,15 @@ before the fix.
 
 ## In-progress / needs your test pass
 
-Database and browser end-to-end scripts (`scripts/e2e/*.js`) all pass. Multi-team
-and checklists haven't had a full hands-on pass from you yet — that's next, using
-`npm run watch` so it can be done together instead of screenshot-by-screenshot.
+- **`SETUP.sql`/`TESTS.sql` need a live run** in the Supabase SQL Editor — not
+  done yet since the checklist-into-tasks merge. `typecheck` is clean on the
+  app side, but nothing has touched a real database since.
+- **`scripts/e2e/checklist-flow.js` is stale** — it drives the old, now-deleted
+  Checklists tab and needs a rewrite to instead create a checklist task from
+  the create-task screen. Don't trust it until it's rewritten.
+- Once SQL is verified, a full hands-on pass together over `npm run watch`:
+  create a checklist task, fill it, off-duty claim + review, and the new
+  priority → review-toggle behavior on plain tasks.
 
 ## Known gaps, not yet addressed
 

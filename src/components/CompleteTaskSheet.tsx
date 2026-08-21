@@ -104,7 +104,10 @@ export function CompleteTaskSheet({ task, orgId, visible, onCancel, onSubmit }: 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ maxHeight: '90%', flexShrink: 1 }}
+        >
           <View
             style={{
               backgroundColor: c.bg,
@@ -113,10 +116,11 @@ export function CompleteTaskSheet({ task, orgId, visible, onCancel, onSubmit }: 
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 32,
-              maxHeight: '90%',
+              flexShrink: 1,
+              minHeight: 0,
             }}
           >
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1, minHeight: 0 }}>
               <View
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}
               >

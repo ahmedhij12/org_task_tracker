@@ -10,7 +10,8 @@ import { useThemeColors } from '@/components/ui';
 import { TaskRow } from '@/components/TaskRow';
 import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
-import { bucketTasks } from '@/lib/taskUtils';
+import { FillChecklistSheet } from '@/components/FillChecklistSheet';
+import { bucketTasks, effectiveTaskCompleted } from '@/lib/taskUtils';
 import type { OrgTask } from '@/types';
 
 export default function MainIndex() {
@@ -22,12 +23,18 @@ export default function MainIndex() {
 function AdminDashboard() {
   const c = useThemeColors();
   const { profile, organization } = useAuth();
-  const { tasks, teams, members, loading, refresh } = useOrgData();
+  const { tasks, teams, members, history, loading, refresh } = useOrgData();
   const isOwner = profile?.role === 'owner';
   const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(isOwner ? 'all' : profile?.teamIds[0] ?? 'all');
   const [copied, setCopied] = useState(false);
 
-  const scopedTasks = selectedTeamId === 'all' ? tasks : tasks.filter((t) => t.teamId === selectedTeamId);
+  // A checklist task's own `completed` flag never resets after the first
+  // submission — the DB doesn't know about cooldowns — so display state has
+  // to be derived per row instead of read straight off the task.
+  const scopedTasks = (selectedTeamId === 'all' ? tasks : tasks.filter((t) => t.teamId === selectedTeamId)).map((t) => ({
+    ...t,
+    completed: effectiveTaskCompleted(t, history),
+  }));
   const pending = scopedTasks.filter((t) => !t.completed).length;
   const overdueCount = scopedTasks.filter((t) => !t.completed && t.due && new Date(t.due) < new Date()).length;
   const doneCount = scopedTasks.filter((t) => t.completed).length;
@@ -121,13 +128,22 @@ function AdminDashboard() {
 function EmployeeHome() {
   const c = useThemeColors();
   const { profile, organization } = useAuth();
-  const { tasks, members, loading, refresh, setTaskCompletion } = useOrgData();
+  const { tasks, members, history, loading, refresh, setTaskCompletion } = useOrgData();
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
+  const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
 
-  const myTasks = tasks.filter((t) => t.assigneeId === profile?.id || t.assigneeId === null);
+  const myTasks = tasks
+    .filter((t) => t.assigneeId === profile?.id || t.assigneeId === null)
+    .map((t) => ({ ...t, completed: effectiveTaskCompleted(t, history) }));
   const { overdue, today, upcoming, completed } = bucketTasks(myTasks);
 
   const handlePressCheckbox = (task: OrgTask) => {
+    if (task.templateId) {
+      // A checklist can't be unchecked by hand — it only comes due again via
+      // its cooldown or a rejected off-duty claim.
+      if (!task.completed) setChecklistTask(task);
+      return;
+    }
     if (!task.completed && task.requiresProof) {
       setProofTask(task);
       return;
@@ -185,6 +201,14 @@ function EmployeeHome() {
             await setTaskCompletion(proofTask.id, true, note || undefined, photoUrls);
             setProofTask(null);
           }}
+        />
+      ) : null}
+      {checklistTask ? (
+        <FillChecklistSheet
+          task={checklistTask}
+          orgId={organization!.id}
+          visible={!!checklistTask}
+          onClose={() => setChecklistTask(null)}
         />
       ) : null}
     </SafeAreaView>

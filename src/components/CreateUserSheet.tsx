@@ -94,7 +94,10 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ maxHeight: '90%', flexShrink: 1 }}
+        >
           <View
             style={{
               backgroundColor: c.bg,
@@ -103,11 +106,12 @@ export function CreateUserSheet({ visible, onClose }: Props) {
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 32,
-              maxHeight: '90%',
+              flexShrink: 1,
+              minHeight: 0,
             }}
           >
             {created ? (
-              <ScrollView keyboardShouldPersistTaps="handled">
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1, minHeight: 0 }}>
                 <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 4 }}>Account created</Text>
                 <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 16 }}>
                   Write these down or copy them now — the password is not shown again. They will be asked to choose
@@ -146,7 +150,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                 <PrimaryButton title="Done" onPress={handleClose} />
               </ScrollView>
             ) : (
-              <ScrollView keyboardShouldPersistTaps="handled">
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1, minHeight: 0 }}>
                 <View
                   style={{
                     flexDirection: 'row',

@@ -87,9 +87,18 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
             >
               {task.title}
             </Text>
-            {task.requiresProof ? (
+            {task.templateId ? (
+              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: c.indigo }}>CHECKLIST</Text>
+              </View>
+            ) : task.requiresProof ? (
               <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
                 <Text style={{ fontSize: 9, fontWeight: '700', color: c.indigo }}>PROOF</Text>
+              </View>
+            ) : null}
+            {task.requiresReview ? (
+              <View style={{ backgroundColor: c.amberSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: c.amber }}>REVIEW</Text>
               </View>
             ) : null}
           </View>
