@@ -13,9 +13,21 @@ export default function PersonalHome() {
   const c = useThemeColors();
   const { tasks, loading, refresh, createTask, setCompletion, deleteTask } = usePersonalTasks();
   const [creating, setCreating] = useState(false);
+  // Which row (if any) is showing its inline delete confirmation. A single
+  // tap on the trash icon used to delete immediately with no confirmation —
+  // this tracks the two-step in-app confirmation instead, matching the
+  // pattern already used for sign-out in settings.tsx. Deliberately not
+  // Alert.alert: this project has a documented history of Alert.alert
+  // silently doing nothing on web (see ROADMAP.md).
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   const open = tasks.filter((t) => !t.completed);
   const done = tasks.filter((t) => t.completed);
+
+  const handleConfirmDelete = (id: string) => {
+    deleteTask(id).catch((e) => console.warn(e));
+    setConfirmingDeleteId(null);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -55,7 +67,15 @@ export default function PersonalHome() {
               Open
             </Text>
             {open.map((t) => (
-              <PersonalTaskRow key={t.id} task={t} onToggle={() => setCompletion(t.id, true)} onDelete={() => deleteTask(t.id)} />
+              <PersonalTaskRow
+                key={t.id}
+                task={t}
+                confirmingDelete={confirmingDeleteId === t.id}
+                onToggle={() => setCompletion(t.id, true).catch((e) => console.warn(e))}
+                onRequestDelete={() => setConfirmingDeleteId(t.id)}
+                onCancelDelete={() => setConfirmingDeleteId(null)}
+                onConfirmDelete={() => handleConfirmDelete(t.id)}
+              />
             ))}
 
             {done.length > 0 ? (
@@ -64,7 +84,15 @@ export default function PersonalHome() {
                   Done
                 </Text>
                 {done.map((t) => (
-                  <PersonalTaskRow key={t.id} task={t} onToggle={() => setCompletion(t.id, false)} onDelete={() => deleteTask(t.id)} />
+                  <PersonalTaskRow
+                    key={t.id}
+                    task={t}
+                    confirmingDelete={confirmingDeleteId === t.id}
+                    onToggle={() => setCompletion(t.id, false).catch((e) => console.warn(e))}
+                    onRequestDelete={() => setConfirmingDeleteId(t.id)}
+                    onCancelDelete={() => setConfirmingDeleteId(null)}
+                    onConfirmDelete={() => handleConfirmDelete(t.id)}
+                  />
                 ))}
               </>
             ) : null}
@@ -104,9 +132,39 @@ export default function PersonalHome() {
   );
 }
 
-function PersonalTaskRow({ task, onToggle, onDelete }: { task: PersonalTask; onToggle: () => void; onDelete: () => void }) {
+function PersonalTaskRow({
+  task,
+  confirmingDelete,
+  onToggle,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: {
+  task: PersonalTask;
+  confirmingDelete: boolean;
+  onToggle: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}) {
   const c = useThemeColors();
   const overdue = !task.completed && task.due && new Date(task.due) < new Date();
+
+  if (confirmingDelete) {
+    return (
+      <Card style={{ marginBottom: 8 }}>
+        <Text style={{ fontSize: 13, color: c.text, marginBottom: 12 }}>Delete "{task.title}"? This can't be undone.</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable onPress={onCancelDelete} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }}>
+            <Text style={{ color: c.textMuted, fontSize: 14 }}>Cancel</Text>
+          </Pressable>
+          <Pressable onPress={onConfirmDelete} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }}>
+            <Text style={{ color: c.rose, fontSize: 14, fontWeight: '700' }}>Delete</Text>
+          </Pressable>
+        </View>
+      </Card>
+    );
+  }
 
   return (
     <Card style={{ marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -143,7 +201,7 @@ function PersonalTaskRow({ task, onToggle, onDelete }: { task: PersonalTask; onT
           <Text style={{ fontSize: 12, color: overdue ? c.rose : c.textMuted, marginTop: 2 }}>{formatDue(task.due)}</Text>
         ) : null}
       </View>
-      <Pressable onPress={onDelete} hitSlop={8}>
+      <Pressable onPress={onRequestDelete} hitSlop={8}>
         <Ionicons name="trash-outline" size={18} color={c.textFaint} />
       </Pressable>
     </Card>

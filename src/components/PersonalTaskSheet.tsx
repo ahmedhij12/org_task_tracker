@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, View, Text, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
-import { useThemeColors, FieldInput, PrimaryButton, SecondaryButton, ErrorBanner } from '@/components/ui';
+import { useThemeColors, FieldInput, PrimaryButton, ErrorBanner } from '@/components/ui';
 import { DueDateField } from '@/components/DueDateField';
 
 interface Props {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -60,6 +60,10 @@ export default function SignInScreen() {
 
           <View style={{ height: 8 }} />
           <PrimaryButton title="Sign in" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+
+          <Pressable onPress={() => router.push('/(auth)/personal')} style={{ marginTop: 20, alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, color: c.textMuted }}>Signed up just for yourself? Sign in here</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
