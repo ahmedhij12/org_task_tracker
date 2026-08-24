@@ -12,6 +12,14 @@ Deno.serve(async () => {
 
   const now = new Date();
   const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MINUTES * 60 * 1000);
+  // A lookback, not a lookahead. A task's due time can pass before the run
+  // that should have caught it (e.g. due at 10:03, checked by the 10:05 run
+  // whose window is [10:05, 10:10]) — without a lookback, `reminder_sent_at
+  // IS NULL` combined with a `due >= now` lower bound would exclude that
+  // task forever, since `due` never moves and `now` only advances. The 24h
+  // bound exists only so a fresh deploy doesn't dig up and blast every
+  // ancient overdue task at once.
+  const lookback = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const { data: dueTasks, error: tasksError } = await supabase
     .from('personal_tasks')
@@ -20,7 +28,7 @@ Deno.serve(async () => {
     .is('reminder_sent_at', null)
     .not('due', 'is', null)
     .lte('due', windowEnd.toISOString())
-    .gte('due', now.toISOString());
+    .gte('due', lookback.toISOString());
 
   if (tasksError) {
     return new Response(JSON.stringify({ error: tasksError.message }), { status: 500 });
@@ -41,7 +49,14 @@ Deno.serve(async () => {
       continue;
     }
 
-    if (tokens && tokens.length > 0) {
+    if (!tokens || tokens.length === 0) {
+      // No devices registered yet for this owner. Leave reminder_sent_at
+      // unset so this task is picked up once they do register one, instead
+      // of being permanently marked "reminded" despite never being pushed.
+      continue;
+    }
+
+    try {
       await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,9 +69,15 @@ Deno.serve(async () => {
           }))
         ),
       });
-      sent += tokens.length;
+    } catch (fetchError) {
+      // Expo's push endpoint is unreachable. Don't mark reminder_sent_at —
+      // this task is retried next run — and don't let one bad task abort
+      // the rest of the batch.
+      console.error(`Push send failed for task ${task.id}:`, fetchError);
+      continue;
     }
 
+    sent += tokens.length;
     await supabase.from('personal_tasks').update({ reminder_sent_at: now.toISOString() }).eq('id', task.id);
   }
 
