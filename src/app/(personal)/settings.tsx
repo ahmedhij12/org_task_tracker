@@ -4,12 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { supabase } from '@/lib/supabase';
 import { Card, FieldInput, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 
 export default function PersonalSettingsScreen() {
   const c = useThemeColors();
   const { session, signOut } = useAuth();
+  usePushRegistration();
 
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
