@@ -14,6 +14,9 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
+  /** True for a signed-in session that deliberately has no organization —
+   *  see docs/superpowers/specs/2026-08-24-personal-mode-design.md. */
+  isPersonalAccount: boolean;
   createOrganization: (args: {
     orgName: string;
     ownerName: string;
@@ -41,6 +44,8 @@ interface AuthContextValue extends AuthState {
   changeOwnPassword: (newPassword: string) => Promise<void>;
   addRecoveryEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
+  createPersonalAccount: (email: string, password: string) => Promise<void>;
+  signInPersonal: (email: string, password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
 }
@@ -171,6 +176,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
+  const createPersonalAccount: AuthContextValue['createPersonalAccount'] = async (email, password) => {
+    setState((s) => ({ ...s, error: null }));
+    const { error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { account_kind: 'personal' } },
+    });
+    if (signUpError) throw signUpError;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      throw new Error(
+        'Account created, but no session yet — this Supabase project likely has "Confirm email" turned on. Disable it under Authentication > Providers > Email while testing.'
+      );
+    }
+  };
+
+  const signInPersonal: AuthContextValue['signInPersonal'] = async (email, password) => {
+    setState((s) => ({ ...s, error: null }));
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) throw error;
+  };
+
   const adminCreateUser: AuthContextValue['adminCreateUser'] = async ({
     name,
     username,
@@ -263,11 +291,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const isPersonalAccount = !!state.session && !state.profile && state.session.user.user_metadata?.account_kind === 'personal';
+
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
+      isPersonalAccount,
       createOrganization,
+      createPersonalAccount,
       signInWithUsername,
+      signInPersonal,
       adminCreateUser,
       adminResetPassword,
       adminSetUserActive,
@@ -279,7 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshProfile,
       clearError,
     }),
-    [state]
+    [state, isPersonalAccount]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
