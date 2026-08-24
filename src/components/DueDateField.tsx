@@ -2,6 +2,7 @@ import { createElement, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { FieldLabel, useThemeColors } from '@/components/ui';
+import { useThemePref } from '@/hooks/useThemePref';
 
 interface Props {
   value: Date | null;
@@ -24,6 +25,7 @@ function toLocalInputValue(d: Date): string {
  */
 export function DueDateField({ value, onChange }: Props) {
   const c = useThemeColors();
+  const { isDark } = useThemePref();
   const [showPicker, setShowPicker] = useState(false);
 
   const label = value
@@ -77,15 +79,23 @@ export function DueDateField({ value, onChange }: Props) {
         </Pressable>
       ) : null}
       {showPicker ? (
-        <DateTimePicker
-          value={value ?? new Date()}
-          mode="datetime"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={(_, selected) => {
-            setShowPicker(Platform.OS === 'ios');
-            if (selected) onChange(selected);
-          }}
-        />
+        <>
+          <DateTimePicker
+            value={value ?? new Date()}
+            mode="datetime"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            themeVariant={isDark ? 'dark' : 'light'}
+            onChange={(_, selected) => {
+              setShowPicker(Platform.OS === 'ios');
+              if (selected) onChange(selected);
+            }}
+          />
+          {Platform.OS === 'ios' ? (
+            <Pressable onPress={() => setShowPicker(false)} style={{ alignSelf: 'flex-end', marginTop: 4 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: c.indigo }}>Done</Text>
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
     </View>
   );

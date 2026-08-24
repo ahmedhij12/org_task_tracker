@@ -29,7 +29,7 @@ export default function PeopleScreen() {
   // than one leader).
   const visible = isOwner
     ? members
-    : members.filter((m) => m.teamIds.some((t) => profile?.teamIds.includes(t)));
+    : members.filter((m) => m.id !== profile?.id && m.teamIds.some((t) => profile?.teamIds.includes(t)));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>

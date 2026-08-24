@@ -118,3 +118,5 @@ before the fix.
 - More built-in checklist templates as the user provides more source PDFs — the
   extraction pipeline (PyMuPDF + explicit per-word corrections, never a blanket
   regex fix) is proven and repeatable.
+- Bulk-select assignees on the checklist-template create-task flow — right now
+  each person has to be tapped one by one under "Assign to."

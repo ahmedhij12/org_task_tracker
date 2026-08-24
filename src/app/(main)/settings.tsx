@@ -72,12 +72,10 @@ export default function SettingsScreen() {
         <Card style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>Organization</Text>
           <Text style={{ fontSize: 15, fontWeight: '600', color: c.text }}>{organization?.name}</Text>
-          {profile?.role === 'owner' ? (
-            <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-              <Text style={{ fontSize: 13, color: c.textMuted }}>ID: {organization?.orgCode}</Text>
-              <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={c.textMuted} />
-            </Pressable>
-          ) : null}
+          <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+            <Text style={{ fontSize: 13, color: c.textMuted }}>ID: {organization?.orgCode}</Text>
+            <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={c.textMuted} />
+          </Pressable>
         </Card>
 
         <Card style={{ marginBottom: 14 }}>

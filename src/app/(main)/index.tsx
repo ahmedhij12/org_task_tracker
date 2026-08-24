@@ -11,7 +11,7 @@ import { TaskRow } from '@/components/TaskRow';
 import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
-import { bucketTasks, effectiveTaskCompleted } from '@/lib/taskUtils';
+import { bucketTasks, effectiveTaskCompleted, latestCompletionForTask } from '@/lib/taskUtils';
 import type { OrgTask } from '@/types';
 
 export default function MainIndex() {
@@ -23,10 +23,27 @@ export default function MainIndex() {
 function AdminDashboard() {
   const c = useThemeColors();
   const { profile, organization } = useAuth();
-  const { tasks, teams, members, history, loading, refresh } = useOrgData();
+  const { tasks, teams, members, history, loading, refresh, setTaskCompletion } = useOrgData();
   const isOwner = profile?.role === 'owner';
   const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(isOwner ? 'all' : profile?.teamIds[0] ?? 'all');
   const [copied, setCopied] = useState(false);
+  const [proofTask, setProofTask] = useState<OrgTask | null>(null);
+  const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
+
+  // An owner or team leader can also be the assignee of their own task (a
+  // checklist someone above them created), so their own rows need the same
+  // completable behavior as an employee's "My Tasks" list gets.
+  const handlePressCheckbox = (task: OrgTask) => {
+    if (task.templateId) {
+      if (!task.completed) setChecklistTask(task);
+      return;
+    }
+    if (!task.completed && task.requiresProof) {
+      setProofTask(task);
+      return;
+    }
+    setTaskCompletion(task.id, !task.completed).catch((e) => console.warn(e));
+  };
 
   // A checklist task's own `completed` flag never resets after the first
   // submission — the DB doesn't know about cooldowns — so display state has
@@ -88,15 +105,53 @@ function AdminDashboard() {
           Task feed
         </Text>
 
-        {scopedTasks.length === 0 ? (
-          <EmptyState text="No tasks yet. Tap + to create one." />
-        ) : (
-          scopedTasks
-            .slice()
-            .sort((a, b) => Number(a.completed) - Number(b.completed))
-            .map((t) => <TaskRow key={t.id} task={t} members={members} showAssignee />)
-        )}
+        {(() => {
+          // Finished work belongs in History, not the live feed — otherwise
+          // the dashboard just accumulates every task ever created. A task
+          // that requires review isn't actually settled until reviewed, so
+          // it stays here even after the employee marks it done.
+          const openTasks = scopedTasks.filter((t) => {
+            if (!t.completed) return true;
+            if (!t.requiresReview) return false;
+            return !latestCompletionForTask(t.id, history)?.reviewedBy;
+          });
+          return openTasks.length === 0 ? (
+            <EmptyState text="No open tasks. Tap + to create one." />
+          ) : (
+            openTasks
+              .slice()
+              .sort((a, b) => Number(a.completed) - Number(b.completed))
+              .map((t) =>
+                t.assigneeId === profile?.id ? (
+                  <TaskRow key={t.id} task={t} members={members} showAssignee canComplete onPressCheckbox={() => handlePressCheckbox(t)} />
+                ) : (
+                  <TaskRow key={t.id} task={t} members={members} showAssignee />
+                )
+              )
+          );
+        })()}
       </ScrollView>
+
+      {proofTask ? (
+        <CompleteTaskSheet
+          task={proofTask}
+          orgId={organization!.id}
+          visible={!!proofTask}
+          onCancel={() => setProofTask(null)}
+          onSubmit={async (note, photoUrls) => {
+            await setTaskCompletion(proofTask.id, true, note || undefined, photoUrls);
+            setProofTask(null);
+          }}
+        />
+      ) : null}
+      {checklistTask ? (
+        <FillChecklistSheet
+          task={checklistTask}
+          orgId={organization!.id}
+          visible={!!checklistTask}
+          onClose={() => setChecklistTask(null)}
+        />
+      ) : null}
 
       <Pressable
         onPress={() => router.push('/(main)/create-task')}
