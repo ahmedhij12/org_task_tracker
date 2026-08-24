@@ -37,6 +37,15 @@ export default function LandingScreen() {
           onPress={() => router.push('/(auth)/create')}
         />
 
+        <View style={{ height: 12 }} />
+
+        <ChoiceRow
+          icon="person"
+          title="Just for yourself"
+          subtitle="A private task list with reminders — no company involved."
+          onPress={() => router.push('/(auth)/personal')}
+        />
+
         <Pressable onPress={() => router.push('/(auth)/signin')} style={{ marginTop: 24, alignItems: 'center' }}>
           <Text style={{ fontSize: 14, color: c.textMuted }}>
             Already have an account? <Text style={{ color: c.indigo, fontWeight: '700' }}>Sign in</Text>
