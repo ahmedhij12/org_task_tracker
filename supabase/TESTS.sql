@@ -1155,6 +1155,7 @@ declare
   v_task_a uuid;
   v_visible_count int;
   v_update_count int;
+  v_raised boolean;
 begin
   -- Matches the auth.users insert pattern already used above in this file
   -- (the table has NOT NULL constraints on far more than id/email).
@@ -1205,6 +1206,29 @@ begin
     raise exception 'FAIL: a different user could update someone else''s personal task';
   end if;
   raise notice 'PASS: a different user cannot update this personal task';
+
+  -- B cannot insert a task and claim it belongs to A — exercises the "with
+  -- check" half of the RLS policy (the "using" half alone wouldn't stop an
+  -- insert with someone else's owner_id).
+  v_raised := false;
+  begin
+    insert into public.personal_tasks (owner_id, title)
+    values (v_user_a, 'B trying to plant a task as A');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a different user could insert a personal task owned by someone else';
+  end if;
+  raise notice 'PASS: a different user cannot insert a personal task claiming someone else''s owner_id';
+
+  -- B cannot delete A's task either (RLS blocks the row, so 0 rows affected).
+  delete from public.personal_tasks where id = v_task_a;
+  get diagnostics v_update_count = row_count;
+  if v_update_count <> 0 then
+    raise exception 'FAIL: a different user could delete someone else''s personal task';
+  end if;
+  raise notice 'PASS: a different user cannot delete this personal task';
 
   reset role;
 end $$;
