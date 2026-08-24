@@ -56,7 +56,7 @@ export default function CreateOrgScreen() {
 
           {error ? <ErrorBanner message={error} /> : null}
 
-          <FieldInput label="Organization name" placeholder="e.g. Basra Retail Co." value={orgName} onChangeText={setOrgName} />
+          <FieldInput label="Organization name" placeholder="e.g. Riverside Cafe" value={orgName} onChangeText={setOrgName} />
           <FieldInput label="Your name" placeholder="e.g. Ahmed" value={ownerName} onChangeText={setOwnerName} />
           <UsernameInput value={username} onChangeText={setUsername} />
           <Text style={{ fontSize: 11, color: c.textFaint, marginTop: -8, marginBottom: 14 }}>
