@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, ScrollView, Pressable, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useAuth } from '@/hooks/useAuth';
 import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { supabase } from '@/lib/supabase';
@@ -18,6 +19,13 @@ export default function PersonalSettingsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | null>(null);
+
+  useEffect(() => {
+    Notifications.getPermissionsAsync()
+      .then((res) => setNotifStatus(res.status))
+      .catch((e) => console.warn(e));
+  }, []);
 
   const handleChangePassword = async () => {
     if (newPassword.length < 6) return;
@@ -36,6 +44,8 @@ export default function PersonalSettingsScreen() {
     }
   };
 
+  const notifOn = notifStatus === 'granted';
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
@@ -48,6 +58,21 @@ export default function PersonalSettingsScreen() {
         <Card style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>Account</Text>
           <Text style={{ fontSize: 15, fontWeight: '600', color: c.text }}>{session?.user.email}</Text>
+        </Card>
+
+        <Card style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>Notifications</Text>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: c.text }}>Notifications: {notifOn ? 'On' : 'Off'}</Text>
+          {!notifOn ? (
+            <>
+              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4 }}>
+                Turn these on to get reminders for tasks with a due date.
+              </Text>
+              <Pressable onPress={() => Linking.openSettings()} style={{ marginTop: 10 }}>
+                <Text style={{ color: c.indigo, fontSize: 13, fontWeight: '700' }}>Open Settings</Text>
+              </Pressable>
+            </>
+          ) : null}
         </Card>
 
         <Card style={{ marginBottom: 14 }}>
