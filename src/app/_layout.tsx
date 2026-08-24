@@ -23,7 +23,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, isPersonalAccount } = useAuth();
   const { isDark } = useThemePref();
 
   if (loading) return null;
@@ -36,7 +36,7 @@ function RootNavigator() {
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={!signedInWithOrg}>
+        <Stack.Protected guard={!signedInWithOrg && !isPersonalAccount}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
         <Stack.Protected guard={needsPasswordChange}>
@@ -44,6 +44,9 @@ function RootNavigator() {
         </Stack.Protected>
         <Stack.Protected guard={signedInWithOrg && !needsPasswordChange}>
           <Stack.Screen name="(main)" />
+        </Stack.Protected>
+        <Stack.Protected guard={isPersonalAccount}>
+          <Stack.Screen name="(personal)" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>
