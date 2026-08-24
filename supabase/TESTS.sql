@@ -1146,4 +1146,107 @@ begin
 end;
 $$;
 
+-- ── Personal mode: RLS isolation ─────────────────────────────────────
+
+do $$
+declare
+  v_user_a uuid := gen_random_uuid();
+  v_user_b uuid := gen_random_uuid();
+  v_task_a uuid;
+  v_visible_count int;
+  v_update_count int;
+begin
+  -- Matches the auth.users insert pattern already used above in this file
+  -- (the table has NOT NULL constraints on far more than id/email).
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values
+    ('00000000-0000-0000-0000-000000000000', v_user_a, 'authenticated', 'authenticated',
+     'personal-test-a@example.com', 'x', now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+     now(), now(), '', '', '', '', '', '', '', ''),
+    ('00000000-0000-0000-0000-000000000000', v_user_b, 'authenticated', 'authenticated',
+     'personal-test-b@example.com', 'x', now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+     now(), now(), '', '', '', '', '', '', '', '');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user_a)::text, true);
+  set role authenticated;
+
+  insert into public.personal_tasks (owner_id, title)
+  values (v_user_a, 'A''s private task')
+  returning id into v_task_a;
+
+  -- A can see their own task.
+  select count(*) into v_visible_count from public.personal_tasks where id = v_task_a;
+  if v_visible_count <> 1 then
+    raise exception 'FAIL: owner cannot see their own personal task';
+  end if;
+  raise notice 'PASS: owner sees their own personal task';
+
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user_b)::text, true);
+  set role authenticated;
+
+  -- B cannot see A's task at all.
+  select count(*) into v_visible_count from public.personal_tasks where id = v_task_a;
+  if v_visible_count <> 0 then
+    raise exception 'FAIL: a different user can see someone else''s personal task';
+  end if;
+  raise notice 'PASS: a different user cannot see this personal task';
+
+  -- B cannot update A's task either (RLS blocks the row, so 0 rows affected).
+  update public.personal_tasks set completed = true where id = v_task_a;
+  get diagnostics v_update_count = row_count;
+  if v_update_count <> 0 then
+    raise exception 'FAIL: a different user could update someone else''s personal task';
+  end if;
+  raise notice 'PASS: a different user cannot update this personal task';
+
+  reset role;
+end $$;
+
+do $$
+declare
+  v_user_a uuid := gen_random_uuid();
+  v_user_b uuid := gen_random_uuid();
+  v_visible_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values
+    ('00000000-0000-0000-0000-000000000000', v_user_a, 'authenticated', 'authenticated',
+     'personal-test-c@example.com', 'x', now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+     now(), now(), '', '', '', '', '', '', '', ''),
+    ('00000000-0000-0000-0000-000000000000', v_user_b, 'authenticated', 'authenticated',
+     'personal-test-d@example.com', 'x', now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+     now(), now(), '', '', '', '', '', '', '', '');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user_a)::text, true);
+  set role authenticated;
+
+  insert into public.push_tokens (owner_id, expo_push_token, platform)
+  values (v_user_a, 'ExponentPushToken[test-a]', 'ios');
+
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user_b)::text, true);
+  set role authenticated;
+
+  select count(*) into v_visible_count from public.push_tokens where owner_id = v_user_a;
+  if v_visible_count <> 0 then
+    raise exception 'FAIL: a different user can see someone else''s push token';
+  end if;
+  raise notice 'PASS: a different user cannot see this push token';
+
+  reset role;
+end $$;
+
 rollback;

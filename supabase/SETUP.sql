@@ -23,6 +23,8 @@ drop table if exists public.teams cascade;
 drop table if exists public.organizations cascade;
 drop table if exists public.login_lookup_attempts cascade;
 drop table if exists public.org_lookup_attempts cascade;
+drop table if exists public.push_tokens cascade;
+drop table if exists public.personal_tasks cascade;
 
 drop function if exists public.my_org_id() cascade;
 drop function if exists public.my_role() cascade;
@@ -1385,3 +1387,50 @@ create policy "org members can upload their own proof photos"
 create policy "anyone can read proof photos (bucket is public)"
   on storage.objects for select
   using (bucket_id = 'task-proofs');
+
+-- ── Personal mode ──────────────────────────────────────────────────
+-- Fully separate from the org system by construction: neither table below
+-- has an org_id or any foreign key into organizations/profiles/teams. A
+-- personal account is identified purely by auth.uid() — there is no
+-- "personal profile" row anywhere. See
+-- docs/superpowers/specs/2026-08-24-personal-mode-design.md.
+
+create table public.personal_tasks (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  notes text,
+  due timestamptz,
+  completed boolean not null default false,
+  completed_at timestamptz,
+  -- Set once a reminder has fired for this due date, so the scheduled job
+  -- never notifies the same task twice.
+  reminder_sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.personal_tasks enable row level security;
+
+create policy "a user can only ever touch their own personal tasks"
+  on public.personal_tasks for all
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+create index personal_tasks_owner_due_idx
+  on public.personal_tasks (owner_id, due);
+
+create table public.push_tokens (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  expo_push_token text not null,
+  platform text not null check (platform in ('ios', 'android')),
+  created_at timestamptz not null default now(),
+  unique (owner_id, expo_push_token)
+);
+
+alter table public.push_tokens enable row level security;
+
+create policy "a user can only manage their own push tokens"
+  on public.push_tokens for all
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
