@@ -120,3 +120,10 @@ before the fix.
   regex fix) is proven and repeatable.
 - Bulk-select assignees on the checklist-template create-task flow — right now
   each person has to be tapped one by one under "Assign to."
+- **Viewer mode** — a read-only role for someone who just wants to watch task
+  status and who's completing work vs. falling behind, without the ability to
+  create/edit/manage anything. The owner dashboard already shows everything
+  organizationally, so this is really about a *narrower, safer* lens for
+  someone who shouldn't have edit/admin power (a regional overseer, an
+  investor, etc.) — worth scoping as its own small role rather than reusing
+  `owner`/`team_admin`. Needs its own short design pass, not started.
