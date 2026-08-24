@@ -31,7 +31,15 @@ Deno.serve(async () => {
 
   let sent = 0;
   for (const task of dueTasks) {
-    const { data: tokens } = await supabase.from('push_tokens').select('expo_push_token').eq('owner_id', task.owner_id);
+    const { data: tokens, error: tokensError } = await supabase
+      .from('push_tokens')
+      .select('expo_push_token')
+      .eq('owner_id', task.owner_id);
+
+    if (tokensError) {
+      // Leave reminder_sent_at unset so this task is retried on the next run.
+      continue;
+    }
 
     if (tokens && tokens.length > 0) {
       await fetch('https://exp.host/--/api/v2/push/send', {
