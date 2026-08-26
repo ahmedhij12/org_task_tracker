@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "OrgTasks",
+    "name": "Rungs",
     "slug": "org_task_tracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -34,8 +34,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "OrgTasks lets you attach a photo as proof when completing a task.",
-          "cameraPermission": "OrgTasks lets you take a photo as proof when completing a task."
+          "photosPermission": "Rungs lets you attach a photo as proof when completing a task.",
+          "cameraPermission": "Rungs lets you take a photo as proof when completing a task."
         }
       ],
       "@react-native-community/datetimepicker",

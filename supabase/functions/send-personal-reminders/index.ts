@@ -63,7 +63,7 @@ Deno.serve(async () => {
         body: JSON.stringify(
           tokens.map((t) => ({
             to: t.expo_push_token,
-            title: 'OrgTasks reminder',
+            title: 'Rungs reminder',
             body: task.title,
             sound: 'default',
           }))

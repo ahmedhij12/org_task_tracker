@@ -1,4 +1,4 @@
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { View, Text, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,15 +16,17 @@ export default function LandingScreen() {
               width: 76,
               height: 76,
               borderRadius: 22,
-              backgroundColor: c.indigo,
-              alignItems: 'center',
-              justifyContent: 'center',
+              overflow: 'hidden',
               marginBottom: 18,
             }}
           >
-            <Ionicons name="checkbox" size={36} color="#fff" />
+            <Image
+              source={require('../../../assets/icon.png')}
+              style={{ width: 76, height: 76 }}
+              resizeMode="cover"
+            />
           </View>
-          <Text style={{ fontSize: 26, fontWeight: '800', color: c.text }}>OrgTasks</Text>
+          <Text style={{ fontSize: 26, fontWeight: '800', color: c.text }}>Rungs</Text>
           <Text style={{ fontSize: 14, color: c.textMuted, textAlign: 'center', marginTop: 8, maxWidth: 260, lineHeight: 20 }}>
             Assign and track tasks across your team, split into groups with their own admin.
           </Text>

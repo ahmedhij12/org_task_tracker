@@ -79,7 +79,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     }
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      setError('Camera access is needed to take photos. Enable it for OrgTasks in your device settings.');
+      setError('Camera access is needed to take photos. Enable it for Rungs in your device settings.');
       return;
     }
     try {
