@@ -1,0 +1,31 @@
+// Deploys the Expo web build (dist/) to Cloudflare as a static-assets Worker.
+//
+// Build first, then deploy:
+//   npx expo export -p web
+//   npx wrangler deploy
+//
+// There is deliberately no "main" script: this is an assets-only deployment, so
+// Cloudflare serves dist/ directly. An earlier version did have a worker calling
+// env.ASSETS.fetch(), which 500'd on every client-side route — env.ASSETS only
+// exists when assets.binding is declared, and routing it by hand buys nothing
+// over the built-in handling below.
+//
+// not_found_handling is required because app.json leaves web.output at its
+// default ("single"), so the export produces one index.html and expo-router
+// resolves routes client-side. Without it, a direct hit on /signin 404s.
+{
+  "name": "rungs-web",
+  "compatibility_date": "2026-08-09",
+  // Keep the *.workers.dev URL alive alongside the custom domain as a fallback
+  // to hand testers if anything is ever wrong with the domain itself.
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  // Subdomain only — the apex hijazionline.com stays on the separate
+  // "sage-legal" worker (see ~/Projects/hijazionline-portfolio).
+  "routes": [
+    { "pattern": "rungs.hijazionline.com", "custom_domain": true }
+  ]
+}
