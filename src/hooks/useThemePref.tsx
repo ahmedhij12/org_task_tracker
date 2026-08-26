@@ -3,7 +3,7 @@ import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ThemePref } from '../types';
 
-const STORAGE_KEY = 'orgtasks.themePref';
+const STORAGE_KEY = 'rungs.themePref';
 
 interface ThemePrefContextValue {
   themePref: ThemePref;

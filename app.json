@@ -1,19 +1,19 @@
 {
   "expo": {
     "name": "Rungs",
-    "slug": "org_task_tracker",
+    "slug": "rungs",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "orgtasks",
+    "scheme": "rungs",
     "userInterfaceStyle": "automatic",
     "owner": "sage.hijazi",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hijazionline.orgtasks"
+      "bundleIdentifier": "com.hijazionline.rungs"
     },
     "android": {
-      "package": "com.hijazionline.orgtasks",
+      "package": "com.hijazionline.rungs",
       "adaptiveIcon": {
         "backgroundColor": "#4F46E5",
         "foregroundImage": "./assets/android-icon-foreground.png",

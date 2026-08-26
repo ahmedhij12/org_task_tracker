@@ -1,4 +1,4 @@
--- OrgTasks — full setup script. Safe to run repeatedly: it drops
+-- Rungs — full setup script. Safe to run repeatedly: it drops
 -- everything belonging to this app first, then rebuilds it from scratch in
 -- its final, correct form. This replaces the old numbered migration files
 -- (0000-0005) — just run THIS one file whenever the schema needs to be
@@ -681,7 +681,7 @@ begin
 
   -- Globally unique: org_code is unique across orgs, username is unique
   -- within an org. Never a real mailbox — see recovery_email for that.
-  v_email := v_username || '.' || v_org_code || '@users.orgtasks.internal';
+  v_email := v_username || '.' || v_org_code || '@users.rungs.internal';
 
   -- confirmed_at is a generated column and must not be inserted into. The
   -- token columns must be '' rather than NULL: GoTrue scans them into

@@ -1,4 +1,4 @@
--- OrgTasks — automated database tests.
+-- Rungs — automated database tests.
 --
 -- Paste this whole file into Supabase Studio -> SQL Editor -> New query -> Run,
 -- AFTER running SETUP.sql. Everything runs inside a transaction that is rolled
@@ -160,7 +160,7 @@ begin
   raise notice 'PASS: owner can create a team leader with forced password change';
 
   select email into v_email from auth.users where id = v_leader_id;
-  if v_email <> 'leader1.' || v_org_code || '@users.orgtasks.internal' then
+  if v_email <> 'leader1.' || v_org_code || '@users.rungs.internal' then
     raise exception 'FAIL: synthetic email is wrong, got %', v_email;
   end if;
   if not exists (
