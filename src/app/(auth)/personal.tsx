@@ -8,9 +8,8 @@ import { FieldInput, PrimaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, us
 
 export default function PersonalAuthScreen() {
   const c = useThemeColors();
-  const { createPersonalAccount, signInPersonal } = useAuth();
+  const { createPersonalAccount } = useAuth();
 
-  const [mode, setMode] = useState<'create' | 'signin'>('create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,11 +22,7 @@ export default function PersonalAuthScreen() {
     setLoading(true);
     setError(null);
     try {
-      if (mode === 'create') {
-        await createPersonalAccount(email.trim(), password);
-      } else {
-        await signInPersonal(email.trim(), password);
-      }
+      await createPersonalAccount(email.trim(), password);
       // Root layout's Stack.Protected guard flips automatically once the
       // session (and its account_kind metadata) loads.
     } catch (e: any) {
@@ -45,12 +40,8 @@ export default function PersonalAuthScreen() {
             <Ionicons name="arrow-back" size={24} color={c.text} />
           </Pressable>
 
-          <ScreenTitle>{mode === 'create' ? 'Create your personal account' : 'Sign in'}</ScreenTitle>
-          <ScreenSubtitle>
-            {mode === 'create'
-              ? 'Just your email and a password — no organization needed.'
-              : 'Use the email and password from your personal account.'}
-          </ScreenSubtitle>
+          <ScreenTitle>Create your personal account</ScreenTitle>
+          <ScreenSubtitle>Just your email and a password — no organization needed.</ScreenSubtitle>
 
           <View style={{ height: 24 }} />
 
@@ -67,17 +58,14 @@ export default function PersonalAuthScreen() {
           <FieldInput label="Password" placeholder="At least 6 characters" value={password} onChangeText={setPassword} secureTextEntry />
 
           <View style={{ height: 8 }} />
-          <PrimaryButton
-            title={mode === 'create' ? 'Create account' : 'Sign in'}
-            onPress={handleSubmit}
-            loading={loading}
-            disabled={!canSubmit}
-          />
+          <PrimaryButton title="Create account" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
 
-          <Pressable onPress={() => setMode(mode === 'create' ? 'signin' : 'create')} style={{ marginTop: 20, alignItems: 'center' }}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/(auth)/signin', params: { mode: 'personal' } })}
+            style={{ marginTop: 20, alignItems: 'center' }}
+          >
             <Text style={{ fontSize: 14, color: c.textMuted }}>
-              {mode === 'create' ? 'Already have a personal account? ' : "Don't have one yet? "}
-              <Text style={{ color: c.indigo, fontWeight: '700' }}>{mode === 'create' ? 'Sign in' : 'Create one'}</Text>
+              Already have a personal account? <Text style={{ color: c.indigo, fontWeight: '700' }}>Sign in</Text>
             </Text>
           </Pressable>
         </ScrollView>
