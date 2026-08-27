@@ -130,10 +130,12 @@ via direct SQL (not the global `mailer_autoconfirm` setting) and let
 `verifySignUpCode`'s fallback sign-in do the rest. Requires
 `SUPABASE_ACCESS_TOKEN` in the environment to run.
 
-- **`scripts/e2e/checklist-flow.js` is still stale** — it drives the old,
-  now-deleted Checklists tab and needs a real rewrite to instead create a
-  checklist task from the create-task screen (only its placeholder text was
-  fixed this pass). Don't trust it until it's rewritten.
+- **`scripts/e2e/checklist-flow.js` rewritten and passing** — now creates
+  templates inline from create-task's "+ New template" (matching the current
+  UI) and reviews off-duty claims through History's "Needs review" filter.
+  All 9 assertions pass: template creation, assignment, the "No" answer
+  requiring a note, history with the right yes/no tally, and the off-duty
+  claim → reject → immediately-pending-again cycle.
 - **Camera-only proof still needs a real phone** — the one piece of this
   pass that couldn't be tested on web at all (see "Known gaps" below).
 
