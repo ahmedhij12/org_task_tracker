@@ -104,17 +104,38 @@ deactivate-account confirm and the sign-out confirm were switched to in-app
 two-step confirmations. Works on Android either way; was genuinely broken on web
 before the fix.
 
-## In-progress / needs your test pass
+## Done and verified (continued)
 
-- **`SETUP.sql`/`TESTS.sql` need a live run** in the Supabase SQL Editor — not
-  done yet since the checklist-into-tasks merge. `typecheck` is clean on the
-  app side, but nothing has touched a real database since.
-- **`scripts/e2e/checklist-flow.js` is stale** — it drives the old, now-deleted
-  Checklists tab and needs a rewrite to instead create a checklist task from
-  the create-task screen. Don't trust it until it's rewritten.
-- Once SQL is verified, a full hands-on pass together over `npm run watch`:
-  create a checklist task, fill it, off-duty claim + review, and the new
-  priority → review-toggle behavior on plain tasks.
+**Full live QA pass, 2026-08-27** — `SETUP.sql`/`TESTS.sql` confirmed in sync
+with the live database (table/function diff, plus a live `TESTS.sql` run: all
+66 assertions pass in a rolled-back transaction, so the "needs a live run"
+item below is resolved). Walked the real app end to end against the live
+Supabase project: created an org ("Basra QA Restaurant"), a team leader, and
+an employee; created a checklist template from the built-in "Daily Hygiene
+Checklist" starter (79 real Arabic questions, seeded client-side, not in the
+DB — see `src/lib/builtInChecklists.ts`); assigned and completed it as the
+employee; confirmed History is correctly scoped and shows the right tally for
+both the employee and the owner.
+
+Also fixed the 4 working `scripts/e2e/*.js` scripts (`manage-user`,
+`forced-password-change`, `team-leader-flow`, `proof-and-history`), which had
+gone stale in two ways unrelated to each other: (1) the org-name placeholder
+they targeted was `"e.g. Basra Retail Co."` from before the de-branding
+cleanup, now `"e.g. Riverside Cafe"`; (2) they signed up with fake
+`@example.com` addresses, which now fail outright at `signUp()` since real
+SMTP (Resend) is wired up and that domain has no mail server. Both fixed —
+all 4 now pass. `scripts/e2e/_otp_bypass.js` is a new shared helper: since
+sign-up is now OTP-gated, these scripts mark their one test email confirmed
+via direct SQL (not the global `mailer_autoconfirm` setting) and let
+`verifySignUpCode`'s fallback sign-in do the rest. Requires
+`SUPABASE_ACCESS_TOKEN` in the environment to run.
+
+- **`scripts/e2e/checklist-flow.js` is still stale** — it drives the old,
+  now-deleted Checklists tab and needs a real rewrite to instead create a
+  checklist task from the create-task screen (only its placeholder text was
+  fixed this pass). Don't trust it until it's rewritten.
+- **Camera-only proof still needs a real phone** — the one piece of this
+  pass that couldn't be tested on web at all (see "Known gaps" below).
 
 ## Known gaps, not yet addressed
 

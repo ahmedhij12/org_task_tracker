@@ -47,7 +47,7 @@ async function setOwnPassword(page, newPassword) {
   await pageA.goto(TARGET_URL, { waitUntil: 'networkidle', timeout: 30000 });
   await pageA.getByText('Create an organization').click();
   await pageA.waitForTimeout(400);
-  await pageA.getByPlaceholder('e.g. Basra Retail Co.', { exact: true }).fill('CkOrg ' + runId);
+  await pageA.getByPlaceholder('e.g. Riverside Cafe', { exact: true }).fill('CkOrg ' + runId);
   await pageA.getByPlaceholder('e.g. Ahmed', { exact: true }).fill('Owner Ck');
   await pageA.getByPlaceholder('e.g. ahmed_h', { exact: true }).fill(ownerUsername);
   await pageA.getByPlaceholder('you@example.com', { exact: true }).fill(`ck-${runId}@example.com`);

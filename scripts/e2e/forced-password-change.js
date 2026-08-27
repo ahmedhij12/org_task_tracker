@@ -8,6 +8,7 @@
 // Prereq: `npm run web` is running on http://localhost:8081/.
 // Run: node scripts/e2e/forced-password-change.js
 const { chromium } = require('playwright');
+const { bypassSignupEmailConfirmation } = require('./_otp_bypass');
 
 const TARGET_URL = 'http://localhost:8081/';
 const PASSWORD = 'testpass123';
@@ -37,13 +38,17 @@ const PASSWORD = 'testpass123';
   await pageA.goto(TARGET_URL, { waitUntil: 'networkidle', timeout: 30000 });
   await pageA.getByText('Create an organization').click();
   await pageA.waitForTimeout(400);
-  await pageA.getByPlaceholder('e.g. Basra Retail Co.', { exact: true }).fill('PwOrg ' + runId);
+  await pageA.getByPlaceholder('e.g. Riverside Cafe', { exact: true }).fill('PwOrg ' + runId);
   await pageA.getByPlaceholder('e.g. Ahmed', { exact: true }).fill('Owner Pw');
   await pageA.getByPlaceholder('e.g. ahmed_h', { exact: true }).fill(ownerUsername);
-  await pageA.getByPlaceholder('you@example.com', { exact: true }).fill(`owner-${runId}@example.com`);
+  const ownerEmail = `ahmed.hijazi089+e2e-pw${runId}@gmail.com`;
+  await pageA.getByPlaceholder('you@example.com', { exact: true }).fill(ownerEmail);
   await pageA.getByPlaceholder('At least 6 characters', { exact: true }).fill(PASSWORD);
   await pageA.getByText('Create organization', { exact: true }).last().click();
   await pageA.waitForTimeout(3000);
+  await bypassSignupEmailConfirmation(ownerEmail);
+  await pageA.locator('[aria-label^="Verification code"]').fill('000000');
+  await pageA.waitForTimeout(4000);
 
   await pageA.getByText('Settings', { exact: true }).last().click();
   await pageA.waitForTimeout(600);
