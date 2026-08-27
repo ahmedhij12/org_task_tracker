@@ -8,7 +8,7 @@ import { FieldInput, UsernameInput, PrimaryButton, ErrorBanner, ScreenTitle, Scr
 
 export default function CreateOrgScreen() {
   const c = useThemeColors();
-  const { createOrganization } = useAuth();
+  const { startOrganizationSignUp } = useAuth();
   const [orgName, setOrgName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [username, setUsername] = useState('');
@@ -24,14 +24,15 @@ export default function CreateOrgScreen() {
     setLoading(true);
     setError(null);
     try {
-      await createOrganization({
+      await startOrganizationSignUp({
         orgName: orgName.trim(),
         ownerName: ownerName.trim(),
         username: username.trim(),
         email: email.trim(),
         password,
       });
-      // Root layout's Stack.Protected guard flips automatically once profile loads.
+      // The organization is created on the far side of the emailed code.
+      router.push('/(auth)/verify');
     } catch (e: any) {
       setError(e?.message ?? 'Something went wrong. Please try again.');
     } finally {

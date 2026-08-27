@@ -37,6 +37,23 @@ now instead of trading screenshots.
 
 ## Done and verified
 
+**Email-verified self-signup** — both "Create an organization" and "Just for
+yourself" now go through a two-step sign-up: `supabase.auth.signUp` creates the
+auth user and emails a 6-digit code, `verifySignUpCode` exchanges it for a
+session, and only then (for orgs) does `create_organization` run — it needs a
+real session for `auth.uid()`. The verify screen (`(auth)/verify.tsx`) uses the
+animated `OtpDial` widget instead of a plain text box. Live end-to-end tested
+against the real Supabase project + real email delivery (Resend), both the
+personal and organization paths, including wrong-code error/shake, resend, and
+recovery after an error.
+**One real bug found and fixed live**: a transient "JWT issued at future" error
+can occur where `verifyOtp` confirms the email server-side but fails to hand
+back a session — previously this permanently stranded the account (confirmed,
+but no profile/org, and no way back in through the UI). `verifySignUpCode` now
+falls back to a plain password sign-in when that happens, which succeeds
+precisely because the email is already confirmed by that point. `PendingSignUp`
+now carries the password in memory for this reason (both kinds).
+
 **Admin-provisioned signup & login** — owners create accounts for anyone in the org;
 team leaders create employees on their own team only. Forced password change on
 first login. Admin password reset without the old one; deactivation signs the user

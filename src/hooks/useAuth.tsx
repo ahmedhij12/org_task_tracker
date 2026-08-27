@@ -17,7 +17,12 @@ interface AuthContextValue extends AuthState {
   /** True for a signed-in session that deliberately has no organization —
    *  see docs/superpowers/specs/2026-08-24-personal-mode-design.md. */
   isPersonalAccount: boolean;
-  createOrganization: (args: {
+  /** A sign-up that has been started and is waiting on its emailed code. */
+  pendingSignUp: PendingSignUp | null;
+  /** Step 1 of org sign-up: creates the auth user and emails a confirmation
+   *  code. The organization row is only written once the code is verified,
+   *  because create_organization needs a real session to run under. */
+  startOrganizationSignUp: (args: {
     orgName: string;
     ownerName: string;
     username: string;
@@ -44,11 +49,28 @@ interface AuthContextValue extends AuthState {
   changeOwnPassword: (newPassword: string) => Promise<void>;
   addRecoveryEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
-  createPersonalAccount: (email: string, password: string) => Promise<void>;
+  /** Step 1 of personal sign-up. Same emailed-code second step as an org. */
+  startPersonalSignUp: (email: string, password: string) => Promise<void>;
+  /** Step 2 for both kinds: exchanges the emailed code for a session. */
+  verifySignUpCode: (code: string) => Promise<void>;
+  resendSignUpCode: () => Promise<void>;
+  cancelSignUp: () => void;
   signInPersonal: (email: string, password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
 }
+
+/** Everything needed to finish a sign-up once its emailed code arrives.
+ *  Held in memory only: navigating between auth screens keeps it, a full
+ *  page reload deliberately starts over rather than resurrecting a form. */
+export type PendingSignUp =
+  | { kind: 'organization'; email: string; password: string; orgName: string; ownerName: string; username: string }
+  | { kind: 'personal'; email: string; password: string };
+
+/** Digits in the emailed code. Must match the project's Auth OTP length
+ *  (Supabase allows 6-10; the dashboard setting and this constant have to
+ *  agree or the screen submits a half-typed code). */
+export const SIGNUP_CODE_LENGTH = 6;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -90,6 +112,16 @@ function mapTeam(row: { id: string; org_id: string; name: string; created_at: st
   return { id: row.id, orgId: row.org_id, name: row.name, createdAt: row.created_at };
 }
 
+/** Supabase will not admit that an email is already registered: signUp on a
+ *  confirmed address succeeds, returns a decoy user with an empty identities
+ *  array, and sends nothing. Turn that into an honest error instead of parking
+ *  the person on a code screen no code will ever reach. */
+function assertCodeWasSent(user: { identities?: unknown[] | null } | null) {
+  if (user && Array.isArray(user.identities) && user.identities.length === 0) {
+    throw new Error('That email already has an account. Sign in instead, or use a different email.');
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     session: null,
@@ -99,6 +131,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: true,
     error: null,
   });
+
+  const [pendingSignUp, setPendingSignUp] = useState<PendingSignUp | null>(null);
 
   const loadProfileAndOrg = async (session: Session | null) => {
     if (!session) {
@@ -154,44 +188,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearError = () => setState((s) => ({ ...s, error: null }));
 
-  const createOrganization: AuthContextValue['createOrganization'] = async ({ orgName, ownerName, username, email, password }) => {
+  const startOrganizationSignUp: AuthContextValue['startOrganizationSignUp'] = async ({
+    orgName,
+    ownerName,
+    username,
+    email,
+    password,
+  }) => {
     setState((s) => ({ ...s, error: null }));
-    const { error: signUpError } = await supabase.auth.signUp({ email, password });
-    if (signUpError) throw signUpError;
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      throw new Error(
-        'Account created, but no session yet — this Supabase project likely has "Confirm email" turned on. Disable it under Authentication > Providers > Email while testing.'
-      );
-    }
-
-    const { error: rpcError } = await supabase.rpc('create_organization', {
-      p_org_name: orgName,
-      p_owner_name: ownerName,
-      p_username: username,
-    });
-    if (rpcError) throw rpcError;
-
-    await refreshProfile();
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
+    if (error) throw error;
+    assertCodeWasSent(data.user);
+    setPendingSignUp({ kind: 'organization', email: normalizedEmail, password, orgName, ownerName, username });
   };
 
-  const createPersonalAccount: AuthContextValue['createPersonalAccount'] = async (email, password) => {
+  const startPersonalSignUp: AuthContextValue['startPersonalSignUp'] = async (email, password) => {
     setState((s) => ({ ...s, error: null }));
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
       password,
       options: { data: { account_kind: 'personal' } },
     });
-    if (signUpError) throw signUpError;
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      throw new Error(
-        'Account created, but no session yet — this Supabase project likely has "Confirm email" turned on. Disable it under Authentication > Providers > Email while testing.'
-      );
-    }
+    if (error) throw error;
+    assertCodeWasSent(data.user);
+    setPendingSignUp({ kind: 'personal', email: normalizedEmail, password });
   };
+
+  const verifySignUpCode: AuthContextValue['verifySignUpCode'] = async (code) => {
+    if (!pendingSignUp) throw new Error('That sign-up expired. Please start again.');
+    setState((s) => ({ ...s, error: null }));
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: pendingSignUp.email,
+      token: code.trim(),
+      type: 'signup',
+    });
+
+    if (error || !data.session) {
+      // The OTP check itself can succeed server-side (the email is marked
+      // confirmed) while session issuance still fails right after — seen live
+      // as a transient "JWT issued at future" error. Retyping the same code
+      // then correctly reads as invalid, since it was already consumed, which
+      // would otherwise strand a confirmed account with no session and no
+      // organization. A plain password sign-in recovers it, since the email
+      // is confirmed by this point either way.
+      const fallback = await supabase.auth.signInWithPassword({
+        email: pendingSignUp.email,
+        password: pendingSignUp.password,
+      });
+      if (fallback.error || !fallback.data.session) throw error ?? new Error('The code was accepted but no session came back. Please sign in.');
+    }
+
+    // Only now is there a session for create_organization's auth.uid() to use.
+    if (pendingSignUp.kind === 'organization') {
+      const { error: rpcError } = await supabase.rpc('create_organization', {
+        p_org_name: pendingSignUp.orgName,
+        p_owner_name: pendingSignUp.ownerName,
+        p_username: pendingSignUp.username,
+      });
+      if (rpcError) throw rpcError;
+    }
+
+    setPendingSignUp(null);
+    await refreshProfile();
+  };
+
+  const resendSignUpCode: AuthContextValue['resendSignUpCode'] = async () => {
+    if (!pendingSignUp) throw new Error('That sign-up expired. Please start again.');
+    const { error } = await supabase.auth.resend({ type: 'signup', email: pendingSignUp.email });
+    if (error) throw error;
+  };
+
+  const cancelSignUp: AuthContextValue['cancelSignUp'] = () => setPendingSignUp(null);
 
   const signInPersonal: AuthContextValue['signInPersonal'] = async (email, password) => {
     setState((s) => ({ ...s, error: null }));
@@ -297,8 +367,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       isPersonalAccount,
-      createOrganization,
-      createPersonalAccount,
+      pendingSignUp,
+      startOrganizationSignUp,
+      startPersonalSignUp,
+      verifySignUpCode,
+      resendSignUpCode,
+      cancelSignUp,
       signInWithUsername,
       signInPersonal,
       adminCreateUser,
@@ -312,7 +386,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshProfile,
       clearError,
     }),
-    [state, isPersonalAccount]
+    [state, isPersonalAccount, pendingSignUp]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -8,7 +8,7 @@ import { FieldInput, PrimaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, us
 
 export default function PersonalAuthScreen() {
   const c = useThemeColors();
-  const { createPersonalAccount } = useAuth();
+  const { startPersonalSignUp } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,9 +22,8 @@ export default function PersonalAuthScreen() {
     setLoading(true);
     setError(null);
     try {
-      await createPersonalAccount(email.trim(), password);
-      // Root layout's Stack.Protected guard flips automatically once the
-      // session (and its account_kind metadata) loads.
+      await startPersonalSignUp(email.trim(), password);
+      router.push('/(auth)/verify');
     } catch (e: any) {
       setError(e?.message ?? 'Something went wrong. Please try again.');
     } finally {
