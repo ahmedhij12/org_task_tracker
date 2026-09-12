@@ -1365,4 +1365,155 @@ begin
   reset role;
 end $$;
 
+-- ── Fixed-time schedule: scheduled_times, task_occurrences, occurrence-aware
+-- completion ───────────────────────────────────────────────────────────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_other_team_id uuid;
+  v_emp_id uuid;
+  v_stranger_id uuid;
+  v_task_id uuid;
+  v_generated int;
+  v_occ_count int;
+  v_occ_a uuid;
+  v_occ_b uuid;
+  v_completion_id uuid;
+  v_row public.task_occurrences;
+  v_completion public.task_completions;
+  v_raised boolean;
+  v_visible_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'schedule-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Schedule Co', 'Owner Schedule', 'ownersched');
+
+  v_emp_id := public.admin_create_user('Supervisor Two', 'supertwo', 'initial123', 'employee', v_team_id);
+  insert into public.teams (org_id, name) values (v_org_id, 'Other Team') returning id into v_other_team_id;
+  v_stranger_id := public.admin_create_user('Stranger Two', 'stranger2', 'initial123', 'employee', v_other_team_id);
+
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+
+  -- ── A task cannot mix a fixed schedule with a cooldown ──
+  v_raised := false;
+  begin
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by, scheduled_times, cooldown_hours, template_id)
+    values (v_org_id, v_team_id, 'Bad', v_emp_id, v_owner_id, '{12:00,16:00}'::time[], 24,
+      (select public.create_checklist_template('x', true, '[{"section_title":"","question":"q"}]'::jsonb)));
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: scheduled_times and cooldown_hours should be mutually exclusive';
+  end if;
+  raise notice 'PASS: a task cannot have both scheduled_times and cooldown_hours';
+
+  -- ── A real 2x-daily task, assigned to the supervisor ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, scheduled_times, priority, requires_review)
+  values (v_org_id, v_team_id, 'Oil Test', v_emp_id, v_owner_id, '{12:00,16:00}'::time[], 'medium', false)
+  returning id into v_task_id;
+
+  -- ── Generating occurrences creates exactly one row per scheduled time ──
+  v_generated := public.generate_task_occurrences();
+  select count(*) into v_occ_count from public.task_occurrences where task_id = v_task_id;
+  if v_occ_count <> 2 then
+    raise exception 'FAIL: expected 2 occurrences (12:00 and 16:00), got %', v_occ_count;
+  end if;
+  raise notice 'PASS: generating occurrences creates one row per scheduled time';
+
+  -- ── Running it again does not duplicate today's occurrences ──
+  perform public.generate_task_occurrences();
+  select count(*) into v_occ_count from public.task_occurrences where task_id = v_task_id;
+  if v_occ_count <> 2 then
+    raise exception 'FAIL: re-running the generator should not create duplicate occurrences, got %', v_occ_count;
+  end if;
+  raise notice 'PASS: the generator is idempotent — re-running it creates no duplicates';
+
+  select id into v_occ_a from public.task_occurrences where task_id = v_task_id order by scheduled_for asc limit 1;
+  select id into v_occ_b from public.task_occurrences where task_id = v_task_id order by scheduled_for desc limit 1;
+
+  -- ── The occupant of a scheduled task cannot complete it without saying
+  -- which occurrence ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: completing a scheduled task with no occurrence should be rejected';
+  end if;
+  raise notice 'PASS: a scheduled task cannot be completed without naming an occurrence';
+
+  -- ── Backdate one occurrence so completing it proves the "late" path is
+  -- keyed on the occurrence's own time, not tasks.due (which is null here) ──
+  update public.task_occurrences set scheduled_for = now() - interval '1 hour' where id = v_occ_a;
+
+  -- ── A real completion links the occurrence and records lateness against
+  -- its own scheduled_for ──
+  v_completion_id := public.set_task_completion(
+    v_task_id, true, null, '{}', null, '[]'::jsonb, null, null, null, v_occ_a
+  );
+  select * into v_row from public.task_occurrences where id = v_occ_a;
+  if v_row.completion_id is distinct from v_completion_id then
+    raise exception 'FAIL: the occurrence should be linked to the new completion';
+  end if;
+  select * into v_completion from public.task_completions where id = v_completion_id;
+  if v_completion.was_late is distinct from true then
+    raise exception 'FAIL: completing a backdated occurrence should be recorded as late';
+  end if;
+  if v_completion.due_at is distinct from v_row.scheduled_for then
+    raise exception 'FAIL: due_at should snapshot the occurrence''s scheduled_for, not tasks.due';
+  end if;
+  raise notice 'PASS: completing an occurrence links it and records lateness against its own time';
+
+  -- ── The same occurrence cannot be completed twice ──
+  v_raised := false;
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}', null, '[]'::jsonb, null, null, null, v_occ_a);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an already-completed occurrence should not be completable again';
+  end if;
+  raise notice 'PASS: an occurrence cannot be completed twice';
+
+  -- ── The other, still-open occurrence for the same task is unaffected ──
+  select completion_id into v_row.completion_id from public.task_occurrences where id = v_occ_b;
+  if v_row.completion_id is not null then
+    raise exception 'FAIL: completing one occurrence should not touch a sibling occurrence';
+  end if;
+  raise notice 'PASS: completing one occurrence leaves its sibling untouched';
+
+  -- ── Occurrence visibility mirrors the task's: an unrelated employee on a
+  -- different team sees nothing ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_stranger_id)::text, true);
+  select count(*) into v_visible_count from public.task_occurrences where task_id = v_task_id;
+  if v_visible_count <> 0 then
+    raise exception 'FAIL: an unrelated employee must not see this task''s occurrences';
+  end if;
+  raise notice 'PASS: occurrence visibility follows the task — an unrelated employee sees none';
+
+  reset role;
+end $$;
+
 rollback;

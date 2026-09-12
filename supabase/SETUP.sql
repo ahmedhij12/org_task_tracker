@@ -10,6 +10,7 @@
 -- ── Clean slate ─────────────────────────────────────────────────────
 
 drop table if exists public.profile_teams cascade;
+drop table if exists public.task_occurrences cascade;
 drop table if exists public.points_adjustments cascade;
 drop table if exists public.checklist_section_photos cascade;
 drop table if exists public.checklist_answers cascade;
@@ -62,7 +63,9 @@ drop function if exists public.set_task_completion(uuid, boolean, text, text) ca
 drop function if exists public.set_task_completion(uuid, boolean, text, text[]) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid) cascade;
 drop function if exists public.adjust_completion_points(uuid, numeric, text) cascade;
+drop function if exists public.generate_task_occurrences() cascade;
 drop function if exists public.create_checklist_template(text, int, boolean, jsonb) cascade;
 drop function if exists public.create_checklist_template(text, boolean, jsonb) cascade;
 -- Checklists are no longer a separate assignable thing — a checklist is a
@@ -191,6 +194,13 @@ create table public.tasks (
   -- concept on purpose.
   template_id uuid references public.checklist_templates(id) on delete set null,
   cooldown_hours int,
+  -- Fixed clock times this task is due each day, e.g. '{12:00,16:00,22:00}'
+  -- for a 3x-daily oil check — entirely the admin's choice, no fixed pattern
+  -- assumed. Mutually exclusive with cooldown_hours: a task is either "due
+  -- again N hours after it was last done" or "due at these times every day,"
+  -- never both. See task_occurrences for how a time turns into something
+  -- someone can actually complete and get reminded about.
+  scheduled_times time[],
   -- Whether a leader/owner has to sign off before this counts as truly done.
   -- Driven by priority at creation time: low never needs review, high always
   -- does, medium is the creator's choice — enforced below, not just in the UI.
@@ -204,7 +214,8 @@ create table public.tasks (
   created_by uuid not null references public.profiles(id) on delete cascade,
   check (template_id is not null or cooldown_hours is null),
   check (priority <> 'low' or requires_review = false),
-  check (priority <> 'high' or requires_review = true)
+  check (priority <> 'high' or requires_review = true),
+  check (scheduled_times is null or cooldown_hours is null)
 );
 
 -- Append-only audit log. tasks holds only the CURRENT state, which is wiped
@@ -278,6 +289,29 @@ create table public.points_adjustments (
   created_at timestamptz not null default now()
 );
 
+-- One row per scheduled instance of a task with scheduled_times — the "16:00
+-- oil check for 2026-09-15" that someone can actually be reminded about and
+-- complete, as opposed to the bare '{12:00,16:00,22:00}' template on the task
+-- itself. Generated ahead of time by generate_task_occurrences() (run on a
+-- schedule — see that function), not computed on the fly, so a reminder job
+-- has concrete rows to scan and a completion has something concrete to point
+-- at. All times assume Asia/Baghdad (UTC+3, no DST) — the company operates
+-- from Iraq; revisit if that ever stops being true for every org here.
+create table public.task_occurrences (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  scheduled_for timestamptz not null,
+  -- Set once someone completes this exact occurrence. Left null forever if
+  -- it's missed outright — "missed" is derived (scheduled_for has passed and
+  -- this is still null), not a status stored here.
+  completion_id uuid references public.task_completions(id) on delete set null,
+  -- So the "your check is due soon" push fires once per occurrence, not once
+  -- per cron run between now and scheduled_for.
+  reminder_sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (task_id, scheduled_for)
+);
+
 create table public.checklist_answers (
   id uuid primary key default gen_random_uuid(),
   task_completion_id uuid not null references public.task_completions(id) on delete cascade,
@@ -313,6 +347,11 @@ create index task_completions_needs_review_idx
 -- the subject, not the auditor, is what a report groups by.
 create index task_completions_subject_idx on public.task_completions(subject_profile_id, created_at desc);
 create index points_adjustments_completion_idx on public.points_adjustments(task_completion_id, created_at);
+-- What the reminder job scans: every occurrence not yet completed, soonest
+-- first. Partial on completion_id is null so a job with millions of settled
+-- rows behind it still only ever touches the open ones.
+create index task_occurrences_due_idx on public.task_occurrences(scheduled_for) where completion_id is null;
+create index task_occurrences_task_idx on public.task_occurrences(task_id, scheduled_for);
 create index tasks_org_id_idx on public.tasks(org_id);
 create index tasks_assignee_id_idx on public.tasks(assignee_id);
 create index profiles_org_id_idx on public.profiles(org_id);
@@ -339,6 +378,7 @@ alter table public.checklist_template_items enable row level security;
 alter table public.checklist_answers enable row level security;
 alter table public.checklist_section_photos enable row level security;
 alter table public.points_adjustments enable row level security;
+alter table public.task_occurrences enable row level security;
 -- No policy on this one on purpose — only the SECURITY DEFINER function
 -- (running as owner) can touch it, never clients directly.
 alter table public.login_lookup_attempts enable row level security;
@@ -435,6 +475,21 @@ create policy "team members and the owner can read that team's tasks"
   using (
     org_id = public.my_org_id()
     and (public.my_role() = 'owner' or team_id = any(public.my_team_ids()))
+  );
+
+-- Same visibility as the task itself — an occurrence is just "this task, due
+-- at this specific time," never shown to anyone who couldn't already see the
+-- task. No direct insert/update policy: only generate_task_occurrences() and
+-- set_task_completion (both SECURITY DEFINER) ever write these rows.
+create policy "occurrences follow their task's visibility"
+  on public.task_occurrences for select
+  using (
+    exists (
+      select 1 from public.tasks t
+      where t.id = task_id
+        and t.org_id = public.my_org_id()
+        and (public.my_role() = 'owner' or t.team_id = any(public.my_team_ids()))
+    )
   );
 
 -- Work is handed down, never sideways or to yourself: an owner may assign to
@@ -1137,6 +1192,51 @@ begin
 end;
 $$;
 
+-- Materializes today's (and, once past 21:00 Baghdad time, tomorrow's —
+-- see the comment below) task_occurrences rows for every scheduled_times
+-- task, so there's always something concrete for a reminder job to scan and
+-- a completion to point at. Meant to run every few minutes via pg_cron; the
+-- unique(task_id, scheduled_for) constraint plus "on conflict do nothing"
+-- makes repeated runs a no-op, so the exact cadence isn't safety-critical.
+--
+-- Runs as owner (SECURITY DEFINER) because it has to see every org's tasks
+-- at once — there is no single caller whose RLS this could run under.
+create function public.generate_task_occurrences()
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  with due_days as (
+    -- Today always; tomorrow too once it's late enough in the day that a
+    -- midnight-crossing reminder window (a task due at 00:05, checked by a
+    -- job that runs every few minutes) needs tomorrow's row to already
+    -- exist. 21:00 gives a 3-hour margin before midnight, comfortably wider
+    -- than any reminder window this is ever paired with.
+    select (now() at time zone 'Asia/Baghdad')::date as d
+    union all
+    select (now() at time zone 'Asia/Baghdad')::date + 1
+    where extract(hour from (now() at time zone 'Asia/Baghdad')) >= 21
+  ),
+  wanted as (
+    select t.id as task_id, (dd.d + s.t) at time zone 'Asia/Baghdad' as scheduled_for
+    from public.tasks t
+    cross join due_days dd
+    cross join lateral unnest(t.scheduled_times) as s(t)
+    where t.scheduled_times is not null
+  )
+  insert into public.task_occurrences (task_id, scheduled_for)
+  select task_id, scheduled_for from wanted
+  on conflict (task_id, scheduled_for) do nothing;
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
 -- p_answers/p_section_photos only apply when the task is a checklist
 -- (template_id set) — null/empty otherwise, and ignored either way if the
 -- task has no template. p_answers shape:
@@ -1156,7 +1256,12 @@ create function public.set_task_completion(
   -- below for what's actually enforced.
   p_subject_profile_id uuid default null,
   p_shift text default null,
-  p_points numeric default null
+  p_points numeric default null,
+  -- Required when the task has scheduled_times: which specific occurrence
+  -- this submission is for. The UI always knows this already — it's showing
+  -- "your 16:00 check," not a bare task — so there is no ambiguous "closest
+  -- occurrence" guessing to get wrong here.
+  p_occurrence_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -1166,6 +1271,7 @@ as $$
 declare
   v_task public.tasks;
   v_template public.checklist_templates;
+  v_occurrence public.task_occurrences;
   v_my_profile_id uuid := auth.uid();
   v_my_teams uuid[];
   v_my_role text;
@@ -1197,6 +1303,22 @@ begin
      and v_task.assignee_id is distinct from v_my_profile_id
      and v_my_role = 'employee' then
     raise exception 'this task is not assigned to you';
+  end if;
+
+  -- A scheduled task can only ever be completed against a specific,
+  -- still-open occurrence of itself — reopening doesn't need one, since
+  -- clearing a stale completion isn't "doing" any particular time slot.
+  if v_task.scheduled_times is not null and p_completed then
+    if p_occurrence_id is null then
+      raise exception 'this task has fixed times — which one is this for?';
+    end if;
+    select * into v_occurrence from public.task_occurrences where id = p_occurrence_id;
+    if v_occurrence.id is null or v_occurrence.task_id is distinct from v_task.id then
+      raise exception 'occurrence not found for this task';
+    end if;
+    if v_occurrence.completion_id is not null then
+      raise exception 'this occurrence has already been completed';
+    end if;
   end if;
 
   -- An audit task always names a subject different from the actor, decided
@@ -1256,7 +1378,15 @@ begin
   end if;
 
   if p_completed then
-    v_was_late := v_task.due is not null and now() > v_task.due;
+    -- due_at/was_late always mean "against what deadline" — for a scheduled
+    -- task that's the occurrence's own time, not tasks.due (which a
+    -- scheduled_times task never sets; the two are mutually exclusive in
+    -- spirit even though the column itself allows it).
+    if v_occurrence.id is not null then
+      v_was_late := now() > v_occurrence.scheduled_for;
+    else
+      v_was_late := v_task.due is not null and now() > v_task.due;
+    end if;
   end if;
 
   update public.tasks
@@ -1281,13 +1411,17 @@ begin
     case when p_completed then 'completed' else 'reopened' end,
     case when p_completed then p_note else null end,
     case when p_completed then v_photos else '{}' end,
-    v_task.due,
+    coalesce(v_occurrence.scheduled_for, v_task.due),
     v_was_late,
     case when p_completed then v_yes else null end,
     case when p_completed then v_no else null end,
     v_subject_id, v_shift, v_points
   )
   returning id into v_completion_id;
+
+  if v_occurrence.id is not null then
+    update public.task_occurrences set completion_id = v_completion_id where id = v_occurrence.id;
+  end if;
 
   if p_completed and v_task.template_id is not null then
     for v_answer in select * from jsonb_array_elements(p_answers)
@@ -1567,8 +1701,10 @@ grant execute on function public.admin_set_user_active(uuid, boolean) to authent
 grant execute on function public.add_profile_to_team(uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
-grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric) to authenticated;
+grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid) to authenticated;
 grant execute on function public.adjust_completion_points(uuid, numeric, text) to authenticated;
+-- Not granted to authenticated: this runs on a schedule (pg_cron) as a
+-- superuser-ish role, never called by a client directly.
 grant execute on function public.create_checklist_template(text, boolean, jsonb) to authenticated;
 grant execute on function public.declare_task_off_duty(uuid, text) to authenticated;
 grant execute on function public.review_off_duty(uuid, boolean, text) to authenticated;
@@ -1624,6 +1760,20 @@ end $$;
 -- filter cannot match and the event is dropped — a task deleted on one device
 -- would linger on every other one until someone forced a refresh.
 alter table public.tasks replica identity full;
+
+-- No UI reads this table yet, but a future "your occurrences" screen will
+-- want live updates the same way tasks does — added proactively so that
+-- screen doesn't rediscover this same missing-publication trap later.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'task_occurrences'
+  ) then
+    alter publication supabase_realtime add table public.task_occurrences;
+  end if;
+end $$;
+alter table public.task_occurrences replica identity full;
 
 -- ── Storage bucket for proof photos ───────────────────────────────────
 
