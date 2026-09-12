@@ -38,7 +38,7 @@ export function useReports() {
       return;
     }
     setLoading(true);
-    const [{ data: periodRows }, { data: summaryRows }] = await Promise.all([
+    const [periodsRes, summaryRes] = await Promise.all([
       supabase
         .from('report_periods')
         .select('*')
@@ -46,8 +46,8 @@ export function useReports() {
         .order('period_month', { ascending: false }),
       supabase.rpc('get_current_branch_summary'),
     ]);
-    setPeriods((periodRows ?? []).map(mapPeriod));
-    setCurrentSummary((summaryRows ?? []).map(mapSummaryRow));
+    if (!periodsRes.error) setPeriods((periodsRes.data ?? []).map(mapPeriod));
+    if (!summaryRes.error) setCurrentSummary((summaryRes.data ?? []).map(mapSummaryRow));
     setLoading(false);
   }, [organization]);
 
