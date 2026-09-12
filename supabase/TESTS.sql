@@ -196,6 +196,89 @@ begin
   reset role;
 end $$;
 
+-- ── get_period_report attributes points to the SUBJECT's branch, not the
+-- completion's own team_id (the auditor and subject can be on different
+-- teams — this is the exact gotcha already documented on task_completions) ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_hq_team_id uuid;      -- the auditor's own team, where the audit TASK lives
+  v_branch_team_id uuid;  -- the subject's real branch
+  v_auditor_id uuid;
+  v_subject_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
+  v_period_id uuid;
+  v_period_month date;
+  v_points numeric;
+  v_branch_name text;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'period-report-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_hq_team_id
+  from public.create_organization('Period Report Co', 'Owner', 'periodreportowner');
+
+  insert into public.teams (org_id, name) values (v_org_id, 'Zubair Branch') returning id into v_branch_team_id;
+
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_auditor_id := public.admin_create_user('Hygiene Mgr', 'periodauditor', 'initial123', 'team_admin', v_hq_team_id);
+  v_subject_id := public.admin_create_user('Zubair Supervisor', 'periodsubject', 'initial123', 'employee', v_branch_team_id);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, is_audit, priority, requires_review)
+  values (v_org_id, v_hq_team_id, 'Zubair Hygiene Audit', v_auditor_id, v_auditor_id, true, 'medium', false)
+  returning id into v_task_id;
+
+  v_completion_id := public.set_task_completion(
+    v_task_id, true, 'good visit', '{}', null, '[]'::jsonb, v_subject_id, 'morning', -2
+  );
+
+  -- Backdate the org and the completion into a fully-elapsed month so it
+  -- can actually be closed and reported on. Neither organizations nor
+  -- task_completions has an UPDATE policy (both are SELECT-only under RLS),
+  -- so this must run with RLS bypassed (as the superuser role), not as
+  -- 'authenticated' — otherwise it silently updates zero rows.
+  reset role;
+  update public.organizations set created_at = '2026-06-10'::timestamptz where id = v_org_id;
+  update public.task_completions set created_at = '2026-06-15'::timestamptz where id = v_completion_id;
+  set role authenticated;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select period_id, period_month into v_period_id, v_period_month from public.close_next_month();
+  if v_period_month is distinct from '2026-06-01'::date then
+    raise exception 'FAIL: expected to close June 2026, got %', v_period_month;
+  end if;
+
+  select total_points, branch_name into v_points, v_branch_name
+  from public.get_period_report(v_period_id)
+  where subject_profile_id = v_subject_id;
+
+  if v_points is distinct from -2::numeric then
+    raise exception 'FAIL: expected -2 total points for the subject, got %', v_points;
+  end if;
+  if v_branch_name is distinct from 'Zubair Branch' then
+    raise exception 'FAIL: report must attribute points to the SUBJECT''s branch (Zubair), not the auditor''s team; got %', v_branch_name;
+  end if;
+  raise notice 'PASS: get_period_report attributes points via profile_teams on the subject, not task_completions.team_id';
+
+  reset role;
+end $$;
+
 -- ── admin_create_user: who may create whom, and does the account work ───
 
 do $$
