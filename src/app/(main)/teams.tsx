@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { Card, FieldInput, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
@@ -9,6 +10,7 @@ import { initials } from '@/lib/taskUtils';
 
 export default function TeamsScreen() {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { teams, members, tasks, createTeam } = useOrgData();
   const [creating, setCreating] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
@@ -24,7 +26,7 @@ export default function TeamsScreen() {
       setNewTeamName('');
       setCreating(false);
     } catch (e: any) {
-      setError(e?.message ?? 'Could not create team.');
+      setError(e?.message ?? t('teams.genericError'));
     } finally {
       setLoading(false);
     }
@@ -34,13 +36,13 @@ export default function TeamsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>Teams</Text>
+          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('teams.title')}</Text>
           <Pressable
             onPress={() => setCreating(true)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.indigo, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
           >
             <Ionicons name="add" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Team</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('teams.addTeam')}</Text>
           </Pressable>
         </View>
 
@@ -53,10 +55,10 @@ export default function TeamsScreen() {
             <Card key={team.id} style={{ marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>{team.name}</Text>
-                <Text style={{ fontSize: 12, color: c.textMuted }}>{pending} pending</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted }}>{t('teams.pendingCount', { count: pending })}</Text>
               </View>
               <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-                {admin ? `Admin: ${admin.name}` : 'No team admin assigned yet'}
+                {admin ? t('teams.adminLabel', { name: admin.name }) : t('teams.noAdminAssigned')}
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                 {teamMembers.map((m) => (
@@ -76,10 +78,10 @@ export default function TeamsScreen() {
                       <Text style={{ fontSize: 8, fontWeight: '700', color: '#fff' }}>{initials(m.name)}</Text>
                     </View>
                     <Text style={{ fontSize: 11, color: c.text }}>{m.name}</Text>
-                    {m.role === 'team_admin' ? <Text style={{ fontSize: 9, color: c.indigo, fontWeight: '700' }}>ADMIN</Text> : null}
+                    {m.role === 'team_admin' ? <Text style={{ fontSize: 9, color: c.indigo, fontWeight: '700' }}>{t('teams.memberBadgeAdmin')}</Text> : null}
                   </View>
                 ))}
-                {teamMembers.length === 0 ? <Text style={{ fontSize: 12, color: c.textFaint }}>No members yet</Text> : null}
+                {teamMembers.length === 0 ? <Text style={{ fontSize: 12, color: c.textFaint }}>{t('teams.noMembersYet')}</Text> : null}
               </View>
             </Card>
           );
@@ -90,17 +92,17 @@ export default function TeamsScreen() {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 }}>
-            <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 16 }}>New team</Text>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 16 }}>{t('teams.newTeamTitle')}</Text>
             {error ? <ErrorBanner message={error} /> : null}
-            <FieldInput label="Team name" placeholder="e.g. Branch 2 - Downtown" value={newTeamName} onChangeText={setNewTeamName} />
+            <FieldInput label={t('teams.teamNameLabel')} placeholder={t('teams.teamNamePlaceholder')} value={newTeamName} onChangeText={setNewTeamName} />
 
             <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
-              After you create the team, add its leader from the People tab.
+              {t('teams.addLeaderHint')}
             </Text>
 
-            <PrimaryButton title="Create team" onPress={handleCreate} loading={loading} disabled={!newTeamName.trim()} />
+            <PrimaryButton title={t('teams.createTeam')} onPress={handleCreate} loading={loading} disabled={!newTeamName.trim()} />
             <View style={{ height: 10 }} />
-            <SecondaryButton title="Cancel" onPress={() => setCreating(false)} />
+            <SecondaryButton title={t('common.cancel')} onPress={() => setCreating(false)} />
           </View>
           </KeyboardAvoidingView>
         </View>
