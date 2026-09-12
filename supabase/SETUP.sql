@@ -1372,6 +1372,55 @@ grant execute on function public.review_task_completion(uuid, text) to authentic
 -- assert_can_manage_user is deliberately NOT granted: it is an internal
 -- helper called only from the other SECURITY DEFINER functions.
 
+-- ── Table privileges ─────────────────────────────────────────────────
+-- Postgres checks table privileges BEFORE row-level security, so without
+-- these every RLS policy above is unreachable and each read fails with
+-- 42501 "permission denied for table ..." no matter how correct the policy.
+--
+-- This used to be invisible: older Supabase projects bootstrapped with
+-- GRANT ALL ON ALL TABLES to the Data API roles, so the script inherited
+-- privileges it never asked for. Newer projects have "Automatically expose
+-- new tables" off at creation, which grants nothing — the tables this script
+-- creates then land with only REFERENCES/TRIGGER/TRUNCATE, sign-up writes
+-- fine through the SECURITY DEFINER RPCs, and the app is left unable to read
+-- back the row it just created. Diagnosed 2026-09-12 on a fresh project.
+--
+-- anon deliberately gets no DML: nothing before sign-in touches a table
+-- directly, only get_login_email(), which is SECURITY DEFINER and granted
+-- above.
+grant usage on schema public to anon, authenticated, service_role;
+
+grant select, insert, update, delete on all tables in schema public to authenticated, service_role;
+grant usage, select on all sequences in schema public to authenticated, service_role;
+
+-- So a table added after this script runs cannot silently repeat the outage.
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated, service_role;
+alter default privileges in schema public
+  grant usage, select on sequences to authenticated, service_role;
+
+-- ── Realtime ─────────────────────────────────────────────────────────
+-- OrgDataProvider subscribes to postgres_changes on public.tasks, filtered by
+-- org_id. A table only emits changes if it belongs to the supabase_realtime
+-- publication, and a fresh project's publication is empty — so without this
+-- the subscription connects, reports success, and then never fires once:
+-- tasks quietly stop live-updating across devices with no error anywhere.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'tasks'
+  ) then
+    alter publication supabase_realtime add table public.tasks;
+  end if;
+end $$;
+
+-- That subscription filters on org_id, which is not the primary key. Under the
+-- default replica identity a DELETE writes only the PK to the WAL, so the
+-- filter cannot match and the event is dropped — a task deleted on one device
+-- would linger on every other one until someone forced a refresh.
+alter table public.tasks replica identity full;
+
 -- ── Storage bucket for proof photos ───────────────────────────────────
 
 insert into storage.buckets (id, name, public) values ('task-proofs', 'task-proofs', true)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -22,10 +22,16 @@ export default function VerifyCodeScreen() {
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
 
   // A reload drops the in-memory sign-up, so there is nothing left to verify.
-  // Success also clears it, and that case must NOT bounce back to the start —
-  // the root layout's guard is already swapping to (main)/(personal).
+  // verifySignUpCode clears pendingSignUp partway through itself — before
+  // refreshProfile() has finished loading the new session — so there is a
+  // real gap where pendingSignUp is already null but the local `succeeded`
+  // state (set only once the whole call resolves) has not caught up yet.
+  // Without this ref, that gap fires this effect and bounces a successful
+  // sign-up straight back to the start screen. The ref is set synchronously
+  // the instant verification begins, closing the gap.
+  const verifyingRef = useRef(false);
   useEffect(() => {
-    if (!pendingSignUp && !succeeded) router.replace('/(auth)');
+    if (!pendingSignUp && !succeeded && !verifyingRef.current) router.replace('/(auth)');
   }, [pendingSignUp, succeeded]);
 
   useEffect(() => {
@@ -44,11 +50,13 @@ export default function VerifyCodeScreen() {
     setLoading(true);
     setError(null);
     setNotice(null);
+    verifyingRef.current = true;
     try {
       await verifySignUpCode(value);
       setSucceeded(true);
       // The root layout's Stack.Protected guard takes over once the profile loads.
     } catch (e: any) {
+      verifyingRef.current = false;
       setErrored(true);
       setCode('');
       setError(e?.message ?? 'That code did not work. Please try again.');
