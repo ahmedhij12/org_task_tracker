@@ -17,7 +17,11 @@
 - A branch's points must be attributed via `profile_teams` on the completion's `subject_profile_id` — **never** `task_completions.team_id`, which is the task's own team and can differ from the audited person's branch (see the auditor/subject model — already the source of a real, documented gotcha in this codebase).
 - Nothing is snapshotted. `get_period_report` and `get_current_branch_summary` always compute from `task_completions` at read time, keyed only by a date range.
 - `report_periods.period_month` is always the 1st of a calendar month (a `date`), never an arbitrary range.
-- Verification for every SQL task is: run `supabase/SETUP.sql` then `supabase/TESTS.sql` against the **live** Supabase project (connection string in `~/Projects/rungs/secrets.txt`, gitignored — read it yourself, never paste its contents into chat or a commit) via `psql "<connection string>" -f supabase/SETUP.sql` then `-f supabase/TESTS.sql`, and confirm every `PASS:` notice appears with no `ERROR`. This project has no JS test framework — deliberate; SQL correctness is proven live, not assumed.
+- **`supabase/SETUP.sql` is never executed against the live project during this plan.** It is a full drop-and-rebuild of every table in the schema — running it live would destroy the real organization's real data (staff, tasks, audit history). It still gets edited in git (Tasks 1-4) so a future fresh environment builds correctly, but the file itself is not run live.
+- Live verification for every SQL task instead applies **only the new objects being added in that task** — the exact `create table`/`create function`/`create policy`/`grant` snippet the task adds to `SETUP.sql`, nothing else — directly against the live project via `psql "<connection string>" -c "<snippet>"` or `-f` on a small scratch `.sql` file holding just that snippet. These are all brand-new objects (a new table, new functions); nothing existing is touched, so this is additive and safe regardless of what real data is currently in the database.
+- Then run `supabase/TESTS.sql` (the **whole file**, not a fragment) against the live project via `psql "<connection string>" -f supabase/TESTS.sql`. This is safe to run live as-is and always has been: the entire file is one `begin; ... rollback;` transaction — every test org/user it creates (e.g. `close-month-owner.test@example.com`) is rolled back automatically at the end, so nothing it creates or touches persists, and it never reads or modifies the real organization's data (each test creates and scopes to its own fresh org). Confirm every `PASS:` notice appears, including all pre-existing ones (no regressions), with no `ERROR`, ending in a clean rollback.
+- Connection string lives in `~/Projects/rungs/secrets.txt` (gitignored) — read it yourself, never paste its contents into chat, a commit, or a report file.
+- This project has no JS test framework — deliberate; SQL correctness is proven live, not assumed.
 - Verification for every TS/UI task additionally includes `npx tsc --noEmit` with zero errors.
 - Labels: "Owner" badge → "Admin"; "Teams" tab → "Branches"; "People" tab → "Staff". All three are copy/i18n-value changes only — no schema or route renames.
 
@@ -123,13 +127,40 @@ create policy "report periods are visible only to the org owner"
   using (org_id = public.my_org_id() and public.my_role() = 'owner');
 ```
 
-No explicit grant line is needed — `report_periods` is created before the script's blanket `grant select, insert, update, delete on all tables in schema public to authenticated, service_role;` (around line 1940), which already covers it.
+In `SETUP.sql` itself no explicit grant line is needed — on a full rebuild, `report_periods` is created before the script's blanket `grant select, insert, update, delete on all tables in schema public to authenticated, service_role;` (around line 1940), which already covers it. **Applying this table to the already-running live project is different**: that blanket grant already ran once, in the past, and only covers tables that existed at that time (or future tables, if `alter default privileges` for the creating role covers it — don't rely on that holding here). So the live-apply step below adds one explicit grant that has no equivalent line in `SETUP.sql` — it's only needed because we're adding this table to an already-live database instead of rebuilding from scratch.
 
-- [ ] **Step 4: Run SETUP.sql then TESTS.sql against the live project**
+- [ ] **Step 4: Apply the new table live, then verify with TESTS.sql**
 
-Run: `psql "<connection string>" -f supabase/SETUP.sql`
-Run: `psql "<connection string>" -f supabase/TESTS.sql`
-Expected: `PASS: report_periods has period_month` appears, no `ERROR`, and the script ends with `ROLLBACK` (every prior assertion still passes too — confirms no regression).
+Do **not** run `supabase/SETUP.sql` against the live project — see this task's Global Constraints note; it would drop and rebuild every table, destroying real data.
+
+Instead, write the table + RLS + policy snippet from Step 3 above, **plus one extra explicit grant**, to a scratch file (e.g. `/tmp/task1-live.sql`):
+
+```sql
+create table public.report_periods (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  period_month date not null,
+  closed_at timestamptz not null default now(),
+  closed_by uuid not null references public.profiles(id) on delete cascade,
+  unique (org_id, period_month)
+);
+
+create index report_periods_org_idx on public.report_periods(org_id, period_month desc);
+
+alter table public.report_periods enable row level security;
+
+create policy "report periods are visible only to the org owner"
+  on public.report_periods for select
+  using (org_id = public.my_org_id() and public.my_role() = 'owner');
+
+grant select, insert, update, delete on public.report_periods to authenticated, service_role;
+```
+
+Run: `psql "<connection string from secrets.txt>" -f /tmp/task1-live.sql`
+Expected: no errors (this only creates a new table — nothing existing is touched).
+
+Then run: `psql "<connection string>" -f supabase/TESTS.sql`
+Expected: `PASS: report_periods has period_month` appears, no `ERROR`, and the script ends with a clean `ROLLBACK` (every prior assertion still passes too — confirms no regression). Delete the scratch file when done.
 
 - [ ] **Step 5: Commit**
 
@@ -300,11 +331,15 @@ Near the other `grant execute` lines (around line 1911):
 grant execute on function public.close_next_month() to authenticated;
 ```
 
-- [ ] **Step 4: Run SETUP.sql then TESTS.sql against the live project**
+- [ ] **Step 4: Apply the new function live, then verify with TESTS.sql**
 
-Run: `psql "<connection string>" -f supabase/SETUP.sql`
-Run: `psql "<connection string>" -f supabase/TESTS.sql`
-Expected: all 4 new `PASS:` notices for this block, no `ERROR`, full rollback.
+Do **not** run `supabase/SETUP.sql` against the live project (see Global Constraints — it wipes real data). Instead write the `drop function if exists ... cascade;` + `create function public.close_next_month()...` + `grant execute ...` snippet from Step 3 to a scratch file (e.g. `/tmp/task2-live.sql`) and run it:
+
+Run: `psql "<connection string from secrets.txt>" -f /tmp/task2-live.sql`
+Expected: no errors (the `drop function if exists` is a no-op since it doesn't exist yet; this only adds a new function).
+
+Then run: `psql "<connection string>" -f supabase/TESTS.sql`
+Expected: all 4 new `PASS:` notices for this block, no `ERROR`, full rollback (nothing persists — this is the "create a test account, verify, then it's gone" flow, automatic via the transaction). Delete the scratch file when done.
 
 - [ ] **Step 5: Commit**
 
@@ -491,11 +526,15 @@ Grant:
 grant execute on function public.get_period_report(uuid) to authenticated;
 ```
 
-- [ ] **Step 4: Run SETUP.sql then TESTS.sql against the live project**
+- [ ] **Step 4: Apply the new function live, then verify with TESTS.sql**
 
-Run: `psql "<connection string>" -f supabase/SETUP.sql`
-Run: `psql "<connection string>" -f supabase/TESTS.sql`
-Expected: `PASS: get_period_report attributes points via profile_teams on the subject, not task_completions.team_id`, no `ERROR`.
+Do **not** run `supabase/SETUP.sql` against the live project (see Global Constraints). Write the `drop function if exists ... cascade;` + `create function public.get_period_report(...)...` + `grant execute ...` snippet from Step 3 to a scratch file (e.g. `/tmp/task3-live.sql`) and run it:
+
+Run: `psql "<connection string from secrets.txt>" -f /tmp/task3-live.sql`
+Expected: no errors.
+
+Then run: `psql "<connection string>" -f supabase/TESTS.sql`
+Expected: `PASS: get_period_report attributes points via profile_teams on the subject, not task_completions.team_id`, no `ERROR`, clean rollback. Delete the scratch file when done.
 
 - [ ] **Step 5: Commit**
 
@@ -669,11 +708,15 @@ Grant:
 grant execute on function public.get_current_branch_summary() to authenticated;
 ```
 
-- [ ] **Step 4: Run SETUP.sql then TESTS.sql against the live project**
+- [ ] **Step 4: Apply the new function live, then verify with TESTS.sql**
 
-Run: `psql "<connection string>" -f supabase/SETUP.sql`
-Run: `psql "<connection string>" -f supabase/TESTS.sql`
-Expected: `PASS: get_current_branch_summary includes only the current month, attributed to the subject's branch`, no `ERROR`, full rollback. This is the last schema task — confirm the whole file still ends in a clean rollback with every prior `PASS:` intact (no regressions across the 4 schema tasks).
+Do **not** run `supabase/SETUP.sql` against the live project (see Global Constraints). Write the `drop function if exists ... cascade;` + `create function public.get_current_branch_summary()...` + `grant execute ...` snippet from Step 3 to a scratch file (e.g. `/tmp/task4-live.sql`) and run it:
+
+Run: `psql "<connection string from secrets.txt>" -f /tmp/task4-live.sql`
+Expected: no errors.
+
+Then run: `psql "<connection string>" -f supabase/TESTS.sql`
+Expected: `PASS: get_current_branch_summary includes only the current month, attributed to the subject's branch`, no `ERROR`, full rollback. This is the last schema task — confirm the whole file still ends in a clean rollback with every prior `PASS:` intact (no regressions across all 4 schema tasks' test blocks). Delete the scratch file when done.
 
 - [ ] **Step 5: Commit**
 
@@ -1407,9 +1450,9 @@ Add, right after the `teams` `Tabs.Screen` block:
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 5: Live QA — the screen itself**
+- [ ] **Step 5: Live QA — do not run this against the real organization**
 
-Run the app (`npm run web` or the existing `npm run watch` dev flow), sign in as an owner with at least one closed month (create one via SQL if needed — Task 4's live QA already produced one in the test org, or close a month manually against a real dev org). Confirm: the Report tab is visible for the owner and hidden for a team_admin/employee; the month switcher lists closed periods; selecting one loads its rows; totals at the bottom sum correctly.
+Do not sign in as the real owner account and do not call `close_next_month()` for real — that would create a real, hard-to-undo closed-month row in production data, and the user (who owns that account) asked to keep it untouched for this plan. Instead run the app (`npm run web` or `npm run watch`) against a disposable test org created through the normal signup flow (own email alias, own throwaway org), close a month there, and confirm: the Report tab is visible for the owner and hidden for a team_admin/employee; the month switcher lists closed periods; selecting one loads its rows; totals at the bottom sum correctly. Note in the report that this still needs a final pass by the user on their own account before they consider it done.
 
 - [ ] **Step 6: Commit**
 
@@ -1513,9 +1556,9 @@ to:
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 6: Live QA — export**
+- [ ] **Step 6: Flag for the user's own device QA — do not attempt this step**
 
-On a real device (camera-only/native-module features in this project have historically only been verifiable on-device, not web — same applies to the native share sheet), open the Report tab, select a closed month, tap Export, confirm the OS share sheet opens with a `report-YYYY-MM-01.xlsx` file, and that sharing it to WhatsApp/email/Files produces a file that actually opens as a spreadsheet with the right columns and values.
+The native OS share sheet only exists on a real device, not in the subagent's environment, and it involves the user's own physical iPhone and real accounts (WhatsApp/email) — not something to automate here. Mark this step as deferred in the report: "Needs the user to verify on their own device: open Report tab, select a closed month, tap Export, confirm the share sheet opens and the shared `.xlsx` file opens correctly with the right columns/values."
 
 - [ ] **Step 7: Commit**
 
