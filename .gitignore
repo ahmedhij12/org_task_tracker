@@ -44,3 +44,6 @@ secrets.txt
 
 # Local shared-testing session artifacts (scripts/dev/watch.js)
 .dev-session/
+
+# Supabase CLI local state
+supabase/.temp/

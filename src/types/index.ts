@@ -194,14 +194,3 @@ export function isChecklistDue(
   const readyAt = new Date(lastCompletion.createdAt).getTime() + task.cooldownHours * 60 * 60 * 1000;
   return now.getTime() >= readyAt;
 }
-
-export interface PersonalTask {
-  id: string;
-  ownerId: string;
-  title: string;
-  notes: string | null;
-  due: string | null; // ISO string
-  completed: boolean;
-  completedAt: string | null;
-  createdAt: string;
-}

@@ -23,30 +23,27 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { session, profile, loading, isPersonalAccount } = useAuth();
+  const { session, profile, loading } = useAuth();
   const { isDark } = useThemePref();
 
   if (loading) return null;
 
-  const signedInWithOrg = !!session && !!profile;
+  const signedIn = !!session && !!profile;
   // An admin-created account (or one whose password an admin just reset)
   // cannot reach the app until it picks its own password.
-  const needsPasswordChange = signedInWithOrg && !!profile?.mustChangePassword;
+  const needsPasswordChange = signedIn && !!profile?.mustChangePassword;
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={!signedInWithOrg && !isPersonalAccount}>
+        <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
         <Stack.Protected guard={needsPasswordChange}>
           <Stack.Screen name="change-password" />
         </Stack.Protected>
-        <Stack.Protected guard={signedInWithOrg && !needsPasswordChange}>
+        <Stack.Protected guard={signedIn && !needsPasswordChange}>
           <Stack.Screen name="(main)" />
-        </Stack.Protected>
-        <Stack.Protected guard={isPersonalAccount}>
-          <Stack.Screen name="(personal)" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

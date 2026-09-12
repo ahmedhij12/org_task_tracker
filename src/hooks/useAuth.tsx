@@ -14,9 +14,6 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  /** True for a signed-in session that deliberately has no organization —
-   *  see docs/superpowers/specs/2026-08-24-personal-mode-design.md. */
-  isPersonalAccount: boolean;
   /** A sign-up that has been started and is waiting on its emailed code. */
   pendingSignUp: PendingSignUp | null;
   /** Step 1 of org sign-up: creates the auth user and emails a confirmation
@@ -49,13 +46,10 @@ interface AuthContextValue extends AuthState {
   changeOwnPassword: (newPassword: string) => Promise<void>;
   addRecoveryEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
-  /** Step 1 of personal sign-up. Same emailed-code second step as an org. */
-  startPersonalSignUp: (email: string, password: string) => Promise<void>;
-  /** Step 2 for both kinds: exchanges the emailed code for a session. */
+  /** Exchanges the emailed code for a session, then creates the organization. */
   verifySignUpCode: (code: string) => Promise<void>;
   resendSignUpCode: () => Promise<void>;
   cancelSignUp: () => void;
-  signInPersonal: (email: string, password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
 }
@@ -63,9 +57,13 @@ interface AuthContextValue extends AuthState {
 /** Everything needed to finish a sign-up once its emailed code arrives.
  *  Held in memory only: navigating between auth screens keeps it, a full
  *  page reload deliberately starts over rather than resurrecting a form. */
-export type PendingSignUp =
-  | { kind: 'organization'; email: string; password: string; orgName: string; ownerName: string; username: string }
-  | { kind: 'personal'; email: string; password: string };
+export interface PendingSignUp {
+  email: string;
+  password: string;
+  orgName: string;
+  ownerName: string;
+  username: string;
+}
 
 /** Digits in the emailed code. Must match the project's Auth OTP length
  *  (Supabase allows 6-10; the dashboard setting and this constant have to
@@ -200,20 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
     if (error) throw error;
     assertCodeWasSent(data.user);
-    setPendingSignUp({ kind: 'organization', email: normalizedEmail, password, orgName, ownerName, username });
-  };
-
-  const startPersonalSignUp: AuthContextValue['startPersonalSignUp'] = async (email, password) => {
-    setState((s) => ({ ...s, error: null }));
-    const normalizedEmail = email.trim().toLowerCase();
-    const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: { data: { account_kind: 'personal' } },
-    });
-    if (error) throw error;
-    assertCodeWasSent(data.user);
-    setPendingSignUp({ kind: 'personal', email: normalizedEmail, password });
+    setPendingSignUp({ email: normalizedEmail, password, orgName, ownerName, username });
   };
 
   const verifySignUpCode: AuthContextValue['verifySignUpCode'] = async (code) => {
@@ -242,14 +227,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Only now is there a session for create_organization's auth.uid() to use.
-    if (pendingSignUp.kind === 'organization') {
-      const { error: rpcError } = await supabase.rpc('create_organization', {
-        p_org_name: pendingSignUp.orgName,
-        p_owner_name: pendingSignUp.ownerName,
-        p_username: pendingSignUp.username,
-      });
-      if (rpcError) throw rpcError;
-    }
+    const { error: rpcError } = await supabase.rpc('create_organization', {
+      p_org_name: pendingSignUp.orgName,
+      p_owner_name: pendingSignUp.ownerName,
+      p_username: pendingSignUp.username,
+    });
+    if (rpcError) throw rpcError;
 
     setPendingSignUp(null);
     await refreshProfile();
@@ -262,12 +245,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelSignUp: AuthContextValue['cancelSignUp'] = () => setPendingSignUp(null);
-
-  const signInPersonal: AuthContextValue['signInPersonal'] = async (email, password) => {
-    setState((s) => ({ ...s, error: null }));
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) throw error;
-  };
 
   const adminCreateUser: AuthContextValue['adminCreateUser'] = async ({
     name,
@@ -361,20 +338,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
-  const isPersonalAccount = !!state.session && !state.profile && state.session.user.user_metadata?.account_kind === 'personal';
-
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
-      isPersonalAccount,
       pendingSignUp,
       startOrganizationSignUp,
-      startPersonalSignUp,
       verifySignUpCode,
       resendSignUpCode,
       cancelSignUp,
       signInWithUsername,
-      signInPersonal,
       adminCreateUser,
       adminResetPassword,
       adminSetUserActive,
@@ -386,7 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshProfile,
       clearError,
     }),
-    [state, isPersonalAccount, pendingSignUp]
+    [state, pendingSignUp]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

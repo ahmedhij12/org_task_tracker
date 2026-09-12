@@ -30,10 +30,10 @@ if (Platform.OS === 'android') {
 
 /**
  * Requests notification permission and registers this device's Expo push
- * token, so the personal-reminders Edge Function (see
- * supabase/functions/send-personal-reminders) has somewhere to send to.
- * Silently does nothing on a simulator (no push capability) or if the user
- * denies permission — reminders just won't fire, nothing else breaks.
+ * token in `push_tokens`, so any server-side notifier (task reminders, a
+ * completion alert to a reviewer) has somewhere to send to. Silently does
+ * nothing on a simulator (no push capability) or if the user denies
+ * permission — reminders just won't fire, nothing else breaks.
  */
 export function usePushRegistration() {
   const { session } = useAuth();

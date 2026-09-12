@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { OrgDataProvider } from '@/hooks/useOrgData';
 import { ChecklistDataProvider } from '@/hooks/useChecklists';
 import { useThemeColors } from '@/components/ui';
@@ -10,6 +11,7 @@ export default function MainLayout() {
   const c = useThemeColors();
   const isOwner = profile?.role === 'owner';
   const isEmployee = profile?.role === 'employee';
+  usePushRegistration();
 
   return (
     <OrgDataProvider>
