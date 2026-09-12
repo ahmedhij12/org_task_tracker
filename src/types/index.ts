@@ -194,3 +194,23 @@ export function isChecklistDue(
   const readyAt = new Date(lastCompletion.createdAt).getTime() + task.cooldownHours * 60 * 60 * 1000;
   return now.getTime() >= readyAt;
 }
+
+export interface ReportPeriod {
+  id: string;
+  orgId: string;
+  /** Always the 1st of the month, e.g. '2026-08-01'. */
+  periodMonth: string;
+  closedAt: string;
+  closedBy: string;
+}
+
+/** One row per (subject, branch) — the shared shape returned by both
+ * get_period_report and get_current_branch_summary. */
+export interface BranchSummaryRow {
+  branchId: string;
+  branchName: string;
+  subjectProfileId: string;
+  subjectName: string;
+  totalPoints: number;
+  iqdAmount: number;
+}
