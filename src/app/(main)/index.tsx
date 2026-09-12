@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useThemeColors } from '@/components/ui';
@@ -22,6 +23,7 @@ export default function MainIndex() {
 
 function AdminDashboard() {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { profile, organization } = useAuth();
   const { tasks, teams, members, history, loading, refresh, setTaskCompletion } = useOrgData();
   const isOwner = profile?.role === 'owner';
@@ -74,7 +76,9 @@ function AdminDashboard() {
             <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
               <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{isOwner ? 'OWNER' : 'TEAM ADMIN'}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>
+                  {isOwner ? t('dashboard.ownerBadge') : t('dashboard.teamAdminBadge')}
+                </Text>
               </View>
               {isOwner ? (
                 <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -87,22 +91,22 @@ function AdminDashboard() {
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          <StatChip label="pending" value={pending} color={c.indigo} bg={c.indigoSoft} />
-          {overdueCount > 0 ? <StatChip label="overdue" value={overdueCount} color={c.rose} bg={c.roseSoft} /> : null}
-          <StatChip label="done" value={doneCount} color={c.emerald} bg={c.emeraldSoft} />
+          <StatChip label={t('dashboard.statPending')} value={pending} color={c.indigo} bg={c.indigoSoft} />
+          {overdueCount > 0 ? <StatChip label={t('dashboard.statOverdue')} value={overdueCount} color={c.rose} bg={c.roseSoft} /> : null}
+          <StatChip label={t('dashboard.statDone')} value={doneCount} color={c.emerald} bg={c.emeraldSoft} />
         </View>
 
         {isOwner && teams.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }} contentContainerStyle={{ gap: 8 }}>
-            <TeamChip label="All teams" active={selectedTeamId === 'all'} onPress={() => setSelectedTeamId('all')} />
-            {teams.map((t) => (
-              <TeamChip key={t.id} label={t.name} active={selectedTeamId === t.id} onPress={() => setSelectedTeamId(t.id)} />
+            <TeamChip label={t('dashboard.allTeams')} active={selectedTeamId === 'all'} onPress={() => setSelectedTeamId('all')} />
+            {teams.map((tm) => (
+              <TeamChip key={tm.id} label={tm.name} active={selectedTeamId === tm.id} onPress={() => setSelectedTeamId(tm.id)} />
             ))}
           </ScrollView>
         ) : null}
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
-          Task feed
+          {t('dashboard.taskFeed')}
         </Text>
 
         {(() => {
@@ -116,7 +120,7 @@ function AdminDashboard() {
             return !latestCompletionForTask(t.id, history)?.reviewedBy;
           });
           return openTasks.length === 0 ? (
-            <EmptyState text="No open tasks. Tap + to create one." />
+            <EmptyState text={t('dashboard.noOpenTasks')} />
           ) : (
             openTasks
               .slice()
@@ -156,7 +160,7 @@ function AdminDashboard() {
       <Pressable
         onPress={() => router.push('/(main)/create-task')}
         accessibilityRole="button"
-        accessibilityLabel="Add task"
+        accessibilityLabel={t('dashboard.addTask')}
         style={{
           position: 'absolute',
           right: 20,
@@ -182,6 +186,7 @@ function AdminDashboard() {
 
 function EmployeeHome() {
   const c = useThemeColors();
+  const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
   const { tasks, members, history, loading, refresh, setTaskCompletion } = useOrgData();
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
@@ -213,33 +218,33 @@ function EmployeeHome() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
       >
         <Text style={{ fontSize: 13, color: c.textFaint }}>
-          {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          {new Date().toLocaleDateString(i18n.language, { weekday: 'long', month: 'long', day: 'numeric' })}
         </Text>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginTop: 2 }}>My Tasks</Text>
+        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginTop: 2 }}>{t('dashboard.myTasksTitle')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{organization?.name}</Text>
 
         {myTasks.length === 0 ? (
-          <EmptyState text="Nothing assigned yet. When your admin assigns a task, it'll show up here." />
+          <EmptyState text={t('dashboard.nothingAssigned')} />
         ) : (
           <View style={{ marginTop: 16 }}>
-            <Section title="Overdue" count={overdue.length} iconColor={c.rose}>
-              {overdue.map((t) => (
-                <TaskRow key={t.id} task={t} members={members} showAssignee={t.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(t)} />
+            <Section title={t('dashboard.sectionOverdue')} count={overdue.length} iconColor={c.rose}>
+              {overdue.map((task) => (
+                <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
             </Section>
-            <Section title="Today" count={today.length} iconColor={c.indigo}>
-              {today.map((t) => (
-                <TaskRow key={t.id} task={t} members={members} showAssignee={t.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(t)} />
+            <Section title={t('dashboard.sectionToday')} count={today.length} iconColor={c.indigo}>
+              {today.map((task) => (
+                <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
             </Section>
-            <Section title="Upcoming" count={upcoming.length} iconColor={c.sky} defaultOpen={false}>
-              {upcoming.map((t) => (
-                <TaskRow key={t.id} task={t} members={members} showAssignee={t.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(t)} />
+            <Section title={t('dashboard.sectionUpcoming')} count={upcoming.length} iconColor={c.sky} defaultOpen={false}>
+              {upcoming.map((task) => (
+                <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
             </Section>
-            <Section title="Completed" count={completed.length} iconColor={c.emerald} defaultOpen={false}>
-              {completed.map((t) => (
-                <TaskRow key={t.id} task={t} members={members} showAssignee={t.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(t)} />
+            <Section title={t('dashboard.sectionCompleted')} count={completed.length} iconColor={c.emerald} defaultOpen={false}>
+              {completed.map((task) => (
+                <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
             </Section>
           </View>
