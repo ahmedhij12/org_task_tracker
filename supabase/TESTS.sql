@@ -104,6 +104,21 @@ begin
 end;
 $$;
 
+-- ── Schema: report_periods exists with the right shape ───────────────────
+do $$
+declare
+  v_has_col boolean;
+begin
+  select exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'report_periods' and column_name = 'period_month'
+  ) into v_has_col;
+  if not v_has_col then
+    raise exception 'FAIL: report_periods.period_month is missing';
+  end if;
+  raise notice 'PASS: report_periods has period_month';
+end $$;
+
 -- ── admin_create_user: who may create whom, and does the account work ───
 
 do $$

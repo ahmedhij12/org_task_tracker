@@ -12,6 +12,7 @@
 drop table if exists public.profile_teams cascade;
 drop table if exists public.task_occurrences cascade;
 drop table if exists public.points_adjustments cascade;
+drop table if exists public.report_periods cascade;
 drop table if exists public.checklist_section_photos cascade;
 drop table if exists public.checklist_answers cascade;
 drop table if exists public.checklist_submissions cascade;
@@ -108,6 +109,23 @@ create table public.teams (
   name text not null,
   created_at timestamptz not null default now()
 );
+
+-- ── Monthly branch reporting ────────────────────────────────────────────
+-- One row per calendar month an owner has closed. Nothing is snapshotted —
+-- every report, past or current, is computed live from task_completions at
+-- read time (see get_period_report / get_current_branch_summary below), so
+-- a correction made after a month is closed still shows up correctly. Same
+-- append-only philosophy as points_adjustments.
+create table public.report_periods (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  period_month date not null, -- always the 1st of the month, e.g. 2026-08-01
+  closed_at timestamptz not null default now(),
+  closed_by uuid not null references public.profiles(id) on delete cascade,
+  unique (org_id, period_month)
+);
+
+create index report_periods_org_idx on public.report_periods(org_id, period_month desc);
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -442,6 +460,7 @@ alter table public.checklist_template_items enable row level security;
 alter table public.checklist_answers enable row level security;
 alter table public.checklist_section_photos enable row level security;
 alter table public.points_adjustments enable row level security;
+alter table public.report_periods enable row level security;
 alter table public.task_occurrences enable row level security;
 alter table public.form_templates enable row level security;
 alter table public.form_template_fields enable row level security;
@@ -801,6 +820,12 @@ create policy "points adjustments follow their completion's visibility"
         )
     )
   );
+
+-- Only the owner sees closed periods — closing a month and reading its
+-- report is an org-wide action, same restriction as adjusting any audit.
+create policy "report periods are visible only to the org owner"
+  on public.report_periods for select
+  using (org_id = public.my_org_id() and public.my_role() = 'owner');
 
 -- ── RPCs ────────────────────────────────────────────────────────────
 
