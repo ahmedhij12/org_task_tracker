@@ -1,0 +1,57 @@
+// English strings. Keys mirror the screen/component they belong to, so a
+// translator can find "where does this text live" without reading code.
+// Server-side error messages (thrown from Supabase/Postgres) are NOT covered
+// here — those come from the API boundary in whatever language it responds
+// in (English) and translating every RAISE EXCEPTION in SETUP.sql is a
+// separate, much larger effort. Only the client-authored fallback messages
+// ("Something went wrong...") are translated.
+export default {
+  common: {
+    username: 'Username',
+    usernamePlaceholder: 'e.g. ahmed_h',
+    cancel: 'Cancel',
+    save: 'Save',
+    signIn: 'Sign in',
+  },
+  auth: {
+    landing: {
+      tagline: "Assign and track tasks across your team, split into groups with their own admin.",
+      createOrgTitle: 'Create an organization',
+      createOrgSubtitle: "You'll be the owner, create teams, and add people.",
+      alreadyHaveAccount: 'Already have an account?',
+    },
+    create: {
+      title: 'Create your organization',
+      subtitle: "You'll get a unique Organization ID to share with your team so they can join.",
+      orgNameLabel: 'Organization name',
+      orgNamePlaceholder: 'e.g. Riverside Cafe',
+      yourNameLabel: 'Your name',
+      yourNamePlaceholder: 'e.g. Ahmed',
+      usernameHint: "You'll use this (with your Organization ID) to sign in next time — no need to retype your email.",
+      emailLabel: 'Email',
+      passwordLabel: 'Password',
+      passwordPlaceholder: 'At least 6 characters',
+      submit: 'Create organization',
+      genericError: 'Something went wrong. Please try again.',
+    },
+    signin: {
+      title: 'Sign in',
+      subtitle: 'Use the Organization ID and username you set up when you joined.',
+      orgIdLabel: 'Organization ID',
+      orgIdPlaceholder: 'e.g. 48213',
+      passwordLabel: 'Password',
+      passwordPlaceholder: 'Your password',
+      genericError: 'Could not sign in. Check your details and try again.',
+    },
+    verify: {
+      title: 'Check your email',
+      subtitle: 'We sent a {{length}}-digit code to {{email}}. Enter it below to finish setting up your account.',
+      defaultInbox: 'your inbox',
+      genericError: 'That code did not work. Please try again.',
+      resendNotice: 'We sent a new code.',
+      resendError: 'Could not send another code. Please wait a minute and try again.',
+      resendCooldown: 'Resend code in {{seconds}}s',
+      resendNow: 'Send a new code',
+    },
+  },
+} as const;

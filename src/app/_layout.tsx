@@ -1,4 +1,5 @@
 import 'react-native-url-polyfill/auto';
+import '@/lib/i18n';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
@@ -7,16 +8,19 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { ThemePrefProvider, useThemePref } from '@/hooks/useThemePref';
+import { LanguagePrefProvider } from '@/hooks/useLanguagePref';
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemePrefProvider>
-          <AuthProvider>
-            <RootNavigator />
-          </AuthProvider>
-        </ThemePrefProvider>
+        <LanguagePrefProvider>
+          <ThemePrefProvider>
+            <AuthProvider>
+              <RootNavigator />
+            </AuthProvider>
+          </ThemePrefProvider>
+        </LanguagePrefProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

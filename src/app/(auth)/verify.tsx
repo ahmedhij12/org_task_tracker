@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, KeyboardAvoidingView, Platform } fro
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth, SIGNUP_CODE_LENGTH } from '@/hooks/useAuth';
 import { ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
 import { OtpDial } from '@/components/OtpDial';
@@ -11,6 +12,7 @@ const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function VerifyCodeScreen() {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { pendingSignUp, verifySignUpCode, resendSignUpCode, cancelSignUp } = useAuth();
 
   const [code, setCode] = useState('');
@@ -59,7 +61,7 @@ export default function VerifyCodeScreen() {
       verifyingRef.current = false;
       setErrored(true);
       setCode('');
-      setError(e?.message ?? 'That code did not work. Please try again.');
+      setError(e?.message ?? t('auth.verify.genericError'));
     } finally {
       setLoading(false);
     }
@@ -73,9 +75,9 @@ export default function VerifyCodeScreen() {
       setCode('');
       setErrored(false);
       setCooldown(RESEND_COOLDOWN_SECONDS);
-      setNotice('We sent a new code.');
+      setNotice(t('auth.verify.resendNotice'));
     } catch (e: any) {
-      setError(e?.message ?? 'Could not send another code. Please wait a minute and try again.');
+      setError(e?.message ?? t('auth.verify.resendError'));
     }
   };
 
@@ -92,10 +94,12 @@ export default function VerifyCodeScreen() {
             <Ionicons name="arrow-back" size={24} color={c.text} />
           </Pressable>
 
-          <ScreenTitle>Check your email</ScreenTitle>
+          <ScreenTitle>{t('auth.verify.title')}</ScreenTitle>
           <ScreenSubtitle>
-            We sent a {SIGNUP_CODE_LENGTH}-digit code to {pendingSignUp?.email ?? 'your inbox'}. Enter it below to finish
-            setting up your account.
+            {t('auth.verify.subtitle', {
+              length: SIGNUP_CODE_LENGTH,
+              email: pendingSignUp?.email ?? t('auth.verify.defaultInbox'),
+            })}
           </ScreenSubtitle>
 
           <View style={{ height: 32 }} />
@@ -120,7 +124,7 @@ export default function VerifyCodeScreen() {
 
           <Pressable onPress={handleResend} disabled={cooldown > 0} style={{ marginTop: 24, alignItems: 'center' }}>
             <Text style={{ fontSize: 14, color: cooldown > 0 ? c.textFaint : c.indigo, fontWeight: '700' }}>
-              {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Send a new code'}
+              {cooldown > 0 ? t('auth.verify.resendCooldown', { seconds: cooldown }) : t('auth.verify.resendNow')}
             </Text>
           </Pressable>
         </ScrollView>

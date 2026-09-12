@@ -3,12 +3,14 @@ import { View, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { FieldInput, UsernameInput, PrimaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
 import { sanitizeOrgCode } from '@/lib/orgCode';
 
 export default function SignInScreen() {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { signInWithUsername } = useAuth();
 
   const [orgCode, setOrgCode] = useState('');
@@ -27,7 +29,7 @@ export default function SignInScreen() {
       await signInWithUsername(orgCode.trim(), username.trim(), password);
       // Root layout's Stack.Protected guard flips automatically once the session loads.
     } catch (e: any) {
-      setError(e?.message ?? 'Could not sign in. Check your details and try again.');
+      setError(e?.message ?? t('auth.signin.genericError'));
     } finally {
       setLoading(false);
     }
@@ -41,25 +43,36 @@ export default function SignInScreen() {
             <Ionicons name="arrow-back" size={24} color={c.text} />
           </Pressable>
 
-          <ScreenTitle>Sign in</ScreenTitle>
-          <ScreenSubtitle>Use the Organization ID and username you set up when you joined.</ScreenSubtitle>
+          <ScreenTitle>{t('auth.signin.title')}</ScreenTitle>
+          <ScreenSubtitle>{t('auth.signin.subtitle')}</ScreenSubtitle>
 
           <View style={{ height: 20 }} />
 
           {error ? <ErrorBanner message={error} /> : null}
 
           <FieldInput
-            label="Organization ID"
-            placeholder="e.g. 48213"
+            label={t('auth.signin.orgIdLabel')}
+            placeholder={t('auth.signin.orgIdPlaceholder')}
             value={orgCode}
-            onChangeText={(t) => setOrgCode(sanitizeOrgCode(t))}
+            onChangeText={(v) => setOrgCode(sanitizeOrgCode(v))}
             keyboardType="number-pad"
           />
-          <UsernameInput value={username} onChangeText={setUsername} />
-          <FieldInput label="Password" placeholder="Your password" value={password} onChangeText={setPassword} secureTextEntry />
+          <UsernameInput
+            label={t('common.username')}
+            placeholder={t('common.usernamePlaceholder')}
+            value={username}
+            onChangeText={setUsername}
+          />
+          <FieldInput
+            label={t('auth.signin.passwordLabel')}
+            placeholder={t('auth.signin.passwordPlaceholder')}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
 
           <View style={{ height: 8 }} />
-          <PrimaryButton title="Sign in" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+          <PrimaryButton title={t('common.signIn')} onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

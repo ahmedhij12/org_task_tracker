@@ -2,10 +2,12 @@ import { View, Text, Pressable, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useThemeColors } from '@/components/ui';
 
 export default function LandingScreen() {
   const c = useThemeColors();
+  const { t } = useTranslation();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'bottom']}>
@@ -28,20 +30,20 @@ export default function LandingScreen() {
           </View>
           <Text style={{ fontSize: 26, fontWeight: '800', color: c.text }}>Rungs</Text>
           <Text style={{ fontSize: 14, color: c.textMuted, textAlign: 'center', marginTop: 8, maxWidth: 260, lineHeight: 20 }}>
-            Assign and track tasks across your team, split into groups with their own admin.
+            {t('auth.landing.tagline')}
           </Text>
         </View>
 
         <ChoiceRow
           icon="business"
-          title="Create an organization"
-          subtitle="You'll be the owner, create teams, and add people."
+          title={t('auth.landing.createOrgTitle')}
+          subtitle={t('auth.landing.createOrgSubtitle')}
           onPress={() => router.push('/(auth)/create')}
         />
 
         <Pressable onPress={() => router.push('/(auth)/signin')} style={{ marginTop: 24, alignItems: 'center' }}>
           <Text style={{ fontSize: 14, color: c.textMuted }}>
-            Already have an account? <Text style={{ color: c.indigo, fontWeight: '700' }}>Sign in</Text>
+            {t('auth.landing.alreadyHaveAccount')} <Text style={{ color: c.indigo, fontWeight: '700' }}>{t('common.signIn')}</Text>
           </Text>
         </Pressable>
       </ScrollView>
