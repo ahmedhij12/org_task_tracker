@@ -54,6 +54,7 @@ drop function if exists public.create_team(text, uuid) cascade;
 drop function if exists public.create_team(text) cascade;
 drop function if exists public.close_next_month() cascade;
 drop function if exists public.get_period_report(uuid) cascade;
+drop function if exists public.get_current_branch_summary() cascade;
 drop function if exists public.admin_create_user(text, text, text, text, uuid, text) cascade;
 drop function if exists public.assert_can_manage_user(uuid) cascade;
 drop function if exists public.admin_reset_password(uuid, text) cascade;
@@ -1429,6 +1430,57 @@ begin
 end;
 $$;
 
+-- Same shape and attribution rule as get_period_report, but for the
+-- calendar month containing "now" (which is never closeable) — powers the
+-- Dashboard's live, current-month rollup.
+create function public.get_current_branch_summary()
+returns table (
+  branch_id uuid,
+  branch_name text,
+  subject_profile_id uuid,
+  subject_name text,
+  total_points numeric,
+  iqd_amount numeric
+)
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_org_id uuid;
+  v_role text;
+  v_month_start date;
+begin
+  select p.org_id, p.role into v_org_id, v_role
+  from public.profiles p where p.id = auth.uid();
+
+  if v_role is distinct from 'owner' then
+    raise exception 'only the org owner can view the branch summary';
+  end if;
+
+  v_month_start := date_trunc('month', now())::date;
+
+  return query
+  select
+    t.id,
+    t.name,
+    tc.subject_profile_id,
+    sp.name,
+    sum(tc.points_awarded),
+    sum(tc.points_awarded) * 25000
+  from public.task_completions tc
+  join public.profiles sp on sp.id = tc.subject_profile_id
+  join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
+  join public.teams t on t.id = pt.team_id
+  where tc.org_id = v_org_id
+    and tc.points_awarded is not null
+    and tc.created_at >= v_month_start
+  group by t.id, t.name, tc.subject_profile_id, sp.name
+  order by t.name, sp.name;
+end;
+$$;
+
 -- Materializes today's (and, once past 21:00 Baghdad time, tomorrow's —
 -- see the comment below) task_occurrences rows for every scheduled_times
 -- task, so there's always something concrete for a reminder job to scan and
@@ -2035,6 +2087,7 @@ grant execute on function public.get_login_email(text, text) to anon, authentica
 grant execute on function public.create_team(text) to authenticated;
 grant execute on function public.close_next_month() to authenticated;
 grant execute on function public.get_period_report(uuid) to authenticated;
+grant execute on function public.get_current_branch_summary() to authenticated;
 grant execute on function public.admin_create_user(text, text, text, text, uuid, text) to authenticated;
 grant execute on function public.admin_reset_password(uuid, text) to authenticated;
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;

@@ -279,6 +279,86 @@ begin
   reset role;
 end $$;
 
+-- ── get_current_branch_summary: only this month, attributed by branch ───
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_hq_team_id uuid;
+  v_branch_team_id uuid;
+  v_auditor_id uuid;
+  v_subject_id uuid;
+  v_task_id uuid;
+  v_current_completion_id uuid;
+  v_old_completion_id uuid;
+  v_points numeric;
+  v_branch_name text;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'branch-summary-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_hq_team_id
+  from public.create_organization('Branch Summary Co', 'Owner', 'branchsummaryowner');
+
+  insert into public.teams (org_id, name) values (v_org_id, 'Olympic Branch') returning id into v_branch_team_id;
+
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_auditor_id := public.admin_create_user('Hygiene Mgr', 'summaryauditor', 'initial123', 'team_admin', v_hq_team_id);
+  v_subject_id := public.admin_create_user('Olympic Supervisor', 'summarysubject', 'initial123', 'employee', v_branch_team_id);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, is_audit, priority, requires_review)
+  values (v_org_id, v_hq_team_id, 'Olympic Hygiene Audit', v_auditor_id, v_auditor_id, true, 'medium', false)
+  returning id into v_task_id;
+
+  -- This month: must show up.
+  v_current_completion_id := public.set_task_completion(
+    v_task_id, true, 'this month', '{}', null, '[]'::jsonb, v_subject_id, 'morning', 1.5
+  );
+
+  -- Backdated to last month: must NOT show up.
+  v_old_completion_id := public.set_task_completion(
+    v_task_id, true, 'last month', '{}', null, '[]'::jsonb, v_subject_id, 'evening', -3
+  );
+  -- task_completions has no UPDATE policy (SELECT-only under RLS), so this
+  -- backdating must run with RLS bypassed, not as 'authenticated' —
+  -- otherwise it silently updates zero rows (see Task 3's report test).
+  reset role;
+  update public.task_completions
+    set created_at = date_trunc('month', now()) - interval '1 day'
+    where id = v_old_completion_id;
+  set role authenticated;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+
+  select total_points, branch_name into v_points, v_branch_name
+  from public.get_current_branch_summary()
+  where subject_profile_id = v_subject_id;
+
+  if v_points is distinct from 1.5::numeric then
+    raise exception 'FAIL: expected only this month''s 1.5 points, got % (did last month leak in?)', v_points;
+  end if;
+  if v_branch_name is distinct from 'Olympic Branch' then
+    raise exception 'FAIL: expected Olympic Branch, got %', v_branch_name;
+  end if;
+  raise notice 'PASS: get_current_branch_summary includes only the current month, attributed to the subject''s branch';
+
+  reset role;
+end $$;
+
 -- ── admin_create_user: who may create whom, and does the account work ───
 
 do $$
