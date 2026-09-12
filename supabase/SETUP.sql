@@ -10,6 +10,7 @@
 -- ── Clean slate ─────────────────────────────────────────────────────
 
 drop table if exists public.profile_teams cascade;
+drop table if exists public.points_adjustments cascade;
 drop table if exists public.checklist_section_photos cascade;
 drop table if exists public.checklist_answers cascade;
 drop table if exists public.checklist_submissions cascade;
@@ -60,6 +61,8 @@ drop function if exists public.clear_must_change_password() cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[]) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric) cascade;
+drop function if exists public.adjust_completion_points(uuid, numeric, text) cascade;
 drop function if exists public.create_checklist_template(text, int, boolean, jsonb) cascade;
 drop function if exists public.create_checklist_template(text, boolean, jsonb) cascade;
 -- Checklists are no longer a separate assignable thing — a checklist is a
@@ -192,6 +195,11 @@ create table public.tasks (
   -- Driven by priority at creation time: low never needs review, high always
   -- does, medium is the creator's choice — enforced below, not just in the UI.
   requires_review boolean not null default false,
+  -- True for an admin's own audit task: the same checklist as a supervisor's
+  -- routine copy, but the actor is judging someone else, chosen fresh at each
+  -- submission (see set_task_completion) rather than fixed at task creation.
+  -- An ordinary task (the far more common case) leaves this false.
+  is_audit boolean not null default false,
   created_at timestamptz not null default now(),
   created_by uuid not null references public.profiles(id) on delete cascade,
   check (template_id is not null or cooldown_hours is null),
@@ -237,9 +245,37 @@ create table public.task_completions (
   reviewed_by uuid references public.profiles(id) on delete set null,
   reviewed_at timestamptz,
   review_note text,
+  -- Who this completion is ABOUT. Equal to actor_id for an ordinary task (the
+  -- actor did their own work). Differs only when the source task is_audit —
+  -- an admin auditing a supervisor — in which case it's whoever the admin
+  -- chose at submission time. Always set (never null) so every downstream
+  -- query — visibility, scoring, reports — has one column to key on
+  -- regardless of which kind of task produced the row.
+  subject_profile_id uuid not null references public.profiles(id) on delete cascade,
+  -- Only meaningful on an is_audit completion.
+  shift text check (shift in ('morning', 'evening')),
+  -- Penalty (negative) or bonus (positive), in fractional points, set by the
+  -- auditor. IQD is always points * 25000 — computed at read time, never
+  -- stored, so a future rate change doesn't rewrite history. Only ever set on
+  -- an is_audit completion; adjustable later, see points_adjustments.
+  points_awarded numeric,
   created_at timestamptz not null default now(),
   check (action = 'off_duty' or status is null),
   check (action <> 'off_duty' or status is not null)
+);
+
+-- Append-only trail for points_awarded changes. task_completions.points_awarded
+-- always holds the current effective value; this table is the "it was 1, an
+-- admin changed it to 0.5, here's why" history that must never be erased by
+-- an edit — the whole point is that both values stay visible.
+create table public.points_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  task_completion_id uuid not null references public.task_completions(id) on delete cascade,
+  previous_points numeric,
+  new_points numeric not null,
+  adjusted_by uuid not null references public.profiles(id) on delete cascade,
+  reason text,
+  created_at timestamptz not null default now()
 );
 
 create table public.checklist_answers (
@@ -273,6 +309,10 @@ create index task_completions_task_idx on public.task_completions(task_id, creat
 create index task_completions_needs_review_idx
   on public.task_completions(org_id, created_at desc)
   where reviewed_by is null and (status = 'off_duty_pending' or action = 'completed');
+-- Every audit-report query starts from "everything about this supervisor" —
+-- the subject, not the auditor, is what a report groups by.
+create index task_completions_subject_idx on public.task_completions(subject_profile_id, created_at desc);
+create index points_adjustments_completion_idx on public.points_adjustments(task_completion_id, created_at);
 create index tasks_org_id_idx on public.tasks(org_id);
 create index tasks_assignee_id_idx on public.tasks(assignee_id);
 create index profiles_org_id_idx on public.profiles(org_id);
@@ -298,6 +338,7 @@ alter table public.checklist_templates enable row level security;
 alter table public.checklist_template_items enable row level security;
 alter table public.checklist_answers enable row level security;
 alter table public.checklist_section_photos enable row level security;
+alter table public.points_adjustments enable row level security;
 -- No policy on this one on purpose — only the SECURITY DEFINER function
 -- (running as owner) can touch it, never clients directly.
 alter table public.login_lookup_attempts enable row level security;
@@ -401,6 +442,12 @@ create policy "team members and the owner can read that team's tasks"
 -- team. Nobody can assign themselves a task and then sign off on their own
 -- work. assignee_id null means "anyone on the team", which stays allowed.
 --
+-- is_audit is the one exception to self-assignment: it's the admin's own
+-- recurring "go audit someone" task, and its whole point is judging someone
+-- else — the "signing off on your own work" risk this rule exists for
+-- doesn't apply, and set_task_completion separately guarantees the real
+-- subject can never be the auditor (see "you cannot audit yourself" there).
+--
 -- The assignee-membership check (assignee_id must actually belong to this
 -- task's team) closes a gap that predates multi-team: role_of() alone never
 -- verified the assignee was really on the team the task claims, for either
@@ -409,7 +456,7 @@ create policy "team admin or owner can create tasks for their own team"
   on public.tasks for insert
   with check (
     org_id = public.my_org_id()
-    and assignee_id is distinct from auth.uid()
+    and (is_audit or assignee_id is distinct from auth.uid())
     and (
       assignee_id is null
       or team_id = any(select pt.team_id from public.profile_teams pt where pt.profile_id = assignee_id)
@@ -422,7 +469,11 @@ create policy "team admin or owner can create tasks for their own team"
       or (
         public.my_role() = 'team_admin'
         and team_id = any(public.my_team_ids())
-        and (assignee_id is null or public.role_of(assignee_id) = 'employee')
+        and (
+          assignee_id is null
+          or public.role_of(assignee_id) = 'employee'
+          or (is_audit and assignee_id = auth.uid())
+        )
       )
     )
   );
@@ -440,7 +491,7 @@ create policy "team admin or owner can edit their team's tasks"
   )
   with check (
     org_id = public.my_org_id()
-    and assignee_id is distinct from auth.uid()
+    and (is_audit or assignee_id is distinct from auth.uid())
     and (
       assignee_id is null
       or team_id = any(select pt.team_id from public.profile_teams pt where pt.profile_id = assignee_id)
@@ -453,7 +504,11 @@ create policy "team admin or owner can edit their team's tasks"
       or (
         public.my_role() = 'team_admin'
         and team_id = any(public.my_team_ids())
-        and (assignee_id is null or public.role_of(assignee_id) = 'employee')
+        and (
+          assignee_id is null
+          or public.role_of(assignee_id) = 'employee'
+          or (is_audit and assignee_id = auth.uid())
+        )
       )
     )
   );
@@ -490,8 +545,8 @@ create policy "org members can read their org's template items"
   );
 
 -- checklist_answers/checklist_section_photos follow whatever task_completions
--- visibility already is (owner/team leader/actor, defined below) — they're
--- just the detail rows for a 'completed' history entry.
+-- visibility already is (owner/team leader/actor/subject, defined below) —
+-- they're just the detail rows for a 'completed' history entry.
 create policy "checklist answers follow their completion's visibility"
   on public.checklist_answers for select
   using (
@@ -503,6 +558,14 @@ create policy "checklist answers follow their completion's visibility"
           public.my_role() = 'owner'
           or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
           or tc.actor_id = auth.uid()
+          or tc.subject_profile_id = auth.uid()
+          or (
+            public.my_role() = 'team_admin'
+            and exists (
+              select 1 from public.profile_teams pt
+              where pt.profile_id = tc.subject_profile_id and pt.team_id = any(public.my_team_ids())
+            )
+          )
         )
     )
   );
@@ -518,10 +581,23 @@ create policy "checklist photos follow their completion's visibility"
           public.my_role() = 'owner'
           or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
           or tc.actor_id = auth.uid()
+          or tc.subject_profile_id = auth.uid()
+          or (
+            public.my_role() = 'team_admin'
+            and exists (
+              select 1 from public.profile_teams pt
+              where pt.profile_id = tc.subject_profile_id and pt.team_id = any(public.my_team_ids())
+            )
+          )
         )
     )
   );
 
+-- Widened for audits: the completion's own team_id (the auditor's task,
+-- unrelated to who was audited) is not enough to show the audited supervisor
+-- their own result, or their leader that result — both are keyed off
+-- subject_profile_id instead, via profile_teams for the leader's case since a
+-- team_admin's own team membership doesn't say anything about the subject's.
 create policy "history is scoped to the reader's role"
   on public.task_completions for select
   using (
@@ -530,6 +606,39 @@ create policy "history is scoped to the reader's role"
       public.my_role() = 'owner'
       or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()))
       or actor_id = auth.uid()
+      or subject_profile_id = auth.uid()
+      or (
+        public.my_role() = 'team_admin'
+        and exists (
+          select 1 from public.profile_teams pt
+          where pt.profile_id = subject_profile_id and pt.team_id = any(public.my_team_ids())
+        )
+      )
+    )
+  );
+
+-- Same visibility as the completion it adjusts — whoever can see the audit
+-- result can see every points change made to it, not just the current value.
+create policy "points adjustments follow their completion's visibility"
+  on public.points_adjustments for select
+  using (
+    exists (
+      select 1 from public.task_completions tc
+      where tc.id = task_completion_id
+        and tc.org_id = public.my_org_id()
+        and (
+          public.my_role() = 'owner'
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or tc.actor_id = auth.uid()
+          or tc.subject_profile_id = auth.uid()
+          or (
+            public.my_role() = 'team_admin'
+            and exists (
+              select 1 from public.profile_teams pt
+              where pt.profile_id = tc.subject_profile_id and pt.team_id = any(public.my_team_ids())
+            )
+          )
+        )
     )
   );
 
@@ -1040,7 +1149,14 @@ create function public.set_task_completion(
   p_note text default null,
   p_photo_urls text[] default '{}',
   p_answers jsonb default null,
-  p_section_photos jsonb default '[]'
+  p_section_photos jsonb default '[]',
+  -- Audit-only: who this submission is about, their shift, and the
+  -- penalty/bonus the auditor is assigning. Ignored (and never trusted from
+  -- the client) on an ordinary, non-audit task — see the is_audit branch
+  -- below for what's actually enforced.
+  p_subject_profile_id uuid default null,
+  p_shift text default null,
+  p_points numeric default null
 )
 returns uuid
 language plpgsql
@@ -1060,6 +1176,9 @@ declare
   v_photo jsonb;
   v_yes int;
   v_no int;
+  v_subject_id uuid;
+  v_shift text;
+  v_points numeric;
 begin
   select p.role into v_my_role from public.profiles p where p.id = v_my_profile_id;
   v_my_teams := public.my_team_ids();
@@ -1078,6 +1197,32 @@ begin
      and v_task.assignee_id is distinct from v_my_profile_id
      and v_my_role = 'employee' then
     raise exception 'this task is not assigned to you';
+  end if;
+
+  -- An audit task always names a subject different from the actor, decided
+  -- fresh at each submission — never trust p_subject_profile_id on anything
+  -- else, and always fall back to "the actor did their own work" instead.
+  -- Reopening isn't an audit event even on an is_audit task (nobody is being
+  -- judged by clearing a stale completion), so it falls back the same way.
+  v_subject_id := v_my_profile_id;
+  if v_task.is_audit and p_completed then
+    if v_my_role = 'employee' then
+      raise exception 'only an admin or team leader can submit an audit';
+    end if;
+    if p_subject_profile_id is null then
+      raise exception 'an audit needs a subject — who was this visit about?';
+    end if;
+    if p_subject_profile_id = v_my_profile_id then
+      raise exception 'you cannot audit yourself';
+    end if;
+    if not exists (
+      select 1 from public.profiles where id = p_subject_profile_id and org_id = v_task.org_id
+    ) then
+      raise exception 'subject not found in this organization';
+    end if;
+    v_subject_id := p_subject_profile_id;
+    v_shift := p_shift;
+    v_points := p_points;
   end if;
 
   -- Enforced here and not only in the UI: a task that requires proof cannot
@@ -1129,7 +1274,8 @@ begin
   -- task that never needed review is simply never in it.
   insert into public.task_completions (
     task_id, org_id, team_id, task_title, actor_id, action,
-    note, photo_urls, due_at, was_late, yes_count, no_count
+    note, photo_urls, due_at, was_late, yes_count, no_count,
+    subject_profile_id, shift, points_awarded
   ) values (
     v_task.id, v_task.org_id, v_task.team_id, v_task.title, v_my_profile_id,
     case when p_completed then 'completed' else 'reopened' end,
@@ -1138,7 +1284,8 @@ begin
     v_task.due,
     v_was_late,
     case when p_completed then v_yes else null end,
-    case when p_completed then v_no else null end
+    case when p_completed then v_no else null end,
+    v_subject_id, v_shift, v_points
   )
   returning id into v_completion_id;
 
@@ -1200,10 +1347,12 @@ begin
   end if;
 
   insert into public.task_completions (
-    task_id, org_id, team_id, task_title, actor_id, action, status, off_duty_reason
+    task_id, org_id, team_id, task_title, actor_id, action, status, off_duty_reason,
+    subject_profile_id
   ) values (
     v_task.id, v_task.org_id, v_task.team_id, v_task.title,
-    auth.uid(), 'off_duty', 'off_duty_pending', trim(p_reason)
+    auth.uid(), 'off_duty', 'off_duty_pending', trim(p_reason),
+    auth.uid()
   )
   returning id into v_completion_id;
 
@@ -1253,6 +1402,58 @@ begin
       reviewed_at = now(),
       review_note = nullif(trim(coalesce(p_review_note, '')), '')
   where id = p_completion_id;
+end;
+$$;
+
+-- Changes the penalty/bonus on an audit completion after the fact — e.g.
+-- halving a past penalty because the next visit went well. Never overwrites
+-- silently: every call appends a row to points_adjustments recording both
+-- the old and new value, so "it was 1, changed to 0.5" stays visible forever,
+-- while task_completions.points_awarded always holds the current value for
+-- anything that just needs the live total (reports, the supervisor's score).
+--
+-- Ownership check keyed on actor_id, matching "each leader sees only what
+-- they personally assigned" elsewhere: an owner can adjust any audit in the
+-- org, a team_admin only their own past audits (the one they performed and
+-- graded), never someone else's. subject_profile_id <> actor_id is what
+-- marks a completion as an audit result at all — task_id can be null after
+-- the source task is deleted, so this can't check tasks.is_audit instead.
+create function public.adjust_completion_points(
+  p_completion_id uuid,
+  p_new_points numeric,
+  p_reason text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_completion public.task_completions;
+begin
+  select p.role, p.org_id into v_caller_role, v_caller_org
+  from public.profiles p where p.id = auth.uid();
+
+  select * into v_completion from public.task_completions where id = p_completion_id;
+  if v_completion.id is null or v_completion.org_id is distinct from v_caller_org then
+    raise exception 'not found';
+  end if;
+  if v_completion.subject_profile_id = v_completion.actor_id then
+    raise exception 'this completion has no audit subject — nothing to adjust';
+  end if;
+  if not (
+    v_caller_role = 'owner'
+    or (v_caller_role = 'team_admin' and v_completion.actor_id = auth.uid())
+  ) then
+    raise exception 'only the owner or the auditor who performed this visit can adjust its points';
+  end if;
+
+  insert into public.points_adjustments (task_completion_id, previous_points, new_points, adjusted_by, reason)
+  values (p_completion_id, v_completion.points_awarded, p_new_points, auth.uid(), nullif(trim(coalesce(p_reason, '')), ''));
+
+  update public.task_completions set points_awarded = p_new_points where id = p_completion_id;
 end;
 $$;
 
@@ -1366,7 +1567,8 @@ grant execute on function public.admin_set_user_active(uuid, boolean) to authent
 grant execute on function public.add_profile_to_team(uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
-grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb) to authenticated;
+grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric) to authenticated;
+grant execute on function public.adjust_completion_points(uuid, numeric, text) to authenticated;
 grant execute on function public.create_checklist_template(text, boolean, jsonb) to authenticated;
 grant execute on function public.declare_task_off_duty(uuid, text) to authenticated;
 grant execute on function public.review_off_duty(uuid, boolean, text) to authenticated;

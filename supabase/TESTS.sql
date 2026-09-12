@@ -1186,4 +1186,183 @@ begin
   reset role;
 end $$;
 
+-- ── Audit model: an admin's own task where the subject is chosen per
+-- submission, not fixed at assignment ────────────────────────────────────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_other_team_id uuid;
+  v_auditor_id uuid;      -- team_admin performing the audit (hygiene manager)
+  v_other_admin_id uuid;  -- a different team_admin, unrelated to this audit
+  v_subject_id uuid;      -- the employee/supervisor being audited
+  v_stranger_id uuid;     -- unrelated employee, no relation to any of this
+  v_template_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
+  v_raised boolean;
+  v_visible_count int;
+  v_subject_ans jsonb := '[{"section_title":"","question":"Oil changed on schedule?","sort_order":0,"answer":true}]'::jsonb;
+  v_row public.task_completions;
+  v_adj public.points_adjustments;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'audit-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Audit Co', 'Owner Audit', 'owneraudit');
+
+  v_auditor_id := public.admin_create_user('Hygiene Mgr', 'hygienemgr', 'initial123', 'team_admin', v_team_id);
+  v_subject_id := public.admin_create_user('Supervisor One', 'superone', 'initial123', 'employee', v_team_id);
+  insert into public.teams (org_id, name) values (v_org_id, 'Other Team') returning id into v_other_team_id;
+  v_other_admin_id := public.admin_create_user('Other Mgr', 'othermgr', 'initial123', 'team_admin', v_other_team_id);
+  v_stranger_id := public.admin_create_user('Stranger', 'stranger1', 'initial123', 'employee', v_other_team_id);
+
+  set role authenticated;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  v_template_id := public.create_checklist_template(
+    'Oil Test', true, '[{"section_title":"","question":"Oil changed on schedule?"}]'::jsonb
+  );
+
+  -- The auditor's own recurring copy: assigned to himself, is_audit = true.
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Oil Test Audit', v_auditor_id, v_auditor_id, v_template_id, true, 'medium', false)
+  returning id into v_task_id;
+
+  -- ── An employee cannot submit an audit, even one assigned to them ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Misassigned audit', v_subject_id, v_auditor_id, v_template_id, true, 'medium', false)
+  returning id into v_completion_id; -- reusing the var; this is a task id, not a completion id here
+  perform set_config('request.jwt.claims', json_build_object('sub', v_subject_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.set_task_completion(v_completion_id, true, null, '{}', v_subject_ans, '[]'::jsonb, v_auditor_id, 'morning', -1);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an employee must not be able to submit an audit';
+  end if;
+  raise notice 'PASS: an employee cannot submit an audit';
+
+  -- ── The auditor cannot name himself as the subject ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}', v_subject_ans, '[]'::jsonb, v_auditor_id, 'morning', -1);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an auditor must not be able to audit himself';
+  end if;
+  raise notice 'PASS: an auditor cannot audit himself';
+
+  -- ── A real submission: subject, shift and a penalty all stick ──
+  v_completion_id := public.set_task_completion(
+    v_task_id, true, null, '{}', v_subject_ans, '[]'::jsonb, v_subject_id, 'morning', -1
+  );
+  select * into v_row from public.task_completions where id = v_completion_id;
+  if v_row.subject_profile_id is distinct from v_subject_id then
+    raise exception 'FAIL: subject_profile_id was not recorded as the chosen subject';
+  end if;
+  if v_row.shift is distinct from 'morning' or v_row.points_awarded is distinct from -1::numeric then
+    raise exception 'FAIL: shift/points were not recorded on the audit completion';
+  end if;
+  raise notice 'PASS: an audit submission records its subject, shift and penalty';
+
+  -- ── The audited supervisor can see their own result ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_subject_id)::text, true);
+  select count(*) into v_visible_count from public.task_completions where id = v_completion_id;
+  if v_visible_count <> 1 then
+    raise exception 'FAIL: the audited supervisor should see their own audit result';
+  end if;
+  select count(*) into v_visible_count from public.checklist_answers where task_completion_id = v_completion_id;
+  if v_visible_count <> 1 then
+    raise exception 'FAIL: the audited supervisor should see the answers behind their own audit result';
+  end if;
+  raise notice 'PASS: the audited supervisor sees their own result and its answers';
+
+  -- ── An unrelated employee sees nothing ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_stranger_id)::text, true);
+  select count(*) into v_visible_count from public.task_completions where id = v_completion_id;
+  if v_visible_count <> 0 then
+    raise exception 'FAIL: an unrelated employee must not see someone else''s audit result';
+  end if;
+  raise notice 'PASS: an unrelated employee cannot see this audit result';
+
+  -- ── Adjusting points: the auditor who performed it can revise it later,
+  -- and both the old and new value stay visible in the trail ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  perform public.adjust_completion_points(v_completion_id, -0.5, 'clean visit next time, halving the penalty');
+  select * into v_row from public.task_completions where id = v_completion_id;
+  if v_row.points_awarded is distinct from -0.5::numeric then
+    raise exception 'FAIL: points_awarded should reflect the adjustment';
+  end if;
+  select * into v_adj from public.points_adjustments where task_completion_id = v_completion_id;
+  if v_adj.previous_points is distinct from -1::numeric or v_adj.new_points is distinct from -0.5::numeric then
+    raise exception 'FAIL: the adjustment trail should record both the old and new value';
+  end if;
+  raise notice 'PASS: the auditor can adjust their own audit''s points, and the old value stays in the trail';
+
+  -- ── A different, unrelated team_admin cannot adjust someone else's audit ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_admin_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.adjust_completion_points(v_completion_id, 0, 'trying to meddle');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an unrelated team_admin must not be able to adjust someone else''s audit points';
+  end if;
+  raise notice 'PASS: an unrelated team_admin cannot adjust someone else''s audit points';
+
+  -- ── The owner can adjust any audit in the org ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.adjust_completion_points(v_completion_id, 0, 'owner override, visit was fine after all');
+  select points_awarded into v_row.points_awarded from public.task_completions where id = v_completion_id;
+  if v_row.points_awarded is distinct from 0::numeric then
+    raise exception 'FAIL: the owner should be able to adjust any audit''s points';
+  end if;
+  raise notice 'PASS: the owner can adjust any audit''s points';
+
+  -- ── Adjusting an ordinary (non-audit) completion is refused: there is no
+  -- subject distinct from the actor, so there is nothing to adjust ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, priority, requires_review)
+  values (v_org_id, v_team_id, 'An ordinary task', v_subject_id, v_auditor_id, 'medium', false)
+  returning id into v_task_id;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_subject_id)::text, true);
+  v_completion_id := public.set_task_completion(v_task_id, true, null, '{}');
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.adjust_completion_points(v_completion_id, 1, 'should not be possible');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: adjusting points on an ordinary, non-audit completion should be refused';
+  end if;
+  raise notice 'PASS: an ordinary completion has no audit subject and cannot have its points adjusted';
+
+  reset role;
+end $$;
+
 rollback;
