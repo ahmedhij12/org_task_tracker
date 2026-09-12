@@ -70,6 +70,10 @@ export default {
     sectionToday: 'Today',
     sectionUpcoming: 'Upcoming',
     sectionCompleted: 'Completed',
+    branchesHeading: 'Branches',
+    noBranchActivity: 'No branch activity yet this month.',
+    pointsSuffix: 'pts',
+    iqdSuffix: 'IQD',
   },
   teams: {
     title: 'Branches',

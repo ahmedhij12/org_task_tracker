@@ -66,6 +66,10 @@ export default {
     sectionToday: 'اليوم',
     sectionUpcoming: 'قادمة',
     sectionCompleted: 'مكتملة',
+    branchesHeading: 'الفروع',
+    noBranchActivity: 'لا يوجد نشاط للفروع هذا الشهر بعد.',
+    pointsSuffix: 'نقطة',
+    iqdSuffix: 'دينار',
   },
   teams: {
     title: 'الفروع',

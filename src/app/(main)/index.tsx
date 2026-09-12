@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -7,28 +7,28 @@ import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
-import { useThemeColors } from '@/components/ui';
+import { useReports } from '@/hooks/useReports';
+import { Card, useThemeColors } from '@/components/ui';
 import { TaskRow } from '@/components/TaskRow';
 import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
 import { bucketTasks, effectiveTaskCompleted, latestCompletionForTask } from '@/lib/taskUtils';
-import type { OrgTask } from '@/types';
+import type { OrgTask, BranchSummaryRow } from '@/types';
 
 export default function MainIndex() {
   const { profile } = useAuth();
   if (profile?.role === 'employee') return <EmployeeHome />;
-  return <AdminDashboard />;
+  if (profile?.role === 'owner') return <OwnerDashboard />;
+  return <TeamAdminDashboard />;
 }
 
-function AdminDashboard() {
+function TeamAdminDashboard() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { profile, organization } = useAuth();
   const { tasks, teams, members, history, loading, refresh, setTaskCompletion } = useOrgData();
-  const isOwner = profile?.role === 'owner';
-  const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(isOwner ? 'all' : profile?.teamIds[0] ?? 'all');
-  const [copied, setCopied] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(profile?.teamIds[0] ?? 'all');
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
 
@@ -58,13 +58,6 @@ function AdminDashboard() {
   const overdueCount = scopedTasks.filter((t) => !t.completed && t.due && new Date(t.due) < new Date()).length;
   const doneCount = scopedTasks.filter((t) => t.completed).length;
 
-  const handleCopy = async () => {
-    if (!organization) return;
-    await Clipboard.setStringAsync(organization.orgCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
@@ -76,16 +69,8 @@ function AdminDashboard() {
             <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
               <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>
-                  {isOwner ? t('dashboard.ownerBadge') : t('dashboard.teamAdminBadge')}
-                </Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{t('dashboard.teamAdminBadge')}</Text>
               </View>
-              {isOwner ? (
-                <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Text style={{ fontSize: 12, color: c.textMuted }}>{organization?.orgCode}</Text>
-                  <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={c.textMuted} />
-                </Pressable>
-              ) : null}
             </View>
           </View>
         </View>
@@ -95,15 +80,6 @@ function AdminDashboard() {
           {overdueCount > 0 ? <StatChip label={t('dashboard.statOverdue')} value={overdueCount} color={c.rose} bg={c.roseSoft} /> : null}
           <StatChip label={t('dashboard.statDone')} value={doneCount} color={c.emerald} bg={c.emeraldSoft} />
         </View>
-
-        {isOwner && teams.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }} contentContainerStyle={{ gap: 8 }}>
-            <TeamChip label={t('dashboard.allTeams')} active={selectedTeamId === 'all'} onPress={() => setSelectedTeamId('all')} />
-            {teams.map((tm) => (
-              <TeamChip key={tm.id} label={tm.name} active={selectedTeamId === tm.id} onPress={() => setSelectedTeamId(tm.id)} />
-            ))}
-          </ScrollView>
-        ) : null}
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.taskFeed')}
@@ -180,6 +156,124 @@ function AdminDashboard() {
       >
         <Ionicons name="add" size={28} color="#fff" />
       </Pressable>
+    </SafeAreaView>
+  );
+}
+
+function OwnerDashboard() {
+  const c = useThemeColors();
+  const { t, i18n } = useTranslation();
+  const { organization } = useAuth();
+  const { currentSummary, loading, refresh } = useReports();
+  const [copied, setCopied] = useState(false);
+  const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
+
+  const handleCopy = async () => {
+    if (!organization) return;
+    await Clipboard.setStringAsync(organization.orgCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const branches = useMemo(() => {
+    const map = new Map<
+      string,
+      { branchId: string; branchName: string; totalPoints: number; iqdAmount: number; supervisors: BranchSummaryRow[] }
+    >();
+    for (const row of currentSummary) {
+      const existing = map.get(row.branchId);
+      if (existing) {
+        existing.totalPoints += row.totalPoints;
+        existing.iqdAmount += row.iqdAmount;
+        existing.supervisors.push(row);
+      } else {
+        map.set(row.branchId, {
+          branchId: row.branchId,
+          branchName: row.branchName,
+          totalPoints: row.totalPoints,
+          iqdAmount: row.iqdAmount,
+          supervisors: [row],
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.branchName.localeCompare(b.branchName));
+  }, [currentSummary]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{t('dashboard.ownerBadge')}</Text>
+              </View>
+              <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={{ fontSize: 12, color: c.textMuted }}>{organization?.orgCode}</Text>
+                <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={c.textMuted} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
+          {t('dashboard.branchesHeading')}
+        </Text>
+
+        {branches.length === 0 ? (
+          <EmptyState text={t('dashboard.noBranchActivity')} />
+        ) : (
+          branches.map((branch) => {
+            const expanded = expandedBranchId === branch.branchId;
+            return (
+              <Card key={branch.branchId} style={{ marginBottom: 10 }}>
+                <Pressable
+                  onPress={() => setExpandedBranchId(expanded ? null : branch.branchId)}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>{branch.branchName}</Text>
+                  <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={c.textMuted} />
+                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <View
+                    style={{
+                      backgroundColor: branch.totalPoints < 0 ? c.roseSoft : c.emeraldSoft,
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: branch.totalPoints < 0 ? c.rose : c.emerald }}>
+                      {branch.totalPoints} {t('dashboard.pointsSuffix')}
+                    </Text>
+                  </View>
+                  <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.indigo }}>
+                      {branch.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
+                    </Text>
+                  </View>
+                </View>
+                {expanded ? (
+                  <View style={{ marginTop: 10, gap: 6 }}>
+                    {branch.supervisors.map((s) => (
+                      <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
+                          {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </Card>
+            );
+          })
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
