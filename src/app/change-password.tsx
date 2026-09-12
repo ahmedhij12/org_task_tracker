@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { FieldInput, PrimaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
 
 export default function ChangePasswordScreen() {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { changeOwnPassword, profile } = useAuth();
 
   const [password, setPassword] = useState('');
@@ -25,7 +27,7 @@ export default function ChangePasswordScreen() {
       await changeOwnPassword(password);
       // The root layout guard flips automatically once the profile reloads.
     } catch (e: any) {
-      setError(e?.message ?? 'Could not save your new password. Please try again.');
+      setError(e?.message ?? t('changePassword.genericError'));
     } finally {
       setLoading(false);
     }
@@ -35,10 +37,9 @@ export default function ChangePasswordScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'bottom']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 48 }} keyboardShouldPersistTaps="handled">
-          <ScreenTitle>Set your password</ScreenTitle>
+          <ScreenTitle>{t('changePassword.title')}</ScreenTitle>
           <ScreenSubtitle>
-            {profile?.name ? `Welcome, ${profile.name}. ` : ''}
-            Your account was set up with a temporary password. Choose your own before you continue.
+            {profile?.name ? t('changePassword.welcomeSubtitle', { name: profile.name }) : t('changePassword.subtitle')}
           </ScreenSubtitle>
 
           <View style={{ height: 24 }} />
@@ -46,33 +47,29 @@ export default function ChangePasswordScreen() {
           {error ? <ErrorBanner message={error} /> : null}
 
           <FieldInput
-            label="New password"
-            placeholder="At least 6 characters"
+            label={t('changePassword.newPasswordLabel')}
+            placeholder={t('changePassword.passwordPlaceholder')}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
           />
           {tooShort ? (
-            <Text style={{ fontSize: 12, color: c.rose, marginTop: -8, marginBottom: 10 }}>
-              Use at least 6 characters.
-            </Text>
+            <Text style={{ fontSize: 12, color: c.rose, marginTop: -8, marginBottom: 10 }}>{t('changePassword.tooShort')}</Text>
           ) : null}
 
           <FieldInput
-            label="Confirm new password"
-            placeholder="Re-enter your new password"
+            label={t('changePassword.confirmLabel')}
+            placeholder={t('changePassword.confirmPlaceholder')}
             value={confirm}
             onChangeText={setConfirm}
             secureTextEntry
           />
           {mismatch ? (
-            <Text style={{ fontSize: 12, color: c.rose, marginTop: -8, marginBottom: 10 }}>
-              Those passwords do not match.
-            </Text>
+            <Text style={{ fontSize: 12, color: c.rose, marginTop: -8, marginBottom: 10 }}>{t('changePassword.mismatch')}</Text>
           ) : null}
 
           <View style={{ height: 8 }} />
-          <PrimaryButton title="Save password" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+          <PrimaryButton title={t('changePassword.submit')} onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
