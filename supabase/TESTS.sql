@@ -1516,4 +1516,162 @@ begin
   reset role;
 end $$;
 
+-- ── Form module: structured fields for oil test / hood cleaning / chicken
+-- marination — real values, not yes/no questions ─────────────────────────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_other_team_id uuid;
+  v_emp_id uuid;
+  v_stranger_id uuid;
+  v_template_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
+  v_field_count int;
+  v_field_tpm uuid;
+  v_field_fryer uuid;
+  v_field_filtration uuid;
+  v_raised boolean;
+  v_visible_count int;
+  v_value text;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'form-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Form Co', 'Owner Form', 'ownerform');
+
+  v_emp_id := public.admin_create_user('Supervisor Three', 'superthree', 'initial123', 'employee', v_team_id);
+  insert into public.teams (org_id, name) values (v_org_id, 'Other Team') returning id into v_other_team_id;
+  v_stranger_id := public.admin_create_user('Stranger Three', 'stranger3', 'initial123', 'employee', v_other_team_id);
+
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+
+  -- ── An employee cannot create a form template ──
+  v_raised := false;
+  begin
+    perform public.create_form_template('Oil Test', '[{"label":"TPM %","field_type":"number"}]'::jsonb);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an employee must not be able to create a form template';
+  end if;
+  raise notice 'PASS: an employee cannot create a form template';
+
+  -- ── The owner creates a real, mixed-field-type template ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_template_id := public.create_form_template(
+    'Oil Test',
+    '[
+      {"label":"Fryer","field_type":"select","options":["Fanker","KFC"]},
+      {"label":"TPM %","field_type":"number","unit":"%"},
+      {"label":"Filtration","field_type":"select","options":["OK","Replace"]},
+      {"label":"Checked By","field_type":"text","required":false}
+    ]'::jsonb
+  );
+  select count(*) into v_field_count from public.form_template_fields where template_id = v_template_id;
+  if v_field_count <> 4 then
+    raise exception 'FAIL: expected 4 fields, got %', v_field_count;
+  end if;
+  select id into v_field_fryer from public.form_template_fields where template_id = v_template_id and label = 'Fryer';
+  select id into v_field_tpm from public.form_template_fields where template_id = v_template_id and label = 'TPM %';
+  select id into v_field_filtration from public.form_template_fields where template_id = v_template_id and label = 'Filtration';
+  raise notice 'PASS: a mixed-field-type form template is created correctly';
+
+  -- ── A select field with no options is rejected ──
+  v_raised := false;
+  begin
+    perform public.create_form_template('Bad', '[{"label":"x","field_type":"select"}]'::jsonb);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a select field with no options should be rejected';
+  end if;
+  raise notice 'PASS: a select field with no options is rejected';
+
+  -- ── A task cannot be both a checklist and a form ──
+  v_raised := false;
+  begin
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by, form_template_id, template_id)
+    values (
+      v_org_id, v_team_id, 'Bad', v_emp_id, v_owner_id, v_template_id,
+      (select public.create_checklist_template('x', true, '[{"section_title":"","question":"q"}]'::jsonb))
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a task should not be able to have both template_id and form_template_id';
+  end if;
+  raise notice 'PASS: a task cannot be both a checklist and a form';
+
+  -- ── A real form task, assigned to the supervisor ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, form_template_id, priority, requires_review)
+  values (v_org_id, v_team_id, 'Oil Test', v_emp_id, v_owner_id, v_template_id, 'medium', false)
+  returning id into v_task_id;
+
+  -- ── Missing a required field is rejected ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.set_task_completion(
+      v_task_id, true, null, '{}', null, '[]'::jsonb, null, null, null, null,
+      json_build_array(json_build_object('field_id', v_field_tpm, 'value', '18'))::jsonb
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a submission missing a required field should be rejected';
+  end if;
+  raise notice 'PASS: a form submission missing a required field is rejected';
+
+  -- ── A complete submission (the optional field left out entirely) saves
+  -- real values, not yes/no ──
+  v_completion_id := public.set_task_completion(
+    v_task_id, true, null, '{}', null, '[]'::jsonb, null, null, null, null,
+    json_build_array(
+      json_build_object('field_id', v_field_fryer, 'value', 'Fanker'),
+      json_build_object('field_id', v_field_tpm, 'value', '18.5'),
+      json_build_object('field_id', v_field_filtration, 'value', 'OK')
+    )::jsonb
+  );
+  select count(*) into v_field_count from public.form_answers where task_completion_id = v_completion_id;
+  if v_field_count <> 3 then
+    raise exception 'FAIL: expected 3 saved form answers, got %', v_field_count;
+  end if;
+  select value into v_value from public.form_answers where task_completion_id = v_completion_id and field_id = v_field_tpm;
+  if v_value is distinct from '18.5' then
+    raise exception 'FAIL: expected the real TPM value ''18.5'', got %', coalesce(v_value, '<null>');
+  end if;
+  raise notice 'PASS: a valid form submission saves the real field values, not yes/no';
+
+  -- ── An unrelated employee cannot see these form answers ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_stranger_id)::text, true);
+  select count(*) into v_visible_count from public.form_answers where task_completion_id = v_completion_id;
+  if v_visible_count <> 0 then
+    raise exception 'FAIL: an unrelated employee must not see this submission''s form answers';
+  end if;
+  raise notice 'PASS: an unrelated employee cannot see this submission''s form answers';
+
+  reset role;
+end $$;
+
 rollback;

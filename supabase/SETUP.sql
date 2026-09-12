@@ -64,10 +64,12 @@ drop function if exists public.set_task_completion(uuid, boolean, text, text[]) 
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb) cascade;
 drop function if exists public.adjust_completion_points(uuid, numeric, text) cascade;
 drop function if exists public.generate_task_occurrences() cascade;
 drop function if exists public.create_checklist_template(text, int, boolean, jsonb) cascade;
 drop function if exists public.create_checklist_template(text, boolean, jsonb) cascade;
+drop function if exists public.create_form_template(text, jsonb) cascade;
 -- Checklists are no longer a separate assignable thing — a checklist is a
 -- task with template_id set, created the same way any task is.
 drop function if exists public.assign_checklist(uuid, uuid) cascade;
@@ -170,6 +172,44 @@ create table public.checklist_template_items (
 
 create index checklist_template_items_template_idx on public.checklist_template_items(template_id, sort_order);
 
+-- A separate module from checklist_templates on purpose. Checklists are a
+-- flat list of yes/no questions; oil test, hood cleaning, and chicken
+-- marination are real logs — a TPM% reading, a fryer number, a filtration
+-- status, a time — and forcing a number into a yes/no question with the
+-- actual value typed into a note field would make it unthresholdable and
+-- unchartable. Each submission of a form task is one row in a continuous
+-- log (task_completions, already append-only) — exactly what the source
+-- Excel sheets already look like, one row per date/time. The specific
+-- templates (oil test, hood cleaning, chicken marination) are separate,
+-- later work; this is just the general field-typed module they'll sit on.
+create table public.form_templates (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  name text not null,
+  archived boolean not null default false,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table public.form_template_fields (
+  id uuid primary key default gen_random_uuid(),
+  template_id uuid not null references public.form_templates(id) on delete cascade,
+  sort_order int not null,
+  label text not null,
+  field_type text not null check (field_type in ('text', 'number', 'date', 'time', 'select')),
+  -- Only meaningful (and required) when field_type = 'select', e.g.
+  -- '["OK","Replace"]' for filtration status or '["Good","Bad"]" for a
+  -- condition rating. Null for every other field type.
+  options jsonb,
+  -- Free-form display unit shown next to the value — '%', 'L', '°C' — purely
+  -- cosmetic, never parsed or validated against.
+  unit text,
+  required boolean not null default true,
+  check (field_type <> 'select' or (options is not null and jsonb_array_length(options) > 0))
+);
+
+create index form_template_fields_template_idx on public.form_template_fields(template_id, sort_order);
+
 create table public.tasks (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -193,6 +233,10 @@ create table public.tasks (
   -- instead of being falsely marked late for a shift swap. No calendar/shift
   -- concept on purpose.
   template_id uuid references public.checklist_templates(id) on delete set null,
+  -- A form task (oil test, hood cleaning, chicken marination — see
+  -- form_templates) instead of a checklist. A task is at most one of these,
+  -- never both — enforced below.
+  form_template_id uuid references public.form_templates(id) on delete set null,
   cooldown_hours int,
   -- Fixed clock times this task is due each day, e.g. '{12:00,16:00,22:00}'
   -- for a 3x-daily oil check — entirely the admin's choice, no fixed pattern
@@ -215,7 +259,8 @@ create table public.tasks (
   check (template_id is not null or cooldown_hours is null),
   check (priority <> 'low' or requires_review = false),
   check (priority <> 'high' or requires_review = true),
-  check (scheduled_times is null or cooldown_hours is null)
+  check (scheduled_times is null or cooldown_hours is null),
+  check (template_id is null or form_template_id is null)
 );
 
 -- Append-only audit log. tasks holds only the CURRENT state, which is wiped
@@ -331,11 +376,30 @@ create table public.checklist_section_photos (
   created_at timestamptz not null default now()
 );
 
+-- One row per field per submission — the form-module equivalent of
+-- checklist_answers. Every value is stored as text regardless of the
+-- field's type; parsing/formatting a number or time back out is a display
+-- concern for whatever reads this, keyed off form_template_fields.field_type,
+-- not something worth a column per type here.
+create table public.form_answers (
+  id uuid primary key default gen_random_uuid(),
+  task_completion_id uuid not null references public.task_completions(id) on delete cascade,
+  field_id uuid not null references public.form_template_fields(id) on delete cascade,
+  -- Snapshot of the field's label at the moment it was answered, same reason
+  -- checklist_answers snapshots question text: a later edit to the template
+  -- must not rewrite what a past submission actually asked.
+  label text not null,
+  sort_order int not null,
+  value text
+);
+
 create index checklist_answers_completion_idx on public.checklist_answers(task_completion_id, sort_order);
 create index checklist_section_photos_completion_idx on public.checklist_section_photos(task_completion_id);
+create index form_answers_completion_idx on public.form_answers(task_completion_id, sort_order);
 
 create index tasks_team_id_idx on public.tasks(team_id);
 create index tasks_template_id_idx on public.tasks(template_id) where template_id is not null;
+create index tasks_form_template_id_idx on public.tasks(form_template_id) where form_template_id is not null;
 create index task_completions_org_idx on public.task_completions(org_id, created_at desc);
 create index task_completions_team_idx on public.task_completions(team_id, created_at desc);
 create index task_completions_actor_idx on public.task_completions(actor_id, created_at desc);
@@ -379,6 +443,9 @@ alter table public.checklist_answers enable row level security;
 alter table public.checklist_section_photos enable row level security;
 alter table public.points_adjustments enable row level security;
 alter table public.task_occurrences enable row level security;
+alter table public.form_templates enable row level security;
+alter table public.form_template_fields enable row level security;
+alter table public.form_answers enable row level security;
 -- No policy on this one on purpose — only the SECURITY DEFINER function
 -- (running as owner) can touch it, never clients directly.
 alter table public.login_lookup_attempts enable row level security;
@@ -599,6 +666,19 @@ create policy "org members can read their org's template items"
     )
   );
 
+create policy "org members can read their org's form templates"
+  on public.form_templates for select
+  using (org_id = public.my_org_id());
+
+create policy "org members can read their org's form template fields"
+  on public.form_template_fields for select
+  using (
+    exists (
+      select 1 from public.form_templates t
+      where t.id = template_id and t.org_id = public.my_org_id()
+    )
+  );
+
 -- checklist_answers/checklist_section_photos follow whatever task_completions
 -- visibility already is (owner/team leader/actor/subject, defined below) —
 -- they're just the detail rows for a 'completed' history entry.
@@ -627,6 +707,31 @@ create policy "checklist answers follow their completion's visibility"
 
 create policy "checklist photos follow their completion's visibility"
   on public.checklist_section_photos for select
+  using (
+    exists (
+      select 1 from public.task_completions tc
+      where tc.id = task_completion_id
+        and tc.org_id = public.my_org_id()
+        and (
+          public.my_role() = 'owner'
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or tc.actor_id = auth.uid()
+          or tc.subject_profile_id = auth.uid()
+          or (
+            public.my_role() = 'team_admin'
+            and exists (
+              select 1 from public.profile_teams pt
+              where pt.profile_id = tc.subject_profile_id and pt.team_id = any(public.my_team_ids())
+            )
+          )
+        )
+    )
+  );
+
+-- Same visibility as its completion — the form-module equivalent of the two
+-- checklist policies above.
+create policy "form answers follow their completion's visibility"
+  on public.form_answers for select
   using (
     exists (
       select 1 from public.task_completions tc
@@ -1261,7 +1366,14 @@ create function public.set_task_completion(
   -- this submission is for. The UI always knows this already — it's showing
   -- "your 16:00 check," not a bare task — so there is no ambiguous "closest
   -- occurrence" guessing to get wrong here.
-  p_occurrence_id uuid default null
+  p_occurrence_id uuid default null,
+  -- Only applies to a form task (form_template_id set). Shape:
+  -- [{ "field_id": "...", "value": "..." }, ...]. p_answers/p_section_photos
+  -- above are the checklist module's; this is the form module's, kept
+  -- separate because the two shapes don't overlap (yes/no+note vs. a
+  -- typed field value) and conflating them would just make both harder
+  -- to validate correctly.
+  p_form_values jsonb default null
 )
 returns uuid
 language plpgsql
@@ -1282,6 +1394,9 @@ declare
   v_photo jsonb;
   v_yes int;
   v_no int;
+  v_field public.form_template_fields;
+  v_value jsonb;
+  v_provided_field_ids uuid[];
   v_subject_id uuid;
   v_shift text;
   v_points numeric;
@@ -1377,6 +1492,33 @@ begin
     from jsonb_array_elements(p_answers) a;
   end if;
 
+  -- Every required field on the template must actually be present and
+  -- non-empty in the submission — enforced here, not just in the UI, same
+  -- as the checklist's note-on-لا rule above.
+  if p_completed and v_task.form_template_id is not null then
+    if p_form_values is null or jsonb_array_length(p_form_values) < 1 then
+      raise exception 'at least one field value is required';
+    end if;
+    select array_agg((v ->> 'field_id')::uuid) into v_provided_field_ids
+    from jsonb_array_elements(p_form_values) v;
+    for v_field in
+      select * from public.form_template_fields where template_id = v_task.form_template_id
+    loop
+      if v_field.required and not (v_field.id = any(coalesce(v_provided_field_ids, '{}'))) then
+        raise exception 'the field "%" is required', v_field.label;
+      end if;
+    end loop;
+    for v_value in select * from jsonb_array_elements(p_form_values)
+    loop
+      if coalesce(trim(v_value ->> 'value'), '') = '' and exists (
+        select 1 from public.form_template_fields f
+        where f.id = (v_value ->> 'field_id')::uuid and f.required
+      ) then
+        raise exception 'a value is required for every required field';
+      end if;
+    end loop;
+  end if;
+
   if p_completed then
     -- due_at/was_late always mean "against what deadline" — for a scheduled
     -- task that's the occurrence's own time, not tasks.due (which a
@@ -1441,6 +1583,15 @@ begin
     loop
       insert into public.checklist_section_photos (task_completion_id, section_title, photo_url)
       values (v_completion_id, coalesce(v_photo ->> 'section_title', ''), v_photo ->> 'photo_url');
+    end loop;
+  end if;
+
+  if p_completed and v_task.form_template_id is not null then
+    for v_value in select * from jsonb_array_elements(p_form_values)
+    loop
+      select * into v_field from public.form_template_fields where id = (v_value ->> 'field_id')::uuid;
+      insert into public.form_answers (task_completion_id, field_id, label, sort_order, value)
+      values (v_completion_id, v_field.id, v_field.label, v_field.sort_order, nullif(trim(coalesce(v_value ->> 'value', '')), ''));
     end loop;
   end if;
 
@@ -1692,6 +1843,61 @@ begin
 end;
 $$;
 
+-- p_fields shape: [{ "label": "...", "field_type": "text"|"number"|"date"|
+-- "time"|"select", "options": ["OK","Replace"] (select only, else omit/null),
+-- "unit": "%" (optional, cosmetic), "required": true|false (default true) }]
+create function public.create_form_template(
+  p_name text,
+  p_fields jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_template_id uuid;
+  v_field jsonb;
+  v_i int := 0;
+begin
+  select p.role, p.org_id into v_caller_role, v_caller_org
+  from public.profiles p where p.id = auth.uid();
+
+  if v_caller_role not in ('owner', 'team_admin') then
+    raise exception 'only an admin or team leader can create a form template';
+  end if;
+  if coalesce(trim(p_name), '') = '' then
+    raise exception 'a form name is required';
+  end if;
+  if jsonb_array_length(p_fields) < 1 then
+    raise exception 'a form needs at least one field';
+  end if;
+
+  insert into public.form_templates (org_id, name, created_by)
+  values (v_caller_org, trim(p_name), auth.uid())
+  returning id into v_template_id;
+
+  for v_field in select * from jsonb_array_elements(p_fields)
+  loop
+    insert into public.form_template_fields (template_id, sort_order, label, field_type, options, unit, required)
+    values (
+      v_template_id,
+      v_i,
+      v_field ->> 'label',
+      v_field ->> 'field_type',
+      v_field -> 'options',
+      v_field ->> 'unit',
+      coalesce((v_field ->> 'required')::boolean, true)
+    );
+    v_i := v_i + 1;
+  end loop;
+
+  return v_template_id;
+end;
+$$;
+
 grant execute on function public.create_organization(text, text, text, text) to authenticated;
 grant execute on function public.get_login_email(text, text) to anon, authenticated;
 grant execute on function public.create_team(text) to authenticated;
@@ -1701,11 +1907,12 @@ grant execute on function public.admin_set_user_active(uuid, boolean) to authent
 grant execute on function public.add_profile_to_team(uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
-grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid) to authenticated;
+grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb) to authenticated;
 grant execute on function public.adjust_completion_points(uuid, numeric, text) to authenticated;
 -- Not granted to authenticated: this runs on a schedule (pg_cron) as a
 -- superuser-ish role, never called by a client directly.
 grant execute on function public.create_checklist_template(text, boolean, jsonb) to authenticated;
+grant execute on function public.create_form_template(text, jsonb) to authenticated;
 grant execute on function public.declare_task_off_duty(uuid, text) to authenticated;
 grant execute on function public.review_off_duty(uuid, boolean, text) to authenticated;
 grant execute on function public.review_task_completion(uuid, text) to authenticated;
