@@ -42,6 +42,14 @@ export default function MainLayout() {
           }}
         />
         <Tabs.Screen
+          name="report"
+          options={{
+            title: t('mainTabs.report'),
+            href: isOwner ? undefined : null,
+            tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
           name="history"
           options={{
             title: t('mainTabs.history'),
