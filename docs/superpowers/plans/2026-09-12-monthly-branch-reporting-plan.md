@@ -90,7 +90,7 @@ In the "Clean slate" drop list, right after `drop table if exists public.points_
 drop table if exists public.report_periods cascade;
 ```
 
-In the table-definitions section, right after the `teams` table (around line 110):
+In the table-definitions section, right after the `profiles` table (NOT right after `teams` — `report_periods.closed_by` references `public.profiles(id)`, so `profiles` must already be defined, or a fresh run of this file errors with "relation public.profiles does not exist"):
 
 ```sql
 -- ── Monthly branch reporting ────────────────────────────────────────────
@@ -183,7 +183,7 @@ git commit -m "Add report_periods table for monthly branch reporting"
 
 - [ ] **Step 1: Add the failing test to `supabase/TESTS.sql`**
 
-Append near the end of the file (before the final `rollback;`):
+Insert this block immediately after the "Schema: report_periods exists with the right shape" block that Task 1 added (right before the "admin_create_user" block, around line 121) — **not at the end of the file.** A later block in this file ("Fixed-time schedule", further down) contains an assertion that is genuinely time-of-day-dependent (it fails whenever this is run after 21:00 Baghdad time — a pre-existing, unrelated flakiness, not something to fix here) and aborts the rest of the transaction when it does. Placing every new block from this plan early in the file, right after Task 1's, guarantees they actually execute during a live run regardless of what time it is when you run this.
 
 ```sql
 -- ── Monthly close: picks the org's first elapsed month, then catches up ──
@@ -361,6 +361,8 @@ git commit -m "Add close_next_month RPC for monthly branch reporting"
 - Produces: `public.get_period_report(p_period_id uuid) returns table (branch_id uuid, branch_name text, subject_profile_id uuid, subject_name text, total_points numeric, iqd_amount numeric)`.
 
 - [ ] **Step 1: Add the failing test to `supabase/TESTS.sql`**
+
+Insert this block right after Task 2's `close_next_month` test block (same early-in-the-file location — see Task 2's Step 1 note on why: a later, unrelated block is time-of-day-flaky and aborts the transaction for anything placed after it).
 
 ```sql
 -- ── get_period_report attributes points to the SUBJECT's branch, not the
@@ -556,6 +558,8 @@ git commit -m "Add get_period_report RPC, attributed via the subject's branch"
 - Produces: `public.get_current_branch_summary() returns table (branch_id uuid, branch_name text, subject_profile_id uuid, subject_name text, total_points numeric, iqd_amount numeric)` — same column shape as `get_period_report`, so both map to one `BranchSummaryRow` TS type (Task 7).
 
 - [ ] **Step 1: Add the failing test to `supabase/TESTS.sql`**
+
+Insert this block right after Task 3's `get_period_report` test block (same early-in-the-file location as Tasks 1-3 — see Task 2's Step 1 note).
 
 ```sql
 -- ── get_current_branch_summary: only this month, attributed by branch ───

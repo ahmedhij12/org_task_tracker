@@ -110,23 +110,6 @@ create table public.teams (
   created_at timestamptz not null default now()
 );
 
--- ── Monthly branch reporting ────────────────────────────────────────────
--- One row per calendar month an owner has closed. Nothing is snapshotted —
--- every report, past or current, is computed live from task_completions at
--- read time (see get_period_report / get_current_branch_summary below), so
--- a correction made after a month is closed still shows up correctly. Same
--- append-only philosophy as points_adjustments.
-create table public.report_periods (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  period_month date not null, -- always the 1st of the month, e.g. 2026-08-01
-  closed_at timestamptz not null default now(),
-  closed_by uuid not null references public.profiles(id) on delete cascade,
-  unique (org_id, period_month)
-);
-
-create index report_periods_org_idx on public.report_periods(org_id, period_month desc);
-
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   org_id uuid not null references public.organizations(id) on delete cascade,
@@ -148,6 +131,23 @@ create table public.profiles (
 
 create unique index profiles_org_username_unique_idx
   on public.profiles (org_id, lower(username));
+
+-- ── Monthly branch reporting ────────────────────────────────────────────
+-- One row per calendar month an owner has closed. Nothing is snapshotted —
+-- every report, past or current, is computed live from task_completions at
+-- read time (see get_period_report / get_current_branch_summary below), so
+-- a correction made after a month is closed still shows up correctly. Same
+-- append-only philosophy as points_adjustments.
+create table public.report_periods (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  period_month date not null, -- always the 1st of the month, e.g. 2026-08-01
+  closed_at timestamptz not null default now(),
+  closed_by uuid not null references public.profiles(id) on delete cascade,
+  unique (org_id, period_month)
+);
+
+create index report_periods_org_idx on public.report_periods(org_id, period_month desc);
 
 -- A person can belong to more than one team (e.g. a supervisor who covers
 -- both the hygiene and kitchen checklists, each run by a different leader).
