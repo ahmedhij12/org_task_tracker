@@ -52,6 +52,7 @@ drop function if exists public.get_login_email(text, text) cascade;
 -- Both signatures: the old one took an admin to promote, the new one doesn't.
 drop function if exists public.create_team(text, uuid) cascade;
 drop function if exists public.create_team(text) cascade;
+drop function if exists public.close_next_month() cascade;
 drop function if exists public.admin_create_user(text, text, text, text, uuid, text) cascade;
 drop function if exists public.assert_can_manage_user(uuid) cascade;
 drop function if exists public.admin_reset_password(uuid, text) cascade;
@@ -1322,6 +1323,50 @@ begin
 end;
 $$;
 
+-- Closes whichever calendar month has fully elapsed but has no
+-- report_periods row yet. If the admin is behind (skipped a month or two),
+-- calling this again catches up to the next oldest one — one per call.
+create function public.close_next_month()
+returns table (period_id uuid, period_month date)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_org_id uuid;
+  v_role text;
+  v_org_created_month date;
+  v_last_closed date;
+  v_next_month date;
+  v_new_period_id uuid;
+begin
+  select p.org_id, p.role into v_org_id, v_role
+  from public.profiles p where p.id = auth.uid();
+
+  if v_role is distinct from 'owner' then
+    raise exception 'only the org owner can close a month';
+  end if;
+
+  select date_trunc('month', o.created_at)::date into v_org_created_month
+  from public.organizations o where o.id = v_org_id;
+
+  select max(rp.period_month) into v_last_closed
+  from public.report_periods rp where rp.org_id = v_org_id;
+
+  v_next_month := coalesce((v_last_closed + interval '1 month')::date, v_org_created_month);
+
+  if v_next_month + interval '1 month' > now() then
+    return; -- that month hasn't fully elapsed yet — nothing to close
+  end if;
+
+  insert into public.report_periods (org_id, period_month, closed_by)
+  values (v_org_id, v_next_month, auth.uid())
+  returning id into v_new_period_id;
+
+  return query select v_new_period_id, v_next_month;
+end;
+$$;
+
 -- Materializes today's (and, once past 21:00 Baghdad time, tomorrow's —
 -- see the comment below) task_occurrences rows for every scheduled_times
 -- task, so there's always something concrete for a reminder job to scan and
@@ -1926,6 +1971,7 @@ $$;
 grant execute on function public.create_organization(text, text, text, text) to authenticated;
 grant execute on function public.get_login_email(text, text) to anon, authenticated;
 grant execute on function public.create_team(text) to authenticated;
+grant execute on function public.close_next_month() to authenticated;
 grant execute on function public.admin_create_user(text, text, text, text, uuid, text) to authenticated;
 grant execute on function public.admin_reset_password(uuid, text) to authenticated;
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;

@@ -119,6 +119,83 @@ begin
   raise notice 'PASS: report_periods has period_month';
 end $$;
 
+-- ── Monthly close: picks the org's first elapsed month, then catches up ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_admin_id uuid;
+  v_period_id uuid;
+  v_period_month date;
+  v_count int;
+  v_raised boolean;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'close-month-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Close Month Co', 'Owner', 'closemonthowner');
+
+  v_admin_id := public.admin_create_user('Team Admin', 'closemonthadmin', 'initial123', 'team_admin', v_team_id);
+
+  -- Backdate the org so June/July 2026 are already-elapsed months to close,
+  -- regardless of what "now" actually is when this test runs.
+  update public.organizations set created_at = '2026-06-10'::timestamptz where id = v_org_id;
+
+  set role authenticated;
+
+  -- ── A team_admin cannot close the month ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.close_next_month();
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team_admin must not be able to close the month';
+  end if;
+  raise notice 'PASS: a team_admin cannot close the month';
+
+  -- ── The owner's first close picks June 2026 (the org's creation month) ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select period_id, period_month into v_period_id, v_period_month from public.close_next_month();
+  if v_period_month is distinct from '2026-06-01'::date then
+    raise exception 'FAIL: expected the first close to be June 2026, got %', v_period_month;
+  end if;
+  raise notice 'PASS: the first close picks the org''s creation month';
+
+  -- ── A second call catches up to July, not a repeat of June ──
+  select period_id, period_month into v_period_id, v_period_month from public.close_next_month();
+  if v_period_month is distinct from '2026-07-01'::date then
+    raise exception 'FAIL: expected the second close to be July 2026, got %', v_period_month;
+  end if;
+  raise notice 'PASS: a second close catches up to the next oldest unclosed month';
+
+  -- ── The current, still-in-progress month is never closeable ──
+  select count(*) into v_count from public.report_periods
+  where org_id = v_org_id and period_month = date_trunc('month', now())::date;
+  if v_count <> 0 then
+    raise exception 'FAIL: the current in-progress month must never be closed';
+  end if;
+  raise notice 'PASS: the current in-progress month is never closed';
+
+  reset role;
+end $$;
+
 -- ── admin_create_user: who may create whom, and does the account work ───
 
 do $$
