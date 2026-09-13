@@ -17,6 +17,7 @@ function mapTask(row: any): OrgTask {
     templateId: row.template_id,
     cooldownHours: row.cooldown_hours,
     requiresReview: row.requires_review,
+    isAudit: row.is_audit,
     completed: row.completed,
     completedBy: row.completed_by,
     completedAt: row.completed_at,
@@ -47,6 +48,10 @@ function mapCompletion(row: any): TaskCompletion {
     reviewNote: row.review_note,
     yesCount: row.yes_count,
     noCount: row.no_count,
+    subjectProfileId: row.subject_profile_id,
+    shift: row.shift,
+    pointsAwarded: row.points_awarded,
+    signatureUrl: row.signature_url,
     createdAt: row.created_at,
   };
 }

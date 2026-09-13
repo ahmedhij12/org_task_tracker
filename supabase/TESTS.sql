@@ -1647,7 +1647,12 @@ declare
   v_completion_id uuid;
   v_raised boolean;
   v_visible_count int;
-  v_subject_ans jsonb := '[{"section_title":"","question":"Oil changed on schedule?","sort_order":0,"answer":true}]'::jsonb;
+  -- A "No" answer (with its required note, since this template requires
+  -- one) on the sole question, at the schema's default point_weight of
+  -- 0.25 — the real thing this test now exercises: points_awarded should
+  -- come from this, not from whatever the client passes as p_points
+  -- (deprecated, ignored — see set_task_completion).
+  v_subject_ans jsonb := '[{"section_title":"","question":"Oil changed on schedule?","sort_order":0,"answer":false,"note":"Overdue by two days"}]'::jsonb;
   v_row public.task_completions;
   v_adj public.points_adjustments;
 begin
@@ -1753,10 +1758,10 @@ begin
   if v_row.subject_profile_id is distinct from v_subject_id then
     raise exception 'FAIL: subject_profile_id was not recorded as the chosen subject';
   end if;
-  if v_row.shift is distinct from 'morning' or v_row.points_awarded is distinct from -1::numeric then
-    raise exception 'FAIL: shift/points were not recorded on the audit completion';
+  if v_row.shift is distinct from 'morning' or v_row.points_awarded is distinct from -0.25::numeric then
+    raise exception 'FAIL: shift/points were not recorded on the audit completion, got points=%', v_row.points_awarded;
   end if;
-  raise notice 'PASS: an audit submission records its subject, shift and penalty';
+  raise notice 'PASS: an audit submission computes its penalty server-side from the answer''s point_weight';
 
   -- ── The audited supervisor can see their own result ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_subject_id)::text, true);
@@ -1781,13 +1786,13 @@ begin
   -- ── Adjusting points: the auditor who performed it can revise it later,
   -- and both the old and new value stay visible in the trail ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
-  perform public.adjust_completion_points(v_completion_id, -0.5, 'clean visit next time, halving the penalty');
+  perform public.adjust_completion_points(v_completion_id, -0.125, 'clean visit next time, halving the penalty');
   select * into v_row from public.task_completions where id = v_completion_id;
-  if v_row.points_awarded is distinct from -0.5::numeric then
+  if v_row.points_awarded is distinct from -0.125::numeric then
     raise exception 'FAIL: points_awarded should reflect the adjustment';
   end if;
   select * into v_adj from public.points_adjustments where task_completion_id = v_completion_id;
-  if v_adj.previous_points is distinct from -1::numeric or v_adj.new_points is distinct from -0.5::numeric then
+  if v_adj.previous_points is distinct from -0.25::numeric or v_adj.new_points is distinct from -0.125::numeric then
     raise exception 'FAIL: the adjustment trail should record both the old and new value';
   end if;
   raise notice 'PASS: the auditor can adjust their own audit''s points, and the old value stays in the trail';
@@ -1834,6 +1839,93 @@ begin
     raise exception 'FAIL: adjusting points on an ordinary, non-audit completion should be refused';
   end if;
   raise notice 'PASS: an ordinary completion has no audit subject and cannot have its points adjusted';
+
+  reset role;
+end $$;
+
+-- ── Audit scoring: a real mix of weights, and p_points is truly ignored ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_auditor_id uuid;
+  v_subject_id uuid;
+  v_template_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
+  v_row public.task_completions;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'audit-scoring-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Audit Scoring Co', 'Owner', 'auditscoreowner');
+
+  v_auditor_id := public.admin_create_user('Auditor', 'auditscoreauditor', 'initial123', 'team_admin', v_team_id);
+  v_subject_id := public.admin_create_user('Subject', 'auditscoresubject', 'initial123', 'employee', v_team_id);
+
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_template_id := public.create_checklist_template(
+    'Scoring Audit', false,
+    '[
+      {"section_title":"","question":"Q1"},
+      {"section_title":"","question":"Q2"},
+      {"section_title":"","question":"Q3"}
+    ]'::jsonb
+  );
+  -- Distinct weights per question: a "No" on the important one should cost
+  -- noticeably more than an ordinary one.
+  perform public.update_checklist_template(
+    v_template_id, 'Scoring Audit', false,
+    '[
+      {"section_title":"","question":"Q1","point_weight":0.25},
+      {"section_title":"","question":"Q2","point_weight":1},
+      {"section_title":"","question":"Q3","point_weight":0.25}
+    ]'::jsonb
+  );
+
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Scoring Audit', v_auditor_id, v_owner_id, v_template_id, true, 'medium', false)
+  returning id into v_task_id;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  -- Q1 yes (0), Q2 no (-1), Q3 no (-0.25) = -1.25. p_points is passed as
+  -- 999 specifically to prove it's ignored, not merely capped or averaged.
+  v_completion_id := public.set_task_completion(
+    p_task_id => v_task_id, p_completed => true, p_note => null, p_photo_urls => '{}',
+    p_answers => '[
+      {"section_title":"","question":"Q1","sort_order":0,"answer":true},
+      {"section_title":"","question":"Q2","sort_order":1,"answer":false},
+      {"section_title":"","question":"Q3","sort_order":2,"answer":false}
+    ]'::jsonb,
+    p_section_photos => '[]'::jsonb,
+    p_subject_profile_id => v_subject_id, p_shift => 'evening', p_points => 999,
+    p_signature_url => 'https://x/signature.png'
+  );
+  select * into v_row from public.task_completions where id = v_completion_id;
+  if v_row.points_awarded is distinct from -1.25::numeric then
+    raise exception 'FAIL: expected -1.25 (0 + -1 + -0.25), got %, p_points was not actually ignored', v_row.points_awarded;
+  end if;
+  raise notice 'PASS: scoring sums each "No" answer''s own point_weight, and a client-supplied p_points is fully ignored';
+
+  if v_row.signature_url is distinct from 'https://x/signature.png' then
+    raise exception 'FAIL: signature_url was not recorded on the audit completion';
+  end if;
+  raise notice 'PASS: the auditor''s signature is recorded on the completion';
 
   reset role;
 end $$;

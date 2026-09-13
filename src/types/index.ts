@@ -64,6 +64,11 @@ export interface OrgTask {
    * on 'medium'.
    */
   requiresReview: boolean;
+  /**
+   * An admin's own recurring "go audit someone" task — the subject/branch/
+   * shift are chosen fresh at each completion, not fixed at assignment.
+   */
+  isAudit: boolean;
   completed: boolean;
   completedBy: string | null;
   completedAt: string | null;
@@ -102,6 +107,17 @@ export interface TaskCompletion {
   /** Only set when the task is a checklist: how many questions were answered yes/no. */
   yesCount: number | null;
   noCount: number | null;
+  /**
+   * Who this completion is ABOUT — equal to actorId for an ordinary task,
+   * different only for an is_audit completion (whoever the auditor chose).
+   */
+  subjectProfileId: string;
+  /** Only set on an is_audit completion. */
+  shift: 'morning' | 'evening' | null;
+  /** Penalty (negative) or bonus (positive), in fractional points. Only set on an is_audit completion. IQD = points * 25000, computed at read time. */
+  pointsAwarded: number | null;
+  /** The auditor's signature. Only set on an is_audit completion. */
+  signatureUrl: string | null;
   createdAt: string;
 }
 

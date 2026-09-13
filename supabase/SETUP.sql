@@ -340,10 +340,14 @@ create table public.task_completions (
   subject_profile_id uuid not null references public.profiles(id) on delete cascade,
   -- Only meaningful on an is_audit completion.
   shift text check (shift in ('morning', 'evening')),
-  -- Penalty (negative) or bonus (positive), in fractional points, set by the
-  -- auditor. IQD is always points * 25000 — computed at read time, never
-  -- stored, so a future rate change doesn't rewrite history. Only ever set on
-  -- an is_audit completion; adjustable later, see points_adjustments.
+  -- Penalty (negative) or bonus (positive), in fractional points. For a
+  -- template-based audit, computed server-side from the checklist answers'
+  -- point_weight, never trusted from the client; for an audit with no
+  -- template, taken directly from the auditor (nothing structured to
+  -- compute from) — see set_task_completion's scoring block. IQD is always
+  -- points * 25000 — computed at read time, never stored, so a future rate
+  -- change doesn't rewrite history. Only ever set on an is_audit
+  -- completion; adjustable later, see points_adjustments.
   points_awarded numeric,
   -- The auditor's signature, captured at submission — only meaningful on an
   -- is_audit completion. Uploaded to the same task-proofs bucket as photos.
@@ -1579,12 +1583,16 @@ create function public.set_task_completion(
   p_photo_urls text[] default '{}',
   p_answers jsonb default null,
   p_section_photos jsonb default '[]',
-  -- Audit-only: who this submission is about, their shift, and the
-  -- penalty/bonus the auditor is assigning. Ignored (and never trusted from
-  -- the client) on an ordinary, non-audit task — see the is_audit branch
-  -- below for what's actually enforced.
+  -- Audit-only: who this submission is about and their shift. Ignored (and
+  -- never trusted from the client) on an ordinary, non-audit task — see the
+  -- is_audit branch below for what's actually enforced.
   p_subject_profile_id uuid default null,
   p_shift text default null,
+  -- Trusted directly ONLY for an audit with no checklist template (there's
+  -- no structured answer data to compute a penalty from otherwise). A
+  -- template-based audit computes its own penalty server-side from
+  -- p_answers joined to checklist_template_items.point_weight and ignores
+  -- this entirely — see the is_audit scoring block below.
   p_points numeric default null,
   -- Required when the task has scheduled_times: which specific occurrence
   -- this submission is for. The UI always knows this already — it's showing
@@ -1597,7 +1605,10 @@ create function public.set_task_completion(
   -- separate because the two shapes don't overlap (yes/no+note vs. a
   -- typed field value) and conflating them would just make both harder
   -- to validate correctly.
-  p_form_values jsonb default null
+  p_form_values jsonb default null,
+  -- Audit-only: the auditor's signature, uploaded to task-proofs the same
+  -- way photos are, before this call.
+  p_signature_url text default null
 )
 returns uuid
 language plpgsql
@@ -1624,6 +1635,7 @@ declare
   v_subject_id uuid;
   v_shift text;
   v_points numeric;
+  v_signature_url text;
 begin
   select p.role into v_my_role from public.profiles p where p.id = v_my_profile_id;
   v_my_teams := public.my_team_ids();
@@ -1683,7 +1695,13 @@ begin
     end if;
     v_subject_id := p_subject_profile_id;
     v_shift := p_shift;
+    -- Fallback for an audit with no checklist template at all — there's no
+    -- structured answer data to compute a penalty from, so the auditor's
+    -- own direct judgment is trusted here, same as always. A template-
+    -- based audit overwrites this unconditionally below (see the scoring
+    -- block), ignoring whatever was passed here.
     v_points := p_points;
+    v_signature_url := p_signature_url;
   end if;
 
   -- Enforced here and not only in the UI: a task that requires proof cannot
@@ -1714,6 +1732,25 @@ begin
       count(*) filter (where (a ->> 'answer')::boolean = false)
     into v_yes, v_no
     from jsonb_array_elements(p_answers) a;
+
+    -- The penalty is computed here, not taken from the client (p_points is
+    -- deprecated — see its declaration above): sum each "No" answer's own
+    -- question's point_weight (0 for "Yes"), as a negative number. Matched
+    -- by question text + section, the same identity checklist_answers
+    -- already snapshots by — there's no item id round-trip through the
+    -- client today.
+    if v_task.is_audit then
+      select coalesce(sum(
+        case when (a ->> 'answer')::boolean then 0 else (
+          select it.point_weight from public.checklist_template_items it
+          where it.template_id = v_task.template_id
+            and it.question = (a ->> 'question')
+            and it.section_title = coalesce(a ->> 'section_title', '')
+        ) end
+      ), 0) * -1
+      into v_points
+      from jsonb_array_elements(p_answers) a;
+    end if;
   end if;
 
   -- Every required field on the template must actually be present and
@@ -1771,7 +1808,7 @@ begin
   insert into public.task_completions (
     task_id, org_id, team_id, task_title, actor_id, action,
     note, photo_urls, due_at, was_late, yes_count, no_count,
-    subject_profile_id, shift, points_awarded
+    subject_profile_id, shift, points_awarded, signature_url
   ) values (
     v_task.id, v_task.org_id, v_task.team_id, v_task.title, v_my_profile_id,
     case when p_completed then 'completed' else 'reopened' end,
@@ -1781,7 +1818,7 @@ begin
     v_was_late,
     case when p_completed then v_yes else null end,
     case when p_completed then v_no else null end,
-    v_subject_id, v_shift, v_points
+    v_subject_id, v_shift, v_points, v_signature_url
   )
   returning id into v_completion_id;
 
