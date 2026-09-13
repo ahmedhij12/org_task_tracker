@@ -2,6 +2,47 @@
 
 One milestone at a time. Park mid-stream ideas here instead of building them immediately.
 
+## Status (2026-09-13, later) — Branch audit report
+
+**Done, all 11 implementation tasks** (spec/plan:
+`docs/superpowers/specs/2026-09-13-audit-report-design.md` /
+`docs/superpowers/plans/2026-09-13-audit-report-plan.md`). An owner can now
+create a reusable "audit" task (self-assigned, targets the new "Daily
+Hygiene Checklist — Audit" template — the supervisors' plain "Daily Hygiene
+Checklist" is untouched); starting it walks through branch → subject →
+shift, then the checklist itself with each question's point weight shown;
+signing (a small custom SVG pad, no new native dependency) and submitting
+computes the penalty **server-side** from the actual "No" answers' weights
+(never trusted from the client); the audited supervisor now sees the result
+under History → "Audits about me"; and a PDF (logo, full Q&A, photos,
+total, signature) exports via the OS share sheet from the completion detail
+view. An owner can also now edit the audit template's questions and weights
+in-app (previously only possible via direct SQL).
+
+Three real bugs found and fixed along the way, all live-verified:
+1. The owner's RLS policy for creating a task never carved out self-
+   assigning an `is_audit` task (only a branch manager's branch had that
+   exception) — the owner literally could not create their own audit task.
+2. A second, deeper layer of the same bug: even after fixing (1), an owner
+   with **zero team memberships** (true of this org's real owner account,
+   since "Main Team" was deleted earlier the same day) still couldn't
+   self-assign, because a separate unconditional check required the task's
+   team_id to be among the assignee's own teams.
+3. A templateless `is_audit` completion (a legitimate, already-tested
+   pattern with no checklist to compute a penalty from) briefly got `NULL`
+   points instead of its client-supplied value after the scoring change —
+   caught before commit by re-running the existing test.
+
+**Still needs the user's own device QA** (flagged in the plan, not
+attempted here): a full real audit end to end, confirming Dashboard/Report
+totals move by the right amount, the PDF opens correctly, and the audited
+supervisor really does see it.
+
+**Deferred, per the user's own plan**: oil test / hood cleaning / chicken
+marination templates (build one at a time after this); the combined
+hood+checklist+oil report; `create_organization`'s own default-team
+seeding (flagged as a separate, larger fix — see the spec's "Findings").
+
 ## Status (2026-09-13)
 
 **Monthly branch reporting — done.** Full plan
