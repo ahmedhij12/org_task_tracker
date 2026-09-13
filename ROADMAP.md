@@ -2,6 +2,37 @@
 
 One milestone at a time. Park mid-stream ideas here instead of building them immediately.
 
+## Status (2026-09-13)
+
+**Monthly branch reporting — done.** Full plan
+(`docs/superpowers/plans/2026-09-12-monthly-branch-reporting-plan.md`), all 10
+tasks committed to master: `report_periods` table; `close_next_month`,
+`get_period_report`, `get_current_branch_summary` RPCs (owner-only, points
+summed via `profile_teams` so a subject is attributed to *their* branch, not
+the audit task's team); Owner/Team Admin dashboard split; new Report tab
+(month switcher over closed periods, combined table, close-month button); label
+renames Owner→Admin, Teams→Branches, People→Staff; `.xlsx` export via the OS
+share sheet using expo-file-system's current File/Directory API (its old
+string/base64 API throws at runtime on this SDK — deviated from the plan's
+sample code after checking the versioned docs, per `AGENTS.md`).
+
+One real bug found and fixed during a re-verification pass before continuing:
+the three new RPCs computed calendar-month boundaries from raw UTC
+`now()`/`created_at` instead of `Asia/Baghdad`, unlike the rest of the
+codebase's date logic — could misattribute a completion near midnight UTC to
+the wrong month, or close a month up to 3 hours early/late. Fixed, applied
+live, `TESTS.sql` re-confirmed clean (all 16 blocks).
+
+**Still needs the user's own device QA** (deferred per the plan — needs a
+real device and real share-sheet apps): open the Report tab, select a closed
+month, tap Export, confirm the share sheet opens and the shared `.xlsx` opens
+with the right columns/values; also confirm the Dashboard's current-month
+rollup matches a closed month's report once one exists.
+
+Bilingual EN/AR migration (started 2026-09-12) is still paused mid-way —
+`teams.tsx` is the last file done; `history.tsx`/`people.tsx`/`settings.tsx`/
+`create-task.tsx` and all of `src/components/` are not yet translated.
+
 ## Status (2026-08-21)
 
 Checklists were merged into tasks (Option B): there is no separate "Checklists"
