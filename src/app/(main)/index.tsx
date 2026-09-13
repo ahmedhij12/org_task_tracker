@@ -274,6 +274,30 @@ function OwnerDashboard() {
           })
         )}
       </ScrollView>
+
+      <Pressable
+        onPress={() => router.push('/(main)/create-task')}
+        accessibilityRole="button"
+        accessibilityLabel={t('dashboard.addTask')}
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: 24,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: c.indigo,
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: c.indigo,
+          shadowOpacity: 0.4,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </Pressable>
     </SafeAreaView>
   );
 }
