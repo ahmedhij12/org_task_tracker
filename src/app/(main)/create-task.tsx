@@ -34,10 +34,14 @@ export default function CreateTaskScreen() {
   const [checklistAssigneeIds, setChecklistAssigneeIds] = useState<string[]>([]);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  // Owner-only. An audit's subject/branch is chosen when the auditor starts
-  // it (FillChecklistSheet), not here — this just creates the admin's own
-  // reusable "go audit someone" task, self-assigned.
-  const [isAudit, setIsAudit] = useState(false);
+  // Owner-only, and not a choice: this screen's only real use for an owner
+  // has been auditing — a branch manager's own "Add task" flow (their own
+  // Dashboard) is the place for ordinary staff task assignment, so there's
+  // no ordinary-task path here for them to switch away from. An audit's
+  // subject/branch is chosen when the auditor starts it (FillChecklistSheet),
+  // not here — this just creates the admin's own reusable "go audit
+  // someone" task, self-assigned.
+  const isAudit = isOwner;
 
   // Priority drives whether a completion needs a leader's sign-off before
   // it's settled: never on low, always on high, a free choice on medium.
@@ -151,33 +155,14 @@ export default function CreateTaskScreen() {
           <Pressable onPress={() => router.back()} hitSlop={8}>
             <Ionicons name="close" size={26} color={c.text} />
           </Pressable>
-          <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>New Task</Text>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>{isAudit ? 'New Audit' : 'New Task'}</Text>
           <View style={{ width: 26 }} />
         </View>
 
         {error ? <ErrorBanner message={error} /> : null}
 
-        {isOwner && auditTemplates.length > 0 ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <View style={{ flex: 1 }}>
-              <FieldLabel>This is an audit</FieldLabel>
-              <Text style={{ fontSize: 12, color: c.textMuted }}>
-                Added to your own tasks. You'll pick the branch, who you're auditing, and the shift when you start it.
-              </Text>
-            </View>
-            <Switch
-              value={isAudit}
-              onValueChange={(v) => {
-                setIsAudit(v);
-                pickTemplate(null);
-              }}
-              trackColor={{ true: c.indigo }}
-            />
-          </View>
-        ) : null}
-
         <View style={{ marginBottom: 14 }}>
-          <FieldLabel>Use a checklist template</FieldLabel>
+          <FieldLabel>{isAudit ? 'Audit checklist' : 'Use a checklist template'}</FieldLabel>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {isAudit ? null : (
