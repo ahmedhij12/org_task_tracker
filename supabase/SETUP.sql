@@ -1349,7 +1349,7 @@ begin
     raise exception 'only the org owner can close a month';
   end if;
 
-  select date_trunc('month', o.created_at)::date into v_org_created_month
+  select date_trunc('month', o.created_at at time zone 'Asia/Baghdad')::date into v_org_created_month
   from public.organizations o where o.id = v_org_id;
 
   select max(rp.period_month) into v_last_closed
@@ -1357,7 +1357,10 @@ begin
 
   v_next_month := coalesce((v_last_closed + interval '1 month')::date, v_org_created_month);
 
-  if v_next_month + interval '1 month' > now() then
+  -- "Fully elapsed" is judged in Baghdad wall-clock time, same convention as
+  -- generate_task_occurrences() — not UTC, or a month could close up to 3
+  -- hours early/late.
+  if v_next_month + interval '1 month' > (now() at time zone 'Asia/Baghdad') then
     return; -- that month hasn't fully elapsed yet — nothing to close
   end if;
 
@@ -1423,8 +1426,8 @@ begin
   join public.teams t on t.id = pt.team_id
   where tc.org_id = v_org_id
     and tc.points_awarded is not null
-    and tc.created_at >= v_month
-    and tc.created_at < (v_month + interval '1 month')
+    and (tc.created_at at time zone 'Asia/Baghdad') >= v_month
+    and (tc.created_at at time zone 'Asia/Baghdad') < (v_month + interval '1 month')
   group by t.id, t.name, tc.subject_profile_id, sp.name
   order by t.name, sp.name;
 end;
@@ -1459,7 +1462,7 @@ begin
     raise exception 'only the org owner can view the branch summary';
   end if;
 
-  v_month_start := date_trunc('month', now())::date;
+  v_month_start := date_trunc('month', now() at time zone 'Asia/Baghdad')::date;
 
   return query
   select
@@ -1475,7 +1478,7 @@ begin
   join public.teams t on t.id = pt.team_id
   where tc.org_id = v_org_id
     and tc.points_awarded is not null
-    and tc.created_at >= v_month_start
+    and (tc.created_at at time zone 'Asia/Baghdad') >= v_month_start
   group by t.id, t.name, tc.subject_profile_id, sp.name
   order by t.name, sp.name;
 end;
