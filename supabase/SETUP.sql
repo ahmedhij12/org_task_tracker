@@ -188,7 +188,13 @@ create table public.checklist_template_items (
   -- '' means no section (a flat template, like the manager checklist).
   section_title text not null default '',
   sort_order int not null,
-  question text not null
+  question text not null,
+  -- How many points a "No" answer costs (0 for "Yes"). Set once per question
+  -- on the template, editable only by an owner. 0.25 is an ordinary
+  -- question; a more serious one gets a higher weight so a single "No"
+  -- costs more. Only meaningful on an is_audit task's completion — see
+  -- set_task_completion's scoring branch.
+  point_weight numeric not null default 0.25 check (point_weight >= 0)
 );
 
 create index checklist_template_items_template_idx on public.checklist_template_items(template_id, sort_order);
@@ -336,6 +342,9 @@ create table public.task_completions (
   -- stored, so a future rate change doesn't rewrite history. Only ever set on
   -- an is_audit completion; adjustable later, see points_adjustments.
   points_awarded numeric,
+  -- The auditor's signature, captured at submission — only meaningful on an
+  -- is_audit completion. Uploaded to the same task-proofs bucket as photos.
+  signature_url text,
   created_at timestamptz not null default now(),
   check (action = 'off_duty' or status is null),
   check (action <> 'off_duty' or status is not null)

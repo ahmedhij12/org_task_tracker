@@ -119,6 +119,42 @@ begin
   raise notice 'PASS: report_periods has period_month';
 end $$;
 
+-- ── Schema: point_weight and signature_url exist with the right shape ────
+do $$
+declare
+  v_default numeric;
+  v_has_col boolean;
+  v_raised boolean;
+begin
+  select column_default::numeric into v_default
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'checklist_template_items' and column_name = 'point_weight';
+  if v_default is distinct from 0.25 then
+    raise exception 'FAIL: checklist_template_items.point_weight should default to 0.25, got %', v_default;
+  end if;
+  raise notice 'PASS: checklist_template_items.point_weight defaults to 0.25';
+
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    where t.relname = 'checklist_template_items'
+      and c.contype = 'c'
+      and pg_get_constraintdef(c.oid) ilike '%point_weight%>=%0%'
+  ) then
+    raise exception 'FAIL: checklist_template_items should have a point_weight >= 0 check constraint';
+  end if;
+  raise notice 'PASS: checklist_template_items rejects a negative point_weight (check constraint present)';
+
+  select exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'task_completions' and column_name = 'signature_url'
+  ) into v_has_col;
+  if not v_has_col then
+    raise exception 'FAIL: task_completions.signature_url is missing';
+  end if;
+  raise notice 'PASS: task_completions.signature_url exists';
+end $$;
+
 -- ── Monthly close: picks the org's first elapsed month, then catches up ──
 do $$
 declare
@@ -1646,6 +1682,7 @@ declare
   v_task_id uuid;
   v_generated int;
   v_occ_count int;
+  v_occ_count_total int;
   v_occ_a uuid;
   v_occ_b uuid;
   v_completion_id uuid;
@@ -1699,18 +1736,30 @@ begin
   returning id into v_task_id;
 
   -- ── Generating occurrences creates exactly one row per scheduled time ──
+  -- Scoped to *today's* rows specifically: past 21:00 Baghdad time,
+  -- generate_task_occurrences() also creates tomorrow's rows (see its own
+  -- comment in SETUP.sql), so a plain count-by-task_id is time-of-day
+  -- dependent and flakes overnight. Today's date, in Baghdad time, is what
+  -- this assertion actually means to check.
   v_generated := public.generate_task_occurrences();
-  select count(*) into v_occ_count from public.task_occurrences where task_id = v_task_id;
+  select count(*) into v_occ_count
+  from public.task_occurrences
+  where task_id = v_task_id
+    and (scheduled_for at time zone 'Asia/Baghdad')::date = (now() at time zone 'Asia/Baghdad')::date;
   if v_occ_count <> 2 then
     raise exception 'FAIL: expected 2 occurrences (12:00 and 16:00), got %', v_occ_count;
   end if;
   raise notice 'PASS: generating occurrences creates one row per scheduled time';
 
-  -- ── Running it again does not duplicate today's occurrences ──
+  -- ── Running it again does not duplicate occurrences ── Compared against
+  -- the total row count (today + tomorrow, whichever this ran as), not a
+  -- hardcoded number — see the comment above on why that's time-of-day
+  -- dependent.
+  select count(*) into v_occ_count_total from public.task_occurrences where task_id = v_task_id;
   perform public.generate_task_occurrences();
   select count(*) into v_occ_count from public.task_occurrences where task_id = v_task_id;
-  if v_occ_count <> 2 then
-    raise exception 'FAIL: re-running the generator should not create duplicate occurrences, got %', v_occ_count;
+  if v_occ_count <> v_occ_count_total then
+    raise exception 'FAIL: re-running the generator should not create duplicate occurrences, had %, got %', v_occ_count_total, v_occ_count;
   end if;
   raise notice 'PASS: the generator is idempotent — re-running it creates no duplicates';
 
