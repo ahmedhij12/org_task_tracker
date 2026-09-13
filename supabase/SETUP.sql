@@ -620,7 +620,11 @@ create policy "team admin or owner can create tasks for their own team"
     and (
       (
         public.my_role() = 'owner'
-        and (assignee_id is null or public.role_of(assignee_id) in ('team_admin', 'employee'))
+        and (
+          assignee_id is null
+          or public.role_of(assignee_id) in ('team_admin', 'employee')
+          or (is_audit and assignee_id = auth.uid())
+        )
       )
       or (
         public.my_role() = 'team_admin'
@@ -655,7 +659,11 @@ create policy "team admin or owner can edit their team's tasks"
     and (
       (
         public.my_role() = 'owner'
-        and (assignee_id is null or public.role_of(assignee_id) in ('team_admin', 'employee'))
+        and (
+          assignee_id is null
+          or public.role_of(assignee_id) in ('team_admin', 'employee')
+          or (is_audit and assignee_id = auth.uid())
+        )
       )
       or (
         public.my_role() = 'team_admin'

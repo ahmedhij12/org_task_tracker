@@ -1687,6 +1687,16 @@ begin
   values (v_org_id, v_team_id, 'Oil Test Audit', v_auditor_id, v_auditor_id, v_template_id, true, 'medium', false)
   returning id into v_task_id;
 
+  -- ── The owner (not just a branch manager) can also self-assign their own
+  -- audit task — the RLS owner branch originally only allowed assignee_id
+  -- to be null or a team_admin/employee, which excluded the owner assigning
+  -- to themselves; found and fixed while building the audit report ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Owner Oil Test Audit', v_owner_id, v_owner_id, v_template_id, true, 'medium', false);
+  raise notice 'PASS: an admin can self-assign their own audit task';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+
   -- ── An employee cannot submit an audit, even one assigned to them ──
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
   values (v_org_id, v_team_id, 'Misassigned audit', v_subject_id, v_auditor_id, v_template_id, true, 'medium', false)
