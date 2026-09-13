@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
+import { exportReportToExcel } from '@/lib/exportReport';
 import type { BranchSummaryRow, ReportPeriod } from '@/types';
 
 function formatPeriodLabel(period: ReportPeriod, locale: string) {
@@ -51,8 +52,9 @@ export default function ReportScreen() {
     }
   };
 
-  const handleExport = () => {
-    // Wired to a real .xlsx export in the next task.
+  const handleExport = async () => {
+    if (!selectedPeriod) return;
+    await exportReportToExcel(selectedPeriod, rows, i18n.language);
   };
 
   const totalPoints = rows.reduce((sum, r) => sum + r.totalPoints, 0);
