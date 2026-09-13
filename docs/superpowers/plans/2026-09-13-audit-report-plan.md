@@ -147,12 +147,32 @@ reference the *completion*, not the item).
 
 ### Task 6: Server-computed scoring
 
-- [ ] **Step 1: Add failing tests** — a submission with a mix of Yes/No
+- [ ] **Step 0: Update the existing "Audit model" test block** (`TESTS.sql`,
+  section starting "Audit model: an admin's own task where the subject is
+  chosen per submission"). It currently calls
+  `set_task_completion(..., v_subject_id, 'morning', -1)` with an
+  all-`true` answer set and asserts `points_awarded = -1` directly from that
+  client-supplied `-1` — this is the exact behavior Step 3 below removes.
+  Change `v_subject_ans` to a "No" answer (or several, at the schema
+  default `point_weight = 0.25`, summing to a known total) so the
+  *computed* penalty is a deliberate, known value, and update every
+  downstream assertion in that block that depends on the original `-1`
+  (the `adjust_completion_points` narrative — "halving the penalty," the
+  owner override to `0` — still works once the starting number is
+  internally consistent, just re-derive it from the new computed value
+  rather than reusing `-1` unchanged). Do this *before* Step 3 changes the
+  RPC, so the block fails for the right reason once the old behavior is
+  gone, not because it was left stale.
+
+- [ ] **Step 1: Add new failing tests** — a submission with a mix of Yes/No
   answers against known `point_weight`s produces the exact expected negative
   sum in `points_awarded`; a client-supplied `p_points` is ignored (not
   merely capped) for any `is_audit` completion with a checklist.
 
-- [ ] **Step 2: Run live, confirm failure.**
+- [ ] **Step 2: Run live, confirm both the updated existing block and the
+  new tests fail (existing one fails because the RPC hasn't changed yet;
+  behavior at this point should still match the old client-trusted
+  `p_points`, so re-check the math before assuming which way it fails).**
 
 - [ ] **Step 3: Edit `set_task_completion`** — for a completion where
   `v_task.is_audit` and `v_task.template_id` is not null, compute:
