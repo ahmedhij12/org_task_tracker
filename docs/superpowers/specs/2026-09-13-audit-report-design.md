@@ -12,25 +12,28 @@ The schema for this has existed since the auditor/subject reshape (2026-09-12)
 `points_awarded`, `points_adjustments` — but **zero UI was ever built on top
 of it**. Today there is no way to even create an audit task, no branch→subject
 picker, no per-question point weighting, no signature, and no way for the
-audited supervisor to see a result. This spec closes that gap for the
-existing "Daily Hygiene Checklist" template specifically — other templates
-(oil test, hood cleaning, chicken marination) stay deferred, per the user's
-own plan to build them "one at a time, to make it proper" after this.
+audited supervisor to see a result. This spec closes that gap by building a
+**separate, audit-specific checklist template** — the supervisors' own daily
+self-check checklist is explicitly untouched. Other templates (oil test,
+hood cleaning, chicken marination) stay deferred, per the user's own plan to
+build them "one at a time, to make it proper" after this.
 
-## Findings from investigation (resolve before/alongside building)
+## Findings from investigation (resolved)
 
-- **Duplicate template**: two identical "Daily Hygiene Checklist" rows exist
-  live (79 items each, created 0.5ms apart — almost certainly leftover test
-  data from earlier schema verification, not a live double-submit bug; the
-  create sheet already guards its submit button with a `loading` state).
-  Zero tasks/completions reference either, so deleting one is safe — but the
-  delete was **blocked by the auto-mode permission classifier** this
-  session. Needs the user to either approve it directly or delete the row
-  themselves in Supabase Studio before this work starts, so weighting work
-  isn't accidentally split across two templates.
-- **Basra Delight logo**: not present anywhere in the repo (only generic Expo
-  app icons). Needed as a real file (PNG, transparent background preferred)
-  before the "logo in the report" task can be built.
+- **Two "Daily Hygiene Checklist" rows turned out to be intentional, not a
+  bug** — my first read (identical content, created 0.5ms apart) looked like
+  leftover test duplication, and I nearly deleted one. The user corrected
+  this: they're meant to fork from here. `76bf89f1-8d39-...` stays exactly
+  as-is — the **supervisors' own daily checklist**, completely unaffected by
+  anything in this spec. `a17e9208-8504-...` has been renamed to **"Daily
+  Hygiene Checklist — Audit"** and is where every change below happens
+  (point weights, extra questions, the whole audit flow). Nothing else was
+  touched; the rename was the only live change made. Good thing the
+  auto-mode permission classifier blocked my delete attempt before this
+  clarification came in.
+- **Basra Delight logo**: provided by the user, not yet saved into the repo
+  (need the actual file on disk — a chat-pasted image isn't directly
+  accessible as a file from here; asked the user where to find it).
 - **No template-editing RPC exists** — only `create_checklist_template`.
   "Add more fields to the same template" (the user's own words) requires
   building edit capability (add/remove/reorder questions, set weights) that
@@ -73,14 +76,16 @@ completion, nullable (only audits collect one).
 
 ### New RPC: `update_checklist_template`
 
-Owner-only. Lets the admin add, remove, reorder questions and edit each
-question's `point_weight` and `section_title` (zone) on an **existing**
-template — the missing piece needed to extend the Daily Hygiene Checklist.
+Owner-only, and only ever exercised on "Daily Hygiene Checklist — Audit" for
+now. Lets the admin add, remove, reorder questions and edit each question's
+`point_weight` and `section_title` (zone) on an **existing** template — the
+missing piece needed to extend it with the "more fields" the user mentioned.
 Shape mirrors `create_checklist_template`'s `p_items`, plus `point_weight`
 per item. Existing `checklist_answers` rows are historical snapshots
 (question text is already copied at answer time), so editing the template
 later never rewrites past completions — matches the append-only philosophy
-already used for `points_adjustments`.
+already used for `points_adjustments`. Nothing stops it being used on the
+supervisors' plain checklist too later, but that's not part of this work.
 
 ### `set_task_completion` — server-computed points, not client-trusted
 
@@ -98,10 +103,11 @@ unchanged.
 ## Task flow
 
 1. **One-time setup**: an owner creates the recurring audit task (self-
-   assigned, `is_audit = true`, `template_id` = Daily Hygiene Checklist).
-   `create-task.tsx` needs a small addition here — an "This is an audit"
-   toggle, visible to the owner, that skips the assignee/checklist-assignee
-   pickers (the subject is chosen at completion time, not creation time).
+   assigned, `is_audit = true`, `template_id` = "Daily Hygiene Checklist —
+   Audit" — never the plain supervisors' version). `create-task.tsx` needs a
+   small addition here — a "This is an audit" toggle, visible to the owner,
+   that skips the assignee/checklist-assignee pickers (the subject is chosen
+   at completion time, not creation time).
 2. **Starting an audit**: opening that task's `CompleteTaskSheet` when
    `is_audit` is true shows, before the checklist: a **branch picker**, then
    a **subject picker** scoped to that branch's members (reusing
