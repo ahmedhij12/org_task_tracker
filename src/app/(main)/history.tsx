@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
@@ -11,8 +12,8 @@ import type { OrgTask, TaskCompletion } from '@/types';
 
 type Filter = 'all' | 'review' | 'done' | 'late' | 'failed';
 
-function when(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+function when(iso: string, locale: string): string {
+  return new Date(iso).toLocaleString(locale, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -22,6 +23,7 @@ function when(iso: string): string {
 
 export default function HistoryScreen() {
   const c = useThemeColors();
+  const { t, i18n } = useTranslation();
   const { profile } = useAuth();
   const { history, tasks, members, loading, refresh } = useOrgData();
   const [filter, setFilter] = useState<Filter>('all');
@@ -59,13 +61,13 @@ export default function HistoryScreen() {
     });
   }, [history, filter, needsReviewEntries]);
 
-  const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? 'Someone';
+  const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? t('history.someone');
 
   const scopeNote = isOwner
-    ? 'Everything across the organization.'
+    ? t('history.scopeAll')
     : isLeader
-      ? 'Everything your team has done.'
-      : 'Everything you have done.';
+      ? t('history.scopeTeam')
+      : t('history.scopeMine');
 
   const counts = {
     review: needsReviewEntries.length,
@@ -80,17 +82,17 @@ export default function HistoryScreen() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
       >
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>History</Text>
+        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           {(
             [
-              { key: 'all', label: 'All' },
-              ...(isManager ? [{ key: 'review' as Filter, label: `Needs review (${counts.review})` }] : []),
-              { key: 'done', label: `Done (${counts.done})` },
-              { key: 'late', label: `Late (${counts.late})` },
-              { key: 'failed', label: `Missed (${counts.failed})` },
+              { key: 'all', label: t('history.filterAll') },
+              ...(isManager ? [{ key: 'review' as Filter, label: t('history.filterReview', { count: counts.review }) }] : []),
+              { key: 'done', label: t('history.filterDone', { count: counts.done }) },
+              { key: 'late', label: t('history.filterLate', { count: counts.late }) },
+              { key: 'failed', label: t('history.filterFailed', { count: counts.failed }) },
             ] as { key: Filter; label: string }[]
           ).map((opt) => {
             const active = filter === opt.key;
@@ -124,15 +126,13 @@ export default function HistoryScreen() {
 
         {filter === 'failed' ? (
           failedTasks.length === 0 ? (
-            <Text style={{ fontSize: 13, color: c.textFaint }}>Nothing was missed. Every deadline so far was met.</Text>
+            <Text style={{ fontSize: 13, color: c.textFaint }}>{t('history.nothingMissed')}</Text>
           ) : (
-            failedTasks.map((t) => <MissedRow key={t.id} task={t} nameOf={nameOf} />)
+            failedTasks.map((task) => <MissedRow key={task.id} task={task} nameOf={nameOf} />)
           )
         ) : shown.length === 0 ? (
           <Text style={{ fontSize: 13, color: c.textFaint }}>
-            {filter === 'review'
-              ? 'Nothing waiting on your review right now.'
-              : 'Nothing here yet. Completed tasks and their photos show up as soon as work gets done.'}
+            {filter === 'review' ? t('history.nothingForReview') : t('history.nothingYet')}
           </Text>
         ) : (
           shown.map((h) => (
@@ -154,6 +154,7 @@ export default function HistoryScreen() {
 
 function MissedRow({ task, nameOf }: { task: OrgTask; nameOf: (id: string) => string }) {
   const c = useThemeColors();
+  const { t, i18n } = useTranslation();
   return (
     <Card style={{ marginBottom: 8, borderColor: c.roseSoft }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -161,10 +162,10 @@ function MissedRow({ task, nameOf }: { task: OrgTask; nameOf: (id: string) => st
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{task.title}</Text>
           <Text style={{ fontSize: 12, color: c.rose, marginTop: 2 }}>
-            Was due {when(task.due!)} • still not done
+            {t('history.missedDue', { time: when(task.due!, i18n.language) })}
           </Text>
           <Text style={{ fontSize: 11, color: c.textFaint, marginTop: 2 }}>
-            {task.assigneeId ? nameOf(task.assigneeId) : 'Anyone on the team'}
+            {task.assigneeId ? nameOf(task.assigneeId) : t('history.anyoneOnTeam')}
           </Text>
         </View>
       </View>
@@ -184,6 +185,7 @@ function HistoryRow({
   onPress: () => void;
 }) {
   const c = useThemeColors();
+  const { t, i18n } = useTranslation();
   const isOffDuty = entry.action === 'off_duty';
   const reopened = entry.action === 'reopened';
   const isChecklist = entry.yesCount != null;
@@ -222,17 +224,21 @@ function HistoryRow({
               <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{entry.taskTitle}</Text>
               {pendingReview ? (
                 <View style={{ backgroundColor: c.amberSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: c.amber }}>NEEDS REVIEW</Text>
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: c.amber }}>{t('history.needsReviewBadge')}</Text>
                 </View>
               ) : null}
             </View>
             <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-              {isOffDuty ? 'Off duty claimed' : reopened ? 'Reopened' : 'Done'} by {actorName} • {when(entry.createdAt)}
-              {isChecklist ? ` • ${entry.yesCount} yes / ${entry.noCount} no` : ''}
+              {t('history.byLine', {
+                action: isOffDuty ? t('history.actionOffDuty') : reopened ? t('history.actionReopened') : t('history.actionDone'),
+                name: actorName,
+                time: when(entry.createdAt, i18n.language),
+              })}
+              {isChecklist ? t('history.checklistSuffix', { yes: entry.yesCount, no: entry.noCount }) : ''}
             </Text>
             {entry.wasLate && entry.action === 'completed' ? (
               <Text style={{ fontSize: 11, color: c.rose, marginTop: 2 }}>
-                Late — deadline was {entry.dueAt ? when(entry.dueAt) : 'earlier'}
+                {t('history.lateDeadline', { time: entry.dueAt ? when(entry.dueAt, i18n.language) : t('history.earlier') })}
               </Text>
             ) : null}
             {isOffDuty ? (
