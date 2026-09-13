@@ -457,16 +457,18 @@ begin
   end if;
   raise notice 'PASS: short password is rejected';
 
-  v_raised := false;
+  declare
+    v_admin2_id uuid;
   begin
-    perform public.admin_create_user('Sneaky', 'sneaky', 'initial123', 'owner', v_team_id);
-  exception when others then
-    v_raised := true;
+    v_admin2_id := public.admin_create_user('Second Admin', 'admintwo', 'initial123', 'owner', null);
+    if (select role from public.profiles where id = v_admin2_id) <> 'owner' then
+      raise exception 'FAIL: an admin should be able to create another admin';
+    end if;
+    if not (select must_change_password from public.profiles where id = v_admin2_id) then
+      raise exception 'FAIL: an admin-created admin account must still be forced to change its password';
+    end if;
   end;
-  if not v_raised then
-    raise exception 'FAIL: creating an owner through admin_create_user should be rejected';
-  end if;
-  raise notice 'PASS: cannot create an owner through admin_create_user';
+  raise notice 'PASS: an admin can create another admin via admin_create_user';
 
   insert into public.teams (org_id, name) values (v_org_id, 'Team B') returning id into v_team_b_id;
   perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
@@ -487,6 +489,17 @@ begin
     raise exception 'FAIL: a team leader must not be able to create another team leader';
   end if;
   raise notice 'PASS: a team leader cannot create another team leader';
+
+  v_raised := false;
+  begin
+    perform public.admin_create_user('Escalate', 'escalate', 'initial123', 'owner', v_team_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a branch manager must not be able to create an admin';
+  end if;
+  raise notice 'PASS: a branch manager cannot create an admin';
 
   v_raised := false;
   begin

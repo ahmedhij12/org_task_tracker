@@ -944,16 +944,23 @@ begin
   if v_caller_role not in ('owner', 'team_admin') then
     raise exception 'only an admin or team leader can create users';
   end if;
-  if p_role not in ('employee', 'team_admin') then
-    raise exception 'role must be employee or team_admin';
+  if p_role not in ('employee', 'team_admin', 'owner') then
+    raise exception 'role must be employee, team_admin, or owner';
+  end if;
+  -- Only an existing admin may create another admin — never a branch
+  -- manager, even though the branch-manager branch below would already
+  -- catch this (p_role must be 'employee' there). Kept as its own explicit
+  -- check because this is a privilege-escalation boundary, not incidental.
+  if p_role = 'owner' and v_caller_role <> 'owner' then
+    raise exception 'only an admin can create another admin';
   end if;
 
   if v_caller_role = 'team_admin' then
     if p_role <> 'employee' then
-      raise exception 'a team leader can only create employees';
+      raise exception 'a branch manager can only create supervisors';
     end if;
     if p_team_id is null or not (p_team_id = any(v_caller_teams)) then
-      raise exception 'a team leader can only create users on their own team';
+      raise exception 'a branch manager can only create users on their own branch';
     end if;
   end if;
 

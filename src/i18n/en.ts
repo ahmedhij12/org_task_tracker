@@ -96,7 +96,7 @@ export default {
     noMembersYet: 'No members yet',
     newTeamTitle: 'New branch',
     teamNameLabel: 'Branch name',
-    teamNamePlaceholder: 'e.g. Branch 2 - Downtown',
+    teamNamePlaceholder: 'e.g. Baghdad, Hygiene, Quality Control',
     addLeaderHint: "After you create the branch, add its leader from the Staff tab.",
     createTeam: 'Create branch',
     genericError: 'Could not create branch.',

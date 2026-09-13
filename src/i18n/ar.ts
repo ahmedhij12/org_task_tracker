@@ -92,7 +92,7 @@ export default {
     noMembersYet: 'لا يوجد أعضاء بعد',
     newTeamTitle: 'فرع جديد',
     teamNameLabel: 'اسم الفرع',
-    teamNamePlaceholder: 'مثال: فرع 2 - وسط المدينة',
+    teamNamePlaceholder: 'مثال: بغداد، السلامة الغذائية، مراقبة الجودة',
     addLeaderHint: 'بعد إنشاء الفرع، أضف قائده من تبويب الموظفون.',
     createTeam: 'إنشاء فرع',
     genericError: 'تعذر إنشاء الفرع.',

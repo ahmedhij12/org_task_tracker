@@ -32,7 +32,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState(DEFAULT_TEMP_PASSWORD);
-  const [role, setRole] = useState<'employee' | 'team_admin'>('employee');
+  const [role, setRole] = useState<'employee' | 'team_admin' | 'owner'>('employee');
   const [teamId, setTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,13 +209,20 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                         [
                           { key: 'employee', label: 'Supervisor' },
                           { key: 'team_admin', label: 'Branch manager' },
-                        ] as { key: 'employee' | 'team_admin'; label: string }[]
+                          { key: 'owner', label: 'Admin' },
+                        ] as { key: 'employee' | 'team_admin' | 'owner'; label: string }[]
                       ).map((opt) => {
                         const active = role === opt.key;
                         return (
                           <Pressable
                             key={opt.key}
-                            onPress={() => setRole(opt.key)}
+                            onPress={() => {
+                              setRole(opt.key);
+                              // An admin is org-wide, not tied to one branch —
+                              // matches how existing admin accounts never show
+                              // branch controls in ManageUserSheet either.
+                              if (opt.key === 'owner') setTeamId(null);
+                            }}
                             style={{
                               flex: 1,
                               alignItems: 'center',
@@ -234,45 +241,53 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                       })}
                     </View>
 
-                    <FieldLabel>Branch</FieldLabel>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                      <Pressable
-                        onPress={() => setTeamId(null)}
-                        style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 8,
-                          borderRadius: 999,
-                          backgroundColor: teamId === null ? c.indigo : c.bgSubtle,
-                          borderWidth: 1,
-                          borderColor: teamId === null ? c.indigo : c.border,
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: teamId === null ? '#fff' : c.text }}>
-                          No branch
-                        </Text>
-                      </Pressable>
-                      {teams.map((t) => {
-                        const active = teamId === t.id;
-                        return (
+                    {role !== 'owner' ? (
+                      <>
+                        <FieldLabel>Branch</FieldLabel>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                           <Pressable
-                            key={t.id}
-                            onPress={() => setTeamId(t.id)}
+                            onPress={() => setTeamId(null)}
                             style={{
                               paddingHorizontal: 12,
                               paddingVertical: 8,
                               borderRadius: 999,
-                              backgroundColor: active ? c.indigo : c.bgSubtle,
+                              backgroundColor: teamId === null ? c.indigo : c.bgSubtle,
                               borderWidth: 1,
-                              borderColor: active ? c.indigo : c.border,
+                              borderColor: teamId === null ? c.indigo : c.border,
                             }}
                           >
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
-                              {t.name}
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: teamId === null ? '#fff' : c.text }}>
+                              No branch
                             </Text>
                           </Pressable>
-                        );
-                      })}
-                    </View>
+                          {teams.map((t) => {
+                            const active = teamId === t.id;
+                            return (
+                              <Pressable
+                                key={t.id}
+                                onPress={() => setTeamId(t.id)}
+                                style={{
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 8,
+                                  borderRadius: 999,
+                                  backgroundColor: active ? c.indigo : c.bgSubtle,
+                                  borderWidth: 1,
+                                  borderColor: active ? c.indigo : c.border,
+                                }}
+                              >
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
+                                  {t.name}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </>
+                    ) : (
+                      <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
+                        Admins have full access across every branch, so they aren't tied to just one.
+                      </Text>
+                    )}
                   </>
                 ) : (
                   <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
