@@ -70,6 +70,7 @@ export default {
     sectionToday: 'Today',
     sectionUpcoming: 'Upcoming',
     sectionCompleted: 'Completed',
+    myTasksHeading: 'My tasks',
     branchesHeading: 'Branches',
     noBranchActivity: 'No branch activity yet this month.',
     pointsSuffix: 'pts',

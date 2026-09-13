@@ -66,6 +66,7 @@ export default {
     sectionToday: 'اليوم',
     sectionUpcoming: 'قادمة',
     sectionCompleted: 'مكتملة',
+    myTasksHeading: 'مهامي',
     branchesHeading: 'الفروع',
     noBranchActivity: 'لا يوجد نشاط للفروع هذا الشهر بعد.',
     pointsSuffix: 'نقطة',

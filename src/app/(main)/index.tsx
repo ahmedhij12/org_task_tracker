@@ -163,10 +163,37 @@ function TeamAdminDashboard() {
 function OwnerDashboard() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
-  const { organization } = useAuth();
+  const { profile, organization } = useAuth();
   const { currentSummary, loading, refresh } = useReports();
+  const { tasks, history, setTaskCompletion } = useOrgData();
   const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
+  const [proofTask, setProofTask] = useState<OrgTask | null>(null);
+  const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
+
+  // The owner is never assigned an ordinary task by anyone else (assignment
+  // only flows downward) — in practice this is their own audit tasks, but
+  // written generally in case that ever changes.
+  const myTasks = tasks
+    .filter((tsk) => tsk.assigneeId === profile?.id)
+    .map((tsk) => ({ ...tsk, completed: effectiveTaskCompleted(tsk, history) }))
+    .filter((tsk) => {
+      if (!tsk.completed) return true;
+      if (!tsk.requiresReview) return false;
+      return !latestCompletionForTask(tsk.id, history)?.reviewedBy;
+    });
+
+  const handlePressCheckbox = (tsk: OrgTask) => {
+    if (tsk.templateId) {
+      if (!tsk.completed) setChecklistTask(tsk);
+      return;
+    }
+    if (!tsk.completed && tsk.requiresProof) {
+      setProofTask(tsk);
+      return;
+    }
+    setTaskCompletion(tsk.id, !tsk.completed).catch((e) => console.warn(e));
+  };
 
   const handleCopy = async () => {
     if (!organization) return;
@@ -219,6 +246,17 @@ function OwnerDashboard() {
             </View>
           </View>
         </View>
+
+        {myTasks.length > 0 ? (
+          <>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
+              {t('dashboard.myTasksHeading')}
+            </Text>
+            {myTasks.map((tsk) => (
+              <TaskRow key={tsk.id} task={tsk} members={[]} showAssignee={false} canComplete onPressCheckbox={() => handlePressCheckbox(tsk)} />
+            ))}
+          </>
+        ) : null}
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}
@@ -274,6 +312,27 @@ function OwnerDashboard() {
           })
         )}
       </ScrollView>
+
+      {proofTask ? (
+        <CompleteTaskSheet
+          task={proofTask}
+          orgId={organization!.id}
+          visible={!!proofTask}
+          onCancel={() => setProofTask(null)}
+          onSubmit={async (note, photoUrls) => {
+            await setTaskCompletion(proofTask.id, true, note || undefined, photoUrls);
+            setProofTask(null);
+          }}
+        />
+      ) : null}
+      {checklistTask ? (
+        <FillChecklistSheet
+          task={checklistTask}
+          orgId={organization!.id}
+          visible={!!checklistTask}
+          onClose={() => setChecklistTask(null)}
+        />
+      ) : null}
 
       <Pressable
         onPress={() => router.push('/(main)/create-task')}
