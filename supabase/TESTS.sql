@@ -1322,6 +1322,146 @@ begin
 end;
 $$;
 
+-- ── update_checklist_template: editing an existing template in place ─────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_other_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_other_org_id uuid;
+  v_team_id uuid;
+  v_leader_id uuid;
+  v_emp_id uuid;
+  v_template_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
+  v_raised boolean;
+  v_count int;
+  v_weight numeric;
+  v_snapshot_question text;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'update-template-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_other_owner_id, 'authenticated', 'authenticated',
+    'update-template-other-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Template Edit Co', 'Owner', 'templateeditowner');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_owner_id)::text, true);
+  select org_id into v_other_org_id
+  from public.create_organization('Other Template Co', 'Other Owner', 'otherteditowner');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_leader_id := public.admin_create_user('Lead', 'templateeditlead', 'initial123', 'team_admin', v_team_id);
+  v_emp_id := public.admin_create_user('Emp', 'templateeditemp', 'initial123', 'employee', v_team_id);
+
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_template_id := public.create_checklist_template(
+    'Daily Hygiene — Audit', true,
+    '[{"section_title":"Kitchen","question":"Is the fire extinguisher valid?"}]'::jsonb
+  );
+
+  -- ── A branch manager cannot edit a checklist template ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.update_checklist_template(
+      v_template_id, 'Daily Hygiene — Audit', true,
+      '[{"section_title":"Kitchen","question":"Is the fire extinguisher valid?","point_weight":0.5}]'::jsonb
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a branch manager must not be able to edit a checklist template';
+  end if;
+  raise notice 'PASS: a branch manager cannot edit a checklist template';
+
+  -- ── An admin from a different org cannot edit this one ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_owner_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.update_checklist_template(
+      v_template_id, 'Hijacked', true, '[{"section_title":"","question":"x"}]'::jsonb
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: an admin must not be able to edit another organization''s template';
+  end if;
+  raise notice 'PASS: an admin cannot edit a template belonging to a different organization';
+
+  -- ── A real submission exists against the original question text, before
+  -- any edit — so we can prove editing later leaves it alone ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, priority, requires_review)
+  values (v_org_id, v_team_id, 'Daily Hygiene', v_emp_id, v_owner_id, v_template_id, 'medium', false)
+  returning id into v_task_id;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  v_completion_id := public.set_task_completion(
+    v_task_id, true, null, '{}',
+    '[{"section_title":"Kitchen","question":"Is the fire extinguisher valid?","sort_order":0,"answer":true}]'::jsonb
+  );
+
+  -- ── The admin adds a question, reorders, and raises a point weight ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.update_checklist_template(
+    v_template_id, 'Daily Hygiene — Audit', true,
+    '[
+      {"section_title":"Kitchen","question":"Are the fridges clean?","point_weight":1},
+      {"section_title":"Kitchen","question":"Is the fire extinguisher valid?","point_weight":0.5}
+    ]'::jsonb
+  );
+  select count(*) into v_count from public.checklist_template_items where template_id = v_template_id;
+  if v_count <> 2 then
+    raise exception 'FAIL: expected 2 items after the edit, got %', v_count;
+  end if;
+  select point_weight into v_weight from public.checklist_template_items
+    where template_id = v_template_id and question = 'Is the fire extinguisher valid?';
+  if v_weight is distinct from 0.5::numeric then
+    raise exception 'FAIL: point_weight was not updated, got %', v_weight;
+  end if;
+  raise notice 'PASS: an admin can add a question and change point weights on an existing template';
+
+  -- ── The earlier submission''s answer snapshot is untouched ──
+  select question into v_snapshot_question from public.checklist_answers
+    where task_completion_id = v_completion_id;
+  if v_snapshot_question is distinct from 'Is the fire extinguisher valid?' then
+    raise exception 'FAIL: editing the template must not rewrite a past answer''s question snapshot';
+  end if;
+  raise notice 'PASS: editing a template leaves past completions'' answer snapshots untouched';
+
+  reset role;
+end $$;
+
 -- ── Multi-team membership: a shared supervisor, two independent leaders ──
 
 do $$

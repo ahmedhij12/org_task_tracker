@@ -276,9 +276,12 @@ create table public.tasks (
   -- Driven by priority at creation time: low never needs review, high always
   -- does, medium is the creator's choice — enforced below, not just in the UI.
   requires_review boolean not null default false,
-  -- True for an admin's own audit task: the same checklist as a supervisor's
-  -- routine copy, but the actor is judging someone else, chosen fresh at each
-  -- submission (see set_task_completion) rather than fixed at task creation.
+  -- True for an admin's own audit task: the actor is judging someone else,
+  -- chosen fresh at each submission (see set_task_completion) rather than
+  -- fixed at task creation. Uses its own checklist template, separate from
+  -- a supervisor's routine copy of the same subject (e.g. hygiene) — they
+  -- started identical but are edited independently from here on, so a
+  -- point-weight change to the audit version never touches the plain one.
   -- An ordinary task (the far more common case) leaves this false.
   is_audit boolean not null default false,
   created_at timestamptz not null default now(),
@@ -2043,6 +2046,72 @@ begin
   end loop;
 
   return v_template_id;
+end;
+$$;
+
+-- Owner-only: lets the admin add, remove, reorder questions and edit each
+-- question's point_weight and section_title (zone) on an existing checklist
+-- template. Existing checklist_answers rows are historical snapshots
+-- (question text already copied at answer time), so a delete-and-reinsert
+-- of the items never touches past completions.
+create function public.update_checklist_template(
+  p_template_id uuid,
+  p_name text,
+  p_requires_note_on_no boolean,
+  p_items jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_template_org uuid;
+  v_item jsonb;
+  v_i int := 0;
+begin
+  select p.role, p.org_id into v_caller_role, v_caller_org
+  from public.profiles p where p.id = auth.uid();
+
+  if v_caller_role <> 'owner' then
+    raise exception 'only an admin can edit a checklist template';
+  end if;
+
+  select org_id into v_template_org from public.checklist_templates where id = p_template_id;
+  if v_template_org is null then
+    raise exception 'checklist template not found';
+  end if;
+  if v_template_org <> v_caller_org then
+    raise exception 'that checklist template does not belong to your organization';
+  end if;
+
+  if coalesce(trim(p_name), '') = '' then
+    raise exception 'a checklist name is required';
+  end if;
+  if jsonb_array_length(p_items) < 1 then
+    raise exception 'a checklist needs at least one question';
+  end if;
+
+  update public.checklist_templates
+  set name = trim(p_name), requires_note_on_no = p_requires_note_on_no
+  where id = p_template_id;
+
+  delete from public.checklist_template_items where template_id = p_template_id;
+
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    insert into public.checklist_template_items (template_id, section_title, sort_order, question, point_weight)
+    values (
+      p_template_id,
+      coalesce(v_item ->> 'section_title', ''),
+      v_i,
+      v_item ->> 'question',
+      coalesce((v_item ->> 'point_weight')::numeric, 0.25)
+    );
+    v_i := v_i + 1;
+  end loop;
 end;
 $$;
 
