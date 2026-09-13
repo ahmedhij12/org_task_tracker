@@ -33,6 +33,10 @@ export default function CreateTaskScreen() {
   const [cooldownHours, setCooldownHours] = useState('24');
   const [checklistAssigneeIds, setChecklistAssigneeIds] = useState<string[]>([]);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  // Owner-only. An audit's subject/branch is chosen when the auditor starts
+  // it (CompleteTaskSheet), not here — this just creates the admin's own
+  // reusable "go audit someone" task, self-assigned.
+  const [isAudit, setIsAudit] = useState(false);
 
   // Priority drives whether a completion needs a leader's sign-off before
   // it's settled: never on low, always on high, a free choice on medium.
@@ -52,6 +56,13 @@ export default function CreateTaskScreen() {
     return m.role === 'employee';
   });
 
+  // Restricted to templates named "... — Audit" — a name-based filter, not
+  // a schema flag, since there's exactly one audit template today. Revisit
+  // with a real is_audit_template column if a second one is ever added.
+  const auditTemplates = templates.filter((t) => t.name.endsWith(' — Audit'));
+  const plainTemplates = templates.filter((t) => !t.name.endsWith(' — Audit'));
+  const visibleTemplates = isAudit ? auditTemplates : plainTemplates;
+
   const selectedTemplate = templates.find((t) => t.id === templateId);
   const cooldownNum = parseInt(cooldownHours, 10);
 
@@ -64,20 +75,36 @@ export default function CreateTaskScreen() {
     setChecklistAssigneeIds([]);
     if (id) {
       const t = templates.find((tt) => tt.id === id);
-      if (t && !title.trim()) setTitle(t.name);
+      if (t && !title.trim()) setTitle(t.name.replace(/ — Audit$/, ''));
     }
   };
 
-  const canSubmit = templateId
-    ? title.trim() && effectiveTeamId && checklistAssigneeIds.length > 0 && cooldownNum > 0
-    : title.trim() && effectiveTeamId;
+  const canSubmit = isAudit
+    ? title.trim() && !!templateId
+    : templateId
+      ? title.trim() && effectiveTeamId && checklistAssigneeIds.length > 0 && cooldownNum > 0
+      : title.trim() && effectiveTeamId;
 
   const handleSubmit = async () => {
     if (!canSubmit || loading) return;
     setLoading(true);
     setError(null);
     try {
-      if (templateId) {
+      if (isAudit) {
+        await createTask({
+          title: title.trim(),
+          notes: notes.trim() || undefined,
+          due: null,
+          priority: 'medium',
+          assigneeId: profile!.id,
+          requiresProof: false,
+          teamId: effectiveTeamId,
+          templateId,
+          cooldownHours: 0,
+          requiresReview: false,
+          isAudit: true,
+        });
+      } else if (templateId) {
         // Each person gets their own copy of the checklist, filled independently.
         for (const personId of checklistAssigneeIds) {
           await createTask({
@@ -129,26 +156,47 @@ export default function CreateTaskScreen() {
 
         {error ? <ErrorBanner message={error} /> : null}
 
+        {isOwner && auditTemplates.length > 0 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <View style={{ flex: 1 }}>
+              <FieldLabel>This is an audit</FieldLabel>
+              <Text style={{ fontSize: 12, color: c.textMuted }}>
+                Added to your own tasks. You'll pick the branch, who you're auditing, and the shift when you start it.
+              </Text>
+            </View>
+            <Switch
+              value={isAudit}
+              onValueChange={(v) => {
+                setIsAudit(v);
+                pickTemplate(null);
+              }}
+              trackColor={{ true: c.indigo }}
+            />
+          </View>
+        ) : null}
+
         <View style={{ marginBottom: 14 }}>
           <FieldLabel>Use a checklist template</FieldLabel>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Pressable
-                onPress={() => pickTemplate(null)}
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  backgroundColor: templateId === null ? c.indigo : c.bgSubtle,
-                  borderWidth: 1,
-                  borderColor: templateId === null ? c.indigo : c.border,
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: templateId === null ? '#fff' : c.text }}>
-                  Plain task
-                </Text>
-              </Pressable>
-              {templates.map((t) => (
+              {isAudit ? null : (
+                <Pressable
+                  onPress={() => pickTemplate(null)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: templateId === null ? c.indigo : c.bgSubtle,
+                    borderWidth: 1,
+                    borderColor: templateId === null ? c.indigo : c.border,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: templateId === null ? '#fff' : c.text }}>
+                    Plain task
+                  </Text>
+                </Pressable>
+              )}
+              {visibleTemplates.map((t) => (
                 <Pressable
                   key={t.id}
                   onPress={() => pickTemplate(t.id)}
@@ -166,23 +214,25 @@ export default function CreateTaskScreen() {
                   </Text>
                 </Pressable>
               ))}
-              <Pressable
-                onPress={() => setCreatingTemplate(true)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: c.border,
-                }}
-              >
-                <Ionicons name="add" size={14} color={c.textMuted} />
-                <Text style={{ fontSize: 13, fontWeight: '600', color: c.textMuted }}>New template</Text>
-              </Pressable>
+              {isAudit ? null : (
+                <Pressable
+                  onPress={() => setCreatingTemplate(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderStyle: 'dashed',
+                    borderColor: c.border,
+                  }}
+                >
+                  <Ionicons name="add" size={14} color={c.textMuted} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: c.textMuted }}>New template</Text>
+                </Pressable>
+              )}
             </View>
           </ScrollView>
         </View>
@@ -190,7 +240,14 @@ export default function CreateTaskScreen() {
         <FieldInput label="Title" placeholder="e.g. Restock shelves" value={title} onChangeText={setTitle} />
         <FieldInput label="Notes (optional)" placeholder="Any details" value={notes} onChangeText={setNotes} multiline style={{ minHeight: 70, textAlignVertical: 'top' }} />
 
-        {isOwner && teams.length > 1 ? (
+        {isAudit ? (
+          <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
+            No branch, assignee, priority, or due date to set here — this task always belongs to you, and you'll
+            choose the branch, subject, and shift each time you start an audit.
+          </Text>
+        ) : null}
+
+        {!isAudit && isOwner && teams.length > 1 ? (
           <View style={{ marginBottom: 14 }}>
             <FieldLabel>Branch</FieldLabel>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -218,7 +275,7 @@ export default function CreateTaskScreen() {
           </View>
         ) : null}
 
-        {templateId ? (
+        {isAudit ? null : templateId ? (
           <>
             <View style={{ marginBottom: 14 }}>
               <FieldLabel>Assign to (each person gets their own copy)</FieldLabel>
@@ -298,63 +355,67 @@ export default function CreateTaskScreen() {
           </View>
         )}
 
-        <View style={{ marginBottom: 14 }}>
-          <FieldLabel>Priority</FieldLabel>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(['low', 'medium', 'high'] as Priority[]).map((p) => (
-              <Pressable
-                key={p}
-                onPress={() => setPriority(p)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 12,
-                  alignItems: 'center',
-                  backgroundColor: priority === p ? c.indigo : c.bgSubtle,
-                  borderWidth: 1,
-                  borderColor: priority === p ? c.indigo : c.border,
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: priority === p ? '#fff' : c.text, textTransform: 'capitalize' }}>{p}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <View style={{ flex: 1 }}>
-            <FieldLabel>Needs a leader's review</FieldLabel>
-            <Text style={{ fontSize: 12, color: c.textMuted }}>
-              {priority === 'low'
-                ? "Low priority never needs review — it's settled as soon as it's done."
-                : priority === 'high'
-                  ? "High priority always needs a leader to review it before it's settled."
-                  : "Your choice — whether a leader needs to review before it's settled."}
-            </Text>
-          </View>
-          <Switch
-            value={requiresReview}
-            onValueChange={setManualRequiresReview}
-            disabled={priority !== 'medium'}
-            trackColor={{ true: c.indigo }}
-          />
-        </View>
-
-        <DueDateField value={due} onChange={setDue} />
-
-        {!templateId ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-            <View style={{ flex: 1 }}>
-              <FieldLabel>Requires proof</FieldLabel>
-              <Text style={{ fontSize: 12, color: c.textMuted }}>
-                At least one photo, taken with the camera at the time, before this can be marked done.
-              </Text>
+        {isAudit ? null : (
+          <>
+            <View style={{ marginBottom: 14 }}>
+              <FieldLabel>Priority</FieldLabel>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['low', 'medium', 'high'] as Priority[]).map((p) => (
+                  <Pressable
+                    key={p}
+                    onPress={() => setPriority(p)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                      backgroundColor: priority === p ? c.indigo : c.bgSubtle,
+                      borderWidth: 1,
+                      borderColor: priority === p ? c.indigo : c.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: priority === p ? '#fff' : c.text, textTransform: 'capitalize' }}>{p}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-            <Switch value={requiresProof} onValueChange={setRequiresProof} trackColor={{ true: c.indigo }} />
-          </View>
-        ) : null}
 
-        <PrimaryButton title="Create task" onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View style={{ flex: 1 }}>
+                <FieldLabel>Needs a leader's review</FieldLabel>
+                <Text style={{ fontSize: 12, color: c.textMuted }}>
+                  {priority === 'low'
+                    ? "Low priority never needs review — it's settled as soon as it's done."
+                    : priority === 'high'
+                      ? "High priority always needs a leader to review it before it's settled."
+                      : "Your choice — whether a leader needs to review before it's settled."}
+                </Text>
+              </View>
+              <Switch
+                value={requiresReview}
+                onValueChange={setManualRequiresReview}
+                disabled={priority !== 'medium'}
+                trackColor={{ true: c.indigo }}
+              />
+            </View>
+
+            <DueDateField value={due} onChange={setDue} />
+
+            {!templateId ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Requires proof</FieldLabel>
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>
+                    At least one photo, taken with the camera at the time, before this can be marked done.
+                  </Text>
+                </View>
+                <Switch value={requiresProof} onValueChange={setRequiresProof} trackColor={{ true: c.indigo }} />
+              </View>
+            ) : null}
+          </>
+        )}
+
+        <PrimaryButton title={isAudit ? 'Create audit task' : 'Create task'} onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
         <View style={{ height: 10 }} />
         <SecondaryButton title="Cancel" onPress={() => router.back()} />
       </ScrollView>

@@ -125,6 +125,7 @@ interface OrgDataContextValue {
     templateId?: string | null;
     cooldownHours?: number | null;
     requiresReview: boolean;
+    isAudit?: boolean;
   }) => Promise<void>;
   setTaskCompletion: (
     taskId: string,
@@ -233,6 +234,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
         template_id: input.templateId ?? null,
         cooldown_hours: input.cooldownHours ?? null,
         requires_review: input.requiresReview,
+        is_audit: input.isAudit ?? false,
         created_by: profile.id,
       });
       if (error) throw error;
