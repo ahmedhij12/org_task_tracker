@@ -14,11 +14,18 @@ interface Props {
   editingTemplateId?: string;
 }
 
-type Row = ChecklistItemDraft & { key: string };
+// weightText is a separate, freely-typed string buffer — pointWeight itself
+// is only derived from it at submit time. Re-deriving pointWeight on every
+// keystroke and feeding it straight back into the input's value (via
+// String(number)) fought the user's typing: an empty or mid-edit value like
+// "0." parses to a number that formats right back to "0", so the "." (and
+// any value you were about to build past it) got silently erased before you
+// could finish typing — the field looked frozen.
+type Row = ChecklistItemDraft & { key: string; weightText: string };
 
 let rowKeySeq = 0;
 function toRows(items: ChecklistItemDraft[]): Row[] {
-  return items.map((it) => ({ ...it, key: `r${rowKeySeq++}` }));
+  return items.map((it) => ({ ...it, key: `r${rowKeySeq++}`, weightText: String(it.pointWeight ?? 0.25) }));
 }
 
 export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplateId }: Props) {
@@ -86,8 +93,7 @@ export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplate
   };
 
   const updateWeight = (key: string, text: string) => {
-    const parsed = parseFloat(text.replace(',', '.'));
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, pointWeight: Number.isFinite(parsed) ? parsed : 0 } : r)));
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, weightText: text } : r)));
   };
 
   const removeRow = (key: string) => {
@@ -96,7 +102,10 @@ export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplate
 
   const addQuestion = () => {
     if (!newQuestion.trim()) return;
-    setRows((prev) => [...prev, { key: `r${rowKeySeq++}`, sectionTitle: newSection.trim(), question: newQuestion.trim() }]);
+    setRows((prev) => [
+      ...prev,
+      { key: `r${rowKeySeq++}`, sectionTitle: newSection.trim(), question: newQuestion.trim(), weightText: '0.25' },
+    ]);
     setNewQuestion('');
   };
 
@@ -112,7 +121,10 @@ export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplate
           editingTemplateId!,
           name.trim(),
           requiresNoteOnNo,
-          rows.map((r) => ({ sectionTitle: r.sectionTitle, question: r.question, pointWeight: r.pointWeight }))
+          rows.map((r) => {
+            const parsed = parseFloat(r.weightText.replace(',', '.'));
+            return { sectionTitle: r.sectionTitle, question: r.question, pointWeight: Number.isFinite(parsed) ? parsed : 0 };
+          })
         );
       } else {
         await createTemplate(
@@ -261,7 +273,7 @@ export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplate
                       />
                       {isEditing ? (
                         <TextInput
-                          value={String(r.pointWeight ?? 0.25)}
+                          value={r.weightText}
                           onChangeText={(t) => updateWeight(r.key, t)}
                           keyboardType="decimal-pad"
                           style={{
