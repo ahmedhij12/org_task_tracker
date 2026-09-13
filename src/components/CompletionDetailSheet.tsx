@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, Image, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { SecondaryButton, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
+import { exportAuditReport } from '@/lib/exportAuditReport';
 import { needsReview } from '@/types';
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
 
@@ -19,8 +21,9 @@ function when(iso: string): string {
 
 export function CompletionDetailSheet({ completion, onClose }: Props) {
   const c = useThemeColors();
+  const { i18n } = useTranslation();
   const { profile } = useAuth();
-  const { members, tasks, loadCompletionDetail, reviewOffDuty, reviewTaskCompletion } = useOrgData();
+  const { members, teams, tasks, loadCompletionDetail, reviewOffDuty, reviewTaskCompletion } = useOrgData();
 
   const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
   const [photos, setPhotos] = useState<ChecklistSectionPhoto[]>([]);
@@ -28,6 +31,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const [reviewNote, setReviewNote] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const isChecklistCompletion = completion?.action === 'completed' && completion.yesCount != null;
 
@@ -60,6 +64,35 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
     list.push(p);
     photosBySection.set(p.sectionTitle, list);
   }
+
+  // Any completion with points_awarded set is an audit — see set_task_completion.
+  const isAudit = completion.pointsAwarded != null;
+  const subjectProfile = members.find((m) => m.id === completion.subjectProfileId);
+  // The subject's own branch (via profile_teams), not the completion's own
+  // team_id (the audit task's team, which can differ) — same attribution
+  // gotcha already documented on task_completions and handled in the
+  // reporting RPCs.
+  const subjectBranchName = teams.find((t) => t.id === subjectProfile?.teamIds[0])?.name ?? '—';
+
+  const handleExport = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      await exportAuditReport({
+        completion,
+        branchName: subjectBranchName,
+        subjectName: subjectProfile?.name ?? 'Someone',
+        auditorName: actorName,
+        answers,
+        photos,
+        locale: i18n.language,
+      });
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not export this report.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleReviewOffDuty = async (approve: boolean) => {
     setReviewing(true);
@@ -278,6 +311,32 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                 ) : null}
               </>
             )}
+
+            {isAudit && !loading ? (
+              <>
+                <View style={{ height: 10 }} />
+                {exporting ? (
+                  <ActivityIndicator color={c.indigo} />
+                ) : (
+                  <Pressable
+                    onPress={handleExport}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      borderWidth: 1,
+                      borderColor: c.border,
+                      borderRadius: 14,
+                      paddingVertical: 14,
+                    }}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color={c.text} />
+                    <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>Export report</Text>
+                  </Pressable>
+                )}
+              </>
+            ) : null}
 
             <View style={{ height: 10 }} />
             <SecondaryButton title="Close" onPress={onClose} />
