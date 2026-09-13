@@ -10,7 +10,7 @@ import { Card, useThemeColors } from '@/components/ui';
 import { isFailed, needsReview } from '@/types';
 import type { OrgTask, TaskCompletion } from '@/types';
 
-type Filter = 'all' | 'review' | 'done' | 'late' | 'failed';
+type Filter = 'all' | 'review' | 'done' | 'late' | 'failed' | 'audited';
 
 function when(iso: string, locale: string): string {
   return new Date(iso).toLocaleString(locale, {
@@ -51,15 +51,24 @@ export default function HistoryScreen() {
     return history.filter((h) => needsReview(h, taskById.get(h.taskId) ?? { requiresReview: false }));
   }, [history, isManager, taskById]);
 
+  // Audits done ABOUT the viewer, by someone else — distinct from every
+  // other filter here, which is scoped by team/actor. Visible to any role:
+  // this is specifically how an audited supervisor sees their own results.
+  const auditedEntries = useMemo(() => {
+    if (!profile) return [];
+    return history.filter((h) => h.subjectProfileId === profile.id && h.actorId !== profile.id);
+  }, [history, profile]);
+
   const shown = useMemo(() => {
     if (filter === 'failed') return [];
     if (filter === 'review') return needsReviewEntries;
+    if (filter === 'audited') return auditedEntries;
     return history.filter((h) => {
       if (h.action !== 'completed') return filter === 'all';
       if (filter === 'late') return h.wasLate;
       return true;
     });
-  }, [history, filter, needsReviewEntries]);
+  }, [history, filter, needsReviewEntries, auditedEntries]);
 
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? t('history.someone');
 
@@ -74,6 +83,7 @@ export default function HistoryScreen() {
     done: history.filter((h) => h.action === 'completed').length,
     late: history.filter((h) => h.action === 'completed' && h.wasLate).length,
     failed: failedTasks.length,
+    audited: auditedEntries.length,
   };
 
   return (
@@ -93,6 +103,7 @@ export default function HistoryScreen() {
               { key: 'done', label: t('history.filterDone', { count: counts.done }) },
               { key: 'late', label: t('history.filterLate', { count: counts.late }) },
               { key: 'failed', label: t('history.filterFailed', { count: counts.failed }) },
+              { key: 'audited', label: t('history.filterAudited', { count: counts.audited }) },
             ] as { key: Filter; label: string }[]
           ).map((opt) => {
             const active = filter === opt.key;
@@ -132,7 +143,11 @@ export default function HistoryScreen() {
           )
         ) : shown.length === 0 ? (
           <Text style={{ fontSize: 13, color: c.textFaint }}>
-            {filter === 'review' ? t('history.nothingForReview') : t('history.nothingYet')}
+            {filter === 'review'
+              ? t('history.nothingForReview')
+              : filter === 'audited'
+                ? t('history.nothingAudited')
+                : t('history.nothingYet')}
           </Text>
         ) : (
           shown.map((h) => (
@@ -244,6 +259,15 @@ function HistoryRow({
             {isOffDuty ? (
               <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }} numberOfLines={1}>
                 "{entry.offDutyReason}"
+              </Text>
+            ) : null}
+            {entry.pointsAwarded != null ? (
+              <Text style={{ fontSize: 12, fontWeight: '700', color: entry.pointsAwarded < 0 ? c.rose : c.emerald, marginTop: 2 }}>
+                {t('history.auditPoints', {
+                  points: entry.pointsAwarded,
+                  iqd: Math.abs(entry.pointsAwarded * 25000).toLocaleString(i18n.language),
+                  shift: entry.shift === 'morning' ? 'AM' : entry.shift === 'evening' ? 'PM' : '',
+                })}
               </Text>
             ) : null}
           </View>

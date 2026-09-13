@@ -130,6 +130,9 @@ export default {
     checklistSuffix: ' • {{yes}} نعم / {{no}} لا',
     lateDeadline: 'متأخر — كان الموعد النهائي {{time}}',
     earlier: 'سابقاً',
+    filterAudited: 'التدقيقات المتعلقة بي ({{count}})',
+    nothingAudited: 'لا توجد تدقيقات متعلقة بك بعد.',
+    auditPoints: '{{points}} نقطة · {{iqd}} دينار · {{shift}}',
   },
   people: {
     title: 'الموظفون',

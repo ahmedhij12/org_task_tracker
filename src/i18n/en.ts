@@ -134,6 +134,9 @@ export default {
     checklistSuffix: ' • {{yes}} yes / {{no}} no',
     lateDeadline: 'Late — deadline was {{time}}',
     earlier: 'earlier',
+    filterAudited: 'Audits about me ({{count}})',
+    nothingAudited: 'No audits about you yet.',
+    auditPoints: '{{points}} pts · {{iqd}} IQD · {{shift}}',
   },
   people: {
     title: 'Staff',
