@@ -26,6 +26,7 @@ function mapItem(row: any): ChecklistTemplateItem {
     sectionTitle: row.section_title,
     sortOrder: row.sort_order,
     question: row.question,
+    pointWeight: row.point_weight,
   };
 }
 

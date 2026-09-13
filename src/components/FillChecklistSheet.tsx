@@ -4,8 +4,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useOrgData } from '@/hooks/useOrgData';
+import { SignaturePad } from '@/components/SignaturePad';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 import type { OrgTask } from '@/types';
@@ -26,8 +28,9 @@ const MAX_PHOTOS_PER_SECTION = 4;
 
 export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const c = useThemeColors();
+  const { profile } = useAuth();
   const { templates, templateItems } = useChecklists();
-  const { setTaskCompletion, declareTaskOffDuty } = useOrgData();
+  const { teams, members, setTaskCompletion, declareTaskOffDuty } = useOrgData();
 
   const template = templates.find((t) => t.id === task.templateId);
   const items = useMemo(() => templateItems.filter((it) => it.templateId === task.templateId), [templateItems, task.templateId]);
@@ -38,6 +41,19 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const [offDutyReason, setOffDutyReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Audit-only: the branch, subject and shift are chosen fresh each time,
+  // right here — never fixed when the audit task itself was created.
+  const [auditStep, setAuditStep] = useState<'branch' | 'subject' | 'shift' | 'fill'>('branch');
+  const [auditBranchId, setAuditBranchId] = useState<string | null>(null);
+  const [auditSubjectId, setAuditSubjectId] = useState<string | null>(null);
+  const [auditShift, setAuditShift] = useState<'morning' | 'evening' | null>(null);
+  const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
+
+  const branchMembers = members.filter(
+    (m) => m.id !== profile?.id && m.role !== 'owner' && auditBranchId != null && m.teamIds.includes(auditBranchId)
+  );
+  const auditSubject = members.find((m) => m.id === auditSubjectId);
 
   const sections = useMemo(() => {
     const map = new Map<string, typeof items>();
@@ -55,6 +71,11 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     setSectionPhotos({});
     setOffDutyReason('');
     setError(null);
+    setAuditStep('branch');
+    setAuditBranchId(null);
+    setAuditSubjectId(null);
+    setAuditShift(null);
+    setSignatureSvg(null);
   };
 
   const handleClose = () => {
@@ -106,7 +127,19 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const missingNotes = template?.requiresNoteOnNo
     ? items.filter((it) => answers[it.id]?.answer === false && !answers[it.id]?.note.trim())
     : [];
-  const canSubmit = unanswered.length === 0 && missingNotes.length === 0 && !submitting && !!template;
+  // A preview only — the real total that gets stored is always computed
+  // server-side in set_task_completion, from the same answers.
+  const totalPoints = items.reduce(
+    (sum, it) => (answers[it.id]?.answer === false ? sum - it.pointWeight : sum),
+    0
+  );
+  const totalIqd = Math.abs(totalPoints) * 25000;
+  const canSubmit =
+    unanswered.length === 0 &&
+    missingNotes.length === 0 &&
+    !submitting &&
+    !!template &&
+    (!task.isAudit || !!signatureSvg);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -127,6 +160,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         }
       }
 
+      let signatureUrl: string | undefined;
+      if (task.isAudit && signatureSvg) {
+        const path = `${orgId}/signature-${task.id}-${Date.now()}.svg`;
+        const { error: sigError } = await supabase.storage
+          .from('task-proofs')
+          .upload(path, signatureSvg, { contentType: 'image/svg+xml' });
+        if (sigError) throw sigError;
+        signatureUrl = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
+      }
+
       const payload = items.map((it, i) => ({
         sectionTitle: it.sectionTitle,
         question: it.question,
@@ -135,7 +178,17 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         note: answers[it.id]!.note.trim() || undefined,
       }));
 
-      await setTaskCompletion(task.id, true, undefined, [], payload, uploadedPhotos);
+      await setTaskCompletion(
+        task.id,
+        true,
+        undefined,
+        [],
+        payload,
+        uploadedPhotos,
+        task.isAudit && auditSubjectId && auditShift
+          ? { subjectProfileId: auditSubjectId, shift: auditShift, signatureUrl }
+          : undefined
+      );
       handleClose();
     } catch (e: any) {
       setError(e?.message ?? 'Could not submit this checklist. Please try again.');
@@ -190,11 +243,111 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
               </Pressable>
             </View>
 
-            {mode === 'fill' ? (
+            {task.isAudit && auditStep !== 'fill' ? (
+              <View style={{ paddingBottom: 8 }}>
+                {auditStep === 'branch' ? (
+                  <>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Which branch?</Text>
+                    {teams.map((t) => (
+                      <Pressable
+                        key={t.id}
+                        onPress={() => {
+                          setAuditBranchId(t.id);
+                          setAuditStep('subject');
+                        }}
+                        style={{
+                          paddingVertical: 14,
+                          paddingHorizontal: 14,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>{t.name}</Text>
+                      </Pressable>
+                    ))}
+                  </>
+                ) : auditStep === 'subject' ? (
+                  <>
+                    <Pressable onPress={() => setAuditStep('branch')} style={{ marginBottom: 10 }}>
+                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back to branch'}</Text>
+                    </Pressable>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Who are you auditing?</Text>
+                    {branchMembers.length === 0 ? (
+                      <Text style={{ fontSize: 13, color: c.textFaint }}>Nobody on this branch yet.</Text>
+                    ) : null}
+                    {branchMembers.map((m) => (
+                      <Pressable
+                        key={m.id}
+                        onPress={() => {
+                          setAuditSubjectId(m.id);
+                          setAuditStep('shift');
+                        }}
+                        style={{
+                          paddingVertical: 14,
+                          paddingHorizontal: 14,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>{m.name}</Text>
+                      </Pressable>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <Pressable onPress={() => setAuditStep('subject')} style={{ marginBottom: 10 }}>
+                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back to who'}</Text>
+                    </Pressable>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Which shift?</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {(
+                        [
+                          { key: 'morning', label: 'AM' },
+                          { key: 'evening', label: 'PM' },
+                        ] as { key: 'morning' | 'evening'; label: string }[]
+                      ).map((opt) => (
+                        <Pressable
+                          key={opt.key}
+                          onPress={() => {
+                            setAuditShift(opt.key);
+                            setAuditStep('fill');
+                          }}
+                          style={{
+                            flex: 1,
+                            alignItems: 'center',
+                            paddingVertical: 16,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: c.border,
+                          }}
+                        >
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{opt.label}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </>
+                )}
+              </View>
+            ) : mode === 'fill' ? (
               <>
-                <Pressable onPress={() => setMode('off_duty')} style={{ marginBottom: 12 }}>
-                  <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>Not on duty today?</Text>
-                </Pressable>
+                {task.isAudit ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>
+                      {teams.find((t) => t.id === auditBranchId)?.name} • {auditSubject?.name} • {auditShift === 'morning' ? 'AM' : 'PM'}
+                    </Text>
+                    <Pressable onPress={() => setAuditStep('branch')}>
+                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>Change</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable onPress={() => setMode('off_duty')} style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>Not on duty today?</Text>
+                  </Pressable>
+                )}
 
                 {error ? <ErrorBanner message={error} /> : null}
 
@@ -221,11 +374,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                           template.requiresNoteOnNo && state?.answer === false && !state?.note.trim();
                         return (
                           <View key={it.id} style={{ marginBottom: 12 }}>
-                            <Text
-                              style={{ fontSize: 14, color: c.text, marginBottom: 6, textAlign: textAlignFor(it.question) }}
-                            >
-                              {it.question}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                              <Text
+                                style={{ fontSize: 14, color: c.text, marginBottom: 6, flex: 1, textAlign: textAlignFor(it.question) }}
+                              >
+                                {it.question}
+                              </Text>
+                              {task.isAudit ? (
+                                <Text style={{ fontSize: 11, color: c.textFaint }}>{it.pointWeight} pts</Text>
+                              ) : null}
+                            </View>
                             <View style={{ flexDirection: 'row', gap: 8 }}>
                               <Pressable
                                 onPress={() => setAnswer(it.id, true)}
@@ -327,12 +485,36 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                   ))}
                 </ScrollView>
 
+                {task.isAudit && unanswered.length === 0 && missingNotes.length === 0 ? (
+                  <View style={{ marginBottom: 14 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        backgroundColor: c.bgSubtle,
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>Total</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
+                        {totalPoints} pts · {totalIqd.toLocaleString()} IQD
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>Sign to confirm</Text>
+                    <SignaturePad onChange={setSignatureSvg} />
+                  </View>
+                ) : null}
+
                 <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
                   {unanswered.length > 0
                     ? `${unanswered.length} question${unanswered.length === 1 ? '' : 's'} left to answer`
                     : missingNotes.length > 0
                       ? `${missingNotes.length} "No" answer${missingNotes.length === 1 ? '' : 's'} need${missingNotes.length === 1 ? 's' : ''} a note`
-                      : 'Ready to submit'}
+                      : task.isAudit && !signatureSvg
+                        ? 'Sign above to submit'
+                        : 'Ready to submit'}
                 </Text>
 
                 {submitting ? (

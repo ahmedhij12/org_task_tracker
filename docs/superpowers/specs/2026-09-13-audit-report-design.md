@@ -108,7 +108,7 @@ unchanged.
    small addition here — a "This is an audit" toggle, visible to the owner,
    that skips the assignee/checklist-assignee pickers (the subject is chosen
    at completion time, not creation time).
-2. **Starting an audit**: opening that task's `CompleteTaskSheet` when
+2. **Starting an audit**: opening that task's `FillChecklistSheet` when
    `is_audit` is true shows, before the checklist: a **branch picker**, then
    a **subject picker** scoped to that branch's members (reusing
    `profile_teams`, exactly like the People screen already scopes members

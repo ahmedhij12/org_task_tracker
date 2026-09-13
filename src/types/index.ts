@@ -172,6 +172,8 @@ export interface ChecklistTemplateItem {
   sectionTitle: string;
   sortOrder: number;
   question: string;
+  /** How many points a "No" answer costs (0 for "Yes"). Only meaningful on an is_audit completion. */
+  pointWeight: number;
 }
 
 export interface ChecklistAnswer {

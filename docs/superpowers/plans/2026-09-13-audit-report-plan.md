@@ -128,7 +128,7 @@ reference the *completion*, not the item).
 
 ---
 
-### Task 5: Branch → subject → shift picker (`CompleteTaskSheet`)
+### Task 5: Branch → subject → shift picker (`FillChecklistSheet`)
 
 - [ ] **Step 1**: When `task.isAudit` is true, before rendering the
   checklist, render three steps in sequence: branch picker (reuse `teams`

@@ -34,7 +34,7 @@ export default function CreateTaskScreen() {
   const [checklistAssigneeIds, setChecklistAssigneeIds] = useState<string[]>([]);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   // Owner-only. An audit's subject/branch is chosen when the auditor starts
-  // it (CompleteTaskSheet), not here — this just creates the admin's own
+  // it (FillChecklistSheet), not here — this just creates the admin's own
   // reusable "go audit someone" task, self-assigned.
   const [isAudit, setIsAudit] = useState(false);
 

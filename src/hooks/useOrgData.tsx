@@ -138,7 +138,8 @@ interface OrgDataContextValue {
     note?: string,
     photoUrls?: string[],
     answers?: SubmitAnswerInput[],
-    sectionPhotos?: SubmitPhotoInput[]
+    sectionPhotos?: SubmitPhotoInput[],
+    audit?: { subjectProfileId: string; shift: 'morning' | 'evening'; signatureUrl?: string }
   ) => Promise<void>;
   declareTaskOffDuty: (taskId: string, reason: string) => Promise<void>;
   reviewOffDuty: (completionId: string, approve: boolean, reviewNote?: string) => Promise<void>;
@@ -249,7 +250,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const setTaskCompletion = useCallback<OrgDataContextValue['setTaskCompletion']>(
-    async (taskId, completed, note, photoUrls, answers, sectionPhotos) => {
+    async (taskId, completed, note, photoUrls, answers, sectionPhotos, audit) => {
       const { error } = await supabase.rpc('set_task_completion', {
         p_task_id: taskId,
         p_completed: completed,
@@ -265,6 +266,9 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
             }))
           : null,
         p_section_photos: (sectionPhotos ?? []).map((p) => ({ section_title: p.sectionTitle, photo_url: p.photoUrl })),
+        p_subject_profile_id: audit?.subjectProfileId ?? null,
+        p_shift: audit?.shift ?? null,
+        p_signature_url: audit?.signatureUrl ?? null,
       });
       if (error) throw error;
       await refresh();
