@@ -1695,6 +1695,25 @@ begin
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
   values (v_org_id, v_team_id, 'Owner Oil Test Audit', v_owner_id, v_owner_id, v_template_id, true, 'medium', false);
   raise notice 'PASS: an admin can self-assign their own audit task';
+
+  -- ── Same check, but for an owner who belongs to ZERO teams — the real
+  -- state of this project's live org after "Main Team" was deleted earlier
+  -- today. create_organization's own owner still gets auto-added to its
+  -- default team ("purely for continuity/display"), which would have
+  -- masked this: the check above only proves self-assignment works when
+  -- the owner happens to belong to some team, not when they belong to none.
+  -- profile_teams has no delete policy for a regular user (membership only
+  -- changes through the add/remove RPCs, which bypass RLS) — reset role to
+  -- do this as the table owner, same as any other privileged test setup.
+  reset role;
+  delete from public.profile_teams where profile_id = v_owner_id;
+  set role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Teamless Owner Audit', v_owner_id, v_owner_id, v_template_id, true, 'medium', false);
+  raise notice 'PASS: an admin with zero team memberships can still self-assign their own audit task';
+
   perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
 
   -- ── An employee cannot submit an audit, even one assigned to them ──

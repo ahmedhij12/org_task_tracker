@@ -616,6 +616,11 @@ create policy "team admin or owner can create tasks for their own team"
     and (
       assignee_id is null
       or team_id = any(select pt.team_id from public.profile_teams pt where pt.profile_id = assignee_id)
+      -- An audit's team_id is just a nominal anchor (the actual audited
+      -- branch is chosen per-submission, not at task creation) — an owner
+      -- in particular may belong to zero teams by design, so this
+      -- membership check would otherwise make self-assigning impossible.
+      or (is_audit and assignee_id = auth.uid())
     )
     and (
       (
@@ -655,6 +660,11 @@ create policy "team admin or owner can edit their team's tasks"
     and (
       assignee_id is null
       or team_id = any(select pt.team_id from public.profile_teams pt where pt.profile_id = assignee_id)
+      -- An audit's team_id is just a nominal anchor (the actual audited
+      -- branch is chosen per-submission, not at task creation) — an owner
+      -- in particular may belong to zero teams by design, so this
+      -- membership check would otherwise make self-assigning impossible.
+      or (is_audit and assignee_id = auth.uid())
     )
     and (
       (
