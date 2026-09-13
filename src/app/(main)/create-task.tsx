@@ -40,9 +40,10 @@ export default function CreateTaskScreen() {
 
   const effectiveTeamId = teamId || profile?.teamIds[0] || teams[0]?.id || '';
   // Work is handed down, never sideways or to yourself. An owner may assign to
-  // team leaders and employees; a team leader only to their own employees, so
-  // nobody ends up signing off on their own work. Mirrored in the RLS policy.
-  // A multi-team employee shows up here whenever this is one of their teams.
+  // branch managers and supervisors; a branch manager only to their own
+  // supervisors, so nobody ends up signing off on their own work. Mirrored in
+  // the RLS policy. A multi-branch supervisor shows up here whenever this is
+  // one of their branches.
   const teamMembers = members.filter((m) => {
     if (!m.teamIds.includes(effectiveTeamId)) return false;
     if (m.id === profile?.id) return false;
@@ -191,7 +192,7 @@ export default function CreateTaskScreen() {
 
         {isOwner && teams.length > 1 ? (
           <View style={{ marginBottom: 14 }}>
-            <FieldLabel>Team</FieldLabel>
+            <FieldLabel>Branch</FieldLabel>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {teams.map((t) => (
                 <Pressable
@@ -223,7 +224,7 @@ export default function CreateTaskScreen() {
               <FieldLabel>Assign to (each person gets their own copy)</FieldLabel>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {teamMembers.length === 0 ? (
-                  <Text style={{ fontSize: 13, color: c.textFaint }}>Nobody available on this team yet.</Text>
+                  <Text style={{ fontSize: 13, color: c.textFaint }}>Nobody available on this branch yet.</Text>
                 ) : null}
                 {teamMembers.map((m) => {
                   const active = checklistAssigneeIds.includes(m.id);

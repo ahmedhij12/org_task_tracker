@@ -44,8 +44,8 @@ export function ManageUserSheet({ member, onClose }: Props) {
   const canDeactivate = live.role !== 'owner' && live.id !== profile?.id;
   const isOwner = profile?.role === 'owner';
   const memberTeams = teams.filter((t) => live.teamIds.includes(t.id));
-  // An owner can add anyone (team leader or employee) to any team; a team
-  // leader can only add an employee, and only to their own team.
+  // An owner can add anyone (branch manager or supervisor) to any branch; a
+  // branch manager can only add a supervisor, and only to their own branch.
   const addableTeams =
     live.role === 'owner'
       ? []
@@ -62,7 +62,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
       await addProfileToTeam(live.id, teamId);
       await refresh();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not add that team.');
+      setError(e?.message ?? 'Could not add that branch.');
     } finally {
       setTeamBusy(null);
     }
@@ -75,7 +75,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
       await removeProfileFromTeam(live.id, teamId);
       await refresh();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not remove that team.');
+      setError(e?.message ?? 'Could not remove that branch.');
     } finally {
       setTeamBusy(null);
     }
@@ -153,7 +153,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
 
               {live.role !== 'owner' ? (
                 <View style={{ marginBottom: 18 }}>
-                  <FieldLabel>Teams</FieldLabel>
+                  <FieldLabel>Branches</FieldLabel>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: memberTeams.length > 0 ? 10 : 0 }}>
                     {memberTeams.map((t) => (
                       <View
@@ -176,7 +176,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
                       </View>
                     ))}
                     {memberTeams.length === 0 ? (
-                      <Text style={{ fontSize: 12, color: c.textFaint }}>No team — working unattached.</Text>
+                      <Text style={{ fontSize: 12, color: c.textFaint }}>No branch — working unattached.</Text>
                     ) : null}
                   </View>
                   {addableTeams.length > 0 ? (

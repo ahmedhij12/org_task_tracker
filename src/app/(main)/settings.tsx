@@ -5,6 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemePref } from '@/hooks/useThemePref';
+import { useLanguagePref, type LanguagePref } from '@/hooks/useLanguagePref';
 import { Card, FieldInput, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import type { ThemePref } from '@/types';
 
@@ -12,6 +13,7 @@ export default function SettingsScreen() {
   const c = useThemeColors();
   const { profile, organization, teams, signOut, addRecoveryEmail } = useAuth();
   const { themePref, setThemePref } = useThemePref();
+  const { languagePref, setLanguagePref, needsRestartForDirection } = useLanguagePref();
   const [copied, setCopied] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState(profile?.recoveryEmail ?? '');
   const [savingEmail, setSavingEmail] = useState(false);
@@ -21,7 +23,7 @@ export default function SettingsScreen() {
   // with buttons, so the callback never fires and sign-out silently did nothing.
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
-  const roleLabel = profile?.role === 'owner' ? 'Admin' : profile?.role === 'team_admin' ? 'Team Admin' : 'Employee';
+  const roleLabel = profile?.role === 'owner' ? 'Admin' : profile?.role === 'team_admin' ? 'Branch manager' : 'Supervisor';
 
   const handleCopy = async () => {
     if (!organization) return;
@@ -137,6 +139,43 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+        </Card>
+
+        <Card style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 10 }}>Language</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(
+              [
+                { key: 'en', label: 'English' },
+                { key: 'ar', label: 'العربية' },
+                { key: 'auto', label: 'Auto' },
+              ] as { key: LanguagePref; label: string }[]
+            ).map((opt) => {
+              const active = languagePref === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => setLanguagePref(opt.key)}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: active ? c.indigo : c.bgSubtle,
+                    borderWidth: 1,
+                    borderColor: active ? c.indigo : c.border,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {needsRestartForDirection ? (
+            <Text style={{ fontSize: 11, color: c.textFaint, marginTop: 10 }}>
+              Text updates right away. Fully close and reopen the app for right-to-left layout to match.
+            </Text>
+          ) : null}
         </Card>
 
         {confirmingSignOut ? (

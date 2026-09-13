@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
-import { generatePassword } from '@/lib/password';
+import { generatePassword, DEFAULT_TEMP_PASSWORD } from '@/lib/password';
 import {
   Card,
   FieldInput,
@@ -31,7 +31,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState(generatePassword());
+  const [password, setPassword] = useState(DEFAULT_TEMP_PASSWORD);
   const [role, setRole] = useState<'employee' | 'team_admin'>('employee');
   const [teamId, setTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,8 +40,8 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const [created, setCreated] = useState<{ username: string; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // A team leader can only ever create employees on their own team, so lock
-  // those two fields to their own values whenever the sheet opens.
+  // A branch manager can only ever create supervisors on their own branch,
+  // so lock those two fields to their own values whenever the sheet opens.
   useEffect(() => {
     if (!visible) return;
     if (!isOwner) {
@@ -54,7 +54,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
     setName('');
     setTitle('');
     setUsername('');
-    setPassword(generatePassword());
+    setPassword(DEFAULT_TEMP_PASSWORD);
     setRole('employee');
     setTeamId(isOwner ? null : (profile?.teamIds[0] ?? null));
     setError(null);
@@ -159,7 +159,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                     marginBottom: 16,
                   }}
                 >
-                  <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>New person</Text>
+                  <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>New staff</Text>
                   <Pressable onPress={handleClose} hitSlop={8}>
                     <Ionicons name="close" size={24} color={c.textMuted} />
                   </Pressable>
@@ -207,8 +207,8 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                     <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                       {(
                         [
-                          { key: 'employee', label: 'Employee' },
-                          { key: 'team_admin', label: 'Team leader' },
+                          { key: 'employee', label: 'Supervisor' },
+                          { key: 'team_admin', label: 'Branch manager' },
                         ] as { key: 'employee' | 'team_admin'; label: string }[]
                       ).map((opt) => {
                         const active = role === opt.key;
@@ -234,7 +234,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                       })}
                     </View>
 
-                    <FieldLabel>Team</FieldLabel>
+                    <FieldLabel>Branch</FieldLabel>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                       <Pressable
                         onPress={() => setTeamId(null)}
@@ -248,7 +248,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                         }}
                       >
                         <Text style={{ fontSize: 13, fontWeight: '600', color: teamId === null ? '#fff' : c.text }}>
-                          No team
+                          No branch
                         </Text>
                       </Pressable>
                       {teams.map((t) => {
@@ -276,7 +276,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                   </>
                 ) : (
                   <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
-                    They will join your team as an employee.
+                    They will join your branch as a supervisor.
                   </Text>
                 )}
 
