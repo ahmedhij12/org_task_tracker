@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useChecklists } from '@/hooks/useChecklists';
@@ -10,6 +10,8 @@ import type { ChecklistItemDraft } from '@/types';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /** When set, edits this existing template (add/remove/reorder questions, adjust point weights) instead of creating a new one. */
+  editingTemplateId?: string;
 }
 
 type Row = ChecklistItemDraft & { key: string };
@@ -19,9 +21,10 @@ function toRows(items: ChecklistItemDraft[]): Row[] {
   return items.map((it) => ({ ...it, key: `r${rowKeySeq++}` }));
 }
 
-export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
+export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplateId }: Props) {
   const c = useThemeColors();
-  const { createTemplate } = useChecklists();
+  const { templates, templateItems, createTemplate, updateTemplate } = useChecklists();
+  const isEditing = !!editingTemplateId;
 
   const [name, setName] = useState('');
   const [requiresNoteOnNo, setRequiresNoteOnNo] = useState(true);
@@ -30,6 +33,27 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
   const [newSection, setNewSection] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-fill from the existing template whenever the sheet opens in edit mode.
+  useEffect(() => {
+    if (!visible || !editingTemplateId) return;
+    const t = templates.find((tt) => tt.id === editingTemplateId);
+    if (!t) return;
+    setName(t.name);
+    setRequiresNoteOnNo(t.requiresNoteOnNo);
+    setRows(
+      toRows(
+        templateItems
+          .filter((it) => it.templateId === editingTemplateId)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((it) => ({ sectionTitle: it.sectionTitle, question: it.question, pointWeight: it.pointWeight }))
+      )
+    );
+    // Deliberately keyed only on visible/editingTemplateId — re-running this
+    // on every templates/templateItems change would clobber in-progress
+    // edits each time the realtime subscription refreshes the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, editingTemplateId]);
 
   const reset = () => {
     setName('');
@@ -61,6 +85,11 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, question: text } : r)));
   };
 
+  const updateWeight = (key: string, text: string) => {
+    const parsed = parseFloat(text.replace(',', '.'));
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, pointWeight: Number.isFinite(parsed) ? parsed : 0 } : r)));
+  };
+
   const removeRow = (key: string) => {
     setRows((prev) => prev.filter((r) => r.key !== key));
   };
@@ -78,14 +107,23 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await createTemplate(
-        name.trim(),
-        requiresNoteOnNo,
-        rows.map((r) => ({ sectionTitle: r.sectionTitle, question: r.question }))
-      );
+      if (isEditing) {
+        await updateTemplate(
+          editingTemplateId!,
+          name.trim(),
+          requiresNoteOnNo,
+          rows.map((r) => ({ sectionTitle: r.sectionTitle, question: r.question, pointWeight: r.pointWeight }))
+        );
+      } else {
+        await createTemplate(
+          name.trim(),
+          requiresNoteOnNo,
+          rows.map((r) => ({ sectionTitle: r.sectionTitle, question: r.question }))
+        );
+      }
       handleClose();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not create this checklist template.');
+      setError(e?.message ?? (isEditing ? 'Could not save this checklist template.' : 'Could not create this checklist template.'));
     } finally {
       setLoading(false);
     }
@@ -125,7 +163,9 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>New checklist template</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>
+                {isEditing ? 'Edit checklist template' : 'New checklist template'}
+              </Text>
               <Pressable onPress={handleClose} hitSlop={8}>
                 <Ionicons name="close" size={24} color={c.textMuted} />
               </Pressable>
@@ -134,38 +174,42 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
             {error ? <ErrorBanner message={error} /> : null}
 
             <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1, minHeight: 0 }}>
-              <FieldLabel>Start from</FieldLabel>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                <Pressable
-                  onPress={() => pickPreset('blank')}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    backgroundColor: c.bgSubtle,
-                    borderWidth: 1,
-                    borderColor: c.border,
-                  }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: c.text }}>Blank</Text>
-                </Pressable>
-                {BUILT_IN_CHECKLISTS.map((p) => (
-                  <Pressable
-                    key={p.key}
-                    onPress={() => pickPreset(p.key)}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 999,
-                      backgroundColor: c.bgSubtle,
-                      borderWidth: 1,
-                      borderColor: c.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text }}>{p.name}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              {isEditing ? null : (
+                <>
+                  <FieldLabel>Start from</FieldLabel>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                    <Pressable
+                      onPress={() => pickPreset('blank')}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 999,
+                        backgroundColor: c.bgSubtle,
+                        borderWidth: 1,
+                        borderColor: c.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: c.text }}>Blank</Text>
+                    </Pressable>
+                    {BUILT_IN_CHECKLISTS.map((p) => (
+                      <Pressable
+                        key={p.key}
+                        onPress={() => pickPreset(p.key)}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 999,
+                          backgroundColor: c.bgSubtle,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: c.text }}>{p.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              )}
 
               <FieldInput label="Template name" placeholder="e.g. Daily Hygiene Checklist" value={name} onChangeText={setName} />
 
@@ -184,6 +228,11 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
               </Pressable>
 
               <FieldLabel>Questions ({rows.length})</FieldLabel>
+              {isEditing ? (
+                <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 6 }}>
+                  Points a "No" answer costs — a more important question can cost more.
+                </Text>
+              ) : null}
               {groups.map((g, gi) => (
                 <View key={gi} style={{ marginBottom: 10 }}>
                   {g.sectionTitle ? (
@@ -210,6 +259,23 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
                           textAlign: textAlignFor(r.question),
                         }}
                       />
+                      {isEditing ? (
+                        <TextInput
+                          value={String(r.pointWeight ?? 0.25)}
+                          onChangeText={(t) => updateWeight(r.key, t)}
+                          keyboardType="decimal-pad"
+                          style={{
+                            width: 48,
+                            borderWidth: 1,
+                            borderColor: c.border,
+                            borderRadius: 10,
+                            padding: 8,
+                            fontSize: 13,
+                            color: c.text,
+                            textAlign: 'center',
+                          }}
+                        />
+                      ) : null}
                       <Pressable onPress={() => removeRow(r.key)} hitSlop={8}>
                         <Ionicons name="trash-outline" size={18} color={c.rose} />
                       </Pressable>
@@ -224,7 +290,12 @@ export function CreateChecklistTemplateSheet({ visible, onClose }: Props) {
                 <SecondaryButton title="+ Add question" onPress={addQuestion} disabled={!newQuestion.trim()} />
               </View>
 
-              <PrimaryButton title="Create template" onPress={handleCreate} loading={loading} disabled={!canSubmit} />
+              <PrimaryButton
+                title={isEditing ? 'Save changes' : 'Create template'}
+                onPress={handleCreate}
+                loading={loading}
+                disabled={!canSubmit}
+              />
               <View style={{ height: 10 }} />
               <SecondaryButton title="Cancel" onPress={handleClose} />
             </ScrollView>

@@ -153,6 +153,8 @@ export type ThemePref = 'light' | 'dark' | 'auto';
 export interface ChecklistItemDraft {
   sectionTitle: string; // '' = no section
   question: string;
+  /** Omit to take the schema default (0.25) — only meaningful when editing an is_audit template. */
+  pointWeight?: number;
 }
 
 export interface ChecklistTemplate {

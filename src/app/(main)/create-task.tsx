@@ -33,6 +33,7 @@ export default function CreateTaskScreen() {
   const [cooldownHours, setCooldownHours] = useState('24');
   const [checklistAssigneeIds, setChecklistAssigneeIds] = useState<string[]>([]);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   // Owner-only. An audit's subject/branch is chosen when the auditor starts
   // it (FillChecklistSheet), not here — this just creates the admin's own
   // reusable "go audit someone" task, self-assigned.
@@ -197,22 +198,28 @@ export default function CreateTaskScreen() {
                 </Pressable>
               )}
               {visibleTemplates.map((t) => (
-                <Pressable
+                <View
                   key={t.id}
-                  onPress={() => pickTemplate(t.id)}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
                     borderRadius: 999,
                     backgroundColor: templateId === t.id ? c.indigo : c.bgSubtle,
                     borderWidth: 1,
                     borderColor: templateId === t.id ? c.indigo : c.border,
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: templateId === t.id ? '#fff' : c.text }}>
-                    {t.name}
-                  </Text>
-                </Pressable>
+                  <Pressable onPress={() => pickTemplate(t.id)} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: templateId === t.id ? '#fff' : c.text }}>
+                      {t.name}
+                    </Text>
+                  </Pressable>
+                  {isOwner ? (
+                    <Pressable onPress={() => setEditingTemplateId(t.id)} style={{ paddingRight: 10, paddingVertical: 8 }} hitSlop={6}>
+                      <Ionicons name="pencil" size={13} color={templateId === t.id ? '#fff' : c.textMuted} />
+                    </Pressable>
+                  ) : null}
+                </View>
               ))}
               {isAudit ? null : (
                 <Pressable
@@ -424,6 +431,11 @@ export default function CreateTaskScreen() {
       <CreateChecklistTemplateSheet
         visible={creatingTemplate}
         onClose={() => setCreatingTemplate(false)}
+      />
+      <CreateChecklistTemplateSheet
+        visible={!!editingTemplateId}
+        editingTemplateId={editingTemplateId ?? undefined}
+        onClose={() => setEditingTemplateId(null)}
       />
     </SafeAreaView>
   );

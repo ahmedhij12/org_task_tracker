@@ -36,6 +36,8 @@ interface ChecklistDataContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   createTemplate: (name: string, requiresNoteOnNo: boolean, items: ChecklistItemDraft[]) => Promise<string>;
+  /** Owner-only. Replaces a template's questions/weights in place — see update_checklist_template. */
+  updateTemplate: (templateId: string, name: string, requiresNoteOnNo: boolean, items: ChecklistItemDraft[]) => Promise<void>;
 }
 
 const ChecklistDataContext = createContext<ChecklistDataContextValue | null>(null);
@@ -92,9 +94,27 @@ export function ChecklistDataProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const updateTemplate = useCallback<ChecklistDataContextValue['updateTemplate']>(
+    async (templateId, name, requiresNoteOnNo, items) => {
+      const { error } = await supabase.rpc('update_checklist_template', {
+        p_template_id: templateId,
+        p_name: name,
+        p_requires_note_on_no: requiresNoteOnNo,
+        p_items: items.map((it) => ({
+          section_title: it.sectionTitle,
+          question: it.question,
+          point_weight: it.pointWeight ?? 0.25,
+        })),
+      });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
   const value = useMemo<ChecklistDataContextValue>(
-    () => ({ templates, templateItems, loading, refresh, createTemplate }),
-    [templates, templateItems, loading, refresh, createTemplate]
+    () => ({ templates, templateItems, loading, refresh, createTemplate, updateTemplate }),
+    [templates, templateItems, loading, refresh, createTemplate, updateTemplate]
   );
 
   return <ChecklistDataContext.Provider value={value}>{children}</ChecklistDataContext.Provider>;
