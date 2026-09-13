@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, Pressable, Image, ScrollView } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import type { OrgTask, Profile } from '@/types';
 import { formatDue, isOverdue, initials } from '@/lib/taskUtils';
@@ -12,9 +13,11 @@ interface Props {
   showAssignee: boolean;
   canComplete?: boolean;
   onPressCheckbox?: () => void;
+  /** When set, swiping the row left reveals a Delete button. Owner/team_admin only — matches the existing tasks DELETE RLS policy. */
+  onDelete?: () => void;
 }
 
-export function TaskRow({ task, members, showAssignee, canComplete, onPressCheckbox }: Props) {
+export function TaskRow({ task, members, showAssignee, canComplete, onPressCheckbox, onDelete }: Props) {
   const c = useThemeColors();
   const [expanded, setExpanded] = useState(false);
   const overdue = isOverdue(task);
@@ -28,7 +31,7 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
   const photoCount = task.proofPhotoUrls.length;
   const hasProof = task.completed && (!!task.proofNote || photoCount > 0);
 
-  return (
+  const row = (
     <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.border, marginBottom: 8, overflow: 'hidden' }}>
       <Pressable
         onPress={() => (hasProof ? setExpanded((e) => !e) : undefined)}
@@ -159,6 +162,32 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
         </View>
       ) : null}
     </View>
+  );
+
+  if (!onDelete) return row;
+
+  return (
+    <Swipeable
+      renderRightActions={() => (
+        <Pressable
+          onPress={onDelete}
+          style={{
+            justifyContent: 'center',
+            alignItems: 'center',
+            width: 76,
+            marginBottom: 8,
+            marginLeft: 8,
+            borderRadius: 16,
+            backgroundColor: c.rose,
+          }}
+        >
+          <Ionicons name="trash" size={20} color="#fff" />
+          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', marginTop: 2 }}>Delete</Text>
+        </Pressable>
+      )}
+    >
+      {row}
+    </Swipeable>
   );
 }
 

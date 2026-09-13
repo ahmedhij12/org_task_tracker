@@ -142,6 +142,8 @@ interface OrgDataContextValue {
     audit?: { subjectProfileId: string; shift: 'morning' | 'evening'; signatureUrl?: string }
   ) => Promise<void>;
   declareTaskOffDuty: (taskId: string, reason: string) => Promise<void>;
+  /** Owner/team_admin only, matches the existing tasks DELETE RLS policy. Used for swipe-to-delete. */
+  deleteTask: (taskId: string) => Promise<void>;
   reviewOffDuty: (completionId: string, approve: boolean, reviewNote?: string) => Promise<void>;
   reviewTaskCompletion: (completionId: string, reviewNote?: string) => Promise<void>;
   loadCompletionDetail: (completionId: string) => Promise<{ answers: ChecklistAnswer[]; photos: ChecklistSectionPhoto[] }>;
@@ -285,6 +287,15 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const deleteTask = useCallback<OrgDataContextValue['deleteTask']>(
+    async (taskId) => {
+      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
   const reviewOffDuty = useCallback<OrgDataContextValue['reviewOffDuty']>(
     async (completionId, approve, reviewNote) => {
       const { error } = await supabase.rpc('review_off_duty', {
@@ -343,6 +354,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       createTask,
       setTaskCompletion,
       declareTaskOffDuty,
+      deleteTask,
       reviewOffDuty,
       reviewTaskCompletion,
       loadCompletionDetail,
@@ -358,6 +370,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       createTask,
       setTaskCompletion,
       declareTaskOffDuty,
+      deleteTask,
       reviewOffDuty,
       reviewTaskCompletion,
       loadCompletionDetail,

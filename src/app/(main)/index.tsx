@@ -27,7 +27,7 @@ function TeamAdminDashboard() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { profile, organization } = useAuth();
-  const { tasks, teams, members, history, loading, refresh, setTaskCompletion } = useOrgData();
+  const { tasks, teams, members, history, loading, refresh, setTaskCompletion, deleteTask } = useOrgData();
   const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(profile?.teamIds[0] ?? 'all');
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
@@ -103,9 +103,9 @@ function TeamAdminDashboard() {
               .sort((a, b) => Number(a.completed) - Number(b.completed))
               .map((t) =>
                 t.assigneeId === profile?.id ? (
-                  <TaskRow key={t.id} task={t} members={members} showAssignee canComplete onPressCheckbox={() => handlePressCheckbox(t)} />
+                  <TaskRow key={t.id} task={t} members={members} showAssignee canComplete onPressCheckbox={() => handlePressCheckbox(t)} onDelete={() => deleteTask(t.id).catch((e) => console.warn(e))} />
                 ) : (
-                  <TaskRow key={t.id} task={t} members={members} showAssignee />
+                  <TaskRow key={t.id} task={t} members={members} showAssignee onDelete={() => deleteTask(t.id).catch((e) => console.warn(e))} />
                 )
               )
           );
@@ -165,7 +165,7 @@ function OwnerDashboard() {
   const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
   const { currentSummary, loading, refresh } = useReports();
-  const { tasks, history, setTaskCompletion } = useOrgData();
+  const { tasks, history, setTaskCompletion, deleteTask } = useOrgData();
   const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
@@ -253,7 +253,7 @@ function OwnerDashboard() {
               {t('dashboard.myTasksHeading')}
             </Text>
             {myTasks.map((tsk) => (
-              <TaskRow key={tsk.id} task={tsk} members={[]} showAssignee={false} canComplete onPressCheckbox={() => handlePressCheckbox(tsk)} />
+              <TaskRow key={tsk.id} task={tsk} members={[]} showAssignee={false} canComplete onPressCheckbox={() => handlePressCheckbox(tsk)} onDelete={() => deleteTask(tsk.id).catch((e) => console.warn(e))} />
             ))}
           </>
         ) : null}
