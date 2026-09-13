@@ -1,7 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
-import { File } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
 
 // Embedded as a data URI (via a real file read, not a hardcoded base64
@@ -20,6 +20,12 @@ async function getLogoDataUri(): Promise<string> {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Keeps Arabic letters (branch names are often Arabic) but strips anything
+// unsafe or awkward in a filename.
+function safeFilenamePart(s: string): string {
+  return s.replace(/[\\/:*?"<>|]+/g, '').trim().replace(/\s+/g, '-') || 'report';
 }
 
 export interface AuditReportData {
@@ -45,17 +51,22 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   const photosBySection = new Map<string, ChecklistSectionPhoto[]>();
   for (const p of photos) photosBySection.set(p.sectionTitle, [...(photosBySection.get(p.sectionTitle) ?? []), p]);
 
+  // The questions are Arabic — dir="rtl" on the table flips the visual
+  // column order (Question ends up on the right, reading first, matching
+  // how these zone names/questions actually read), not just the text
+  // alignment within each cell. Fixed column widths keep Answer readable
+  // regardless of how long a question runs.
   const sectionsHtml = Array.from(bySection.entries())
     .map(([title, items]) => {
       const rows = items
         .map(
           (a) => `
         <tr>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${escapeHtml(a.question)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${escapeHtml(a.question)}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700;color:${
             a.answer ? '#059669' : '#dc2626'
           };">${a.answer ? 'Yes' : 'No'}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${a.note ? escapeHtml(a.note) : ''}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${a.note ? escapeHtml(a.note) : ''}</td>
         </tr>`
         )
         .join('');
@@ -63,13 +74,18 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
         .map((p) => `<img src="${p.photoUrl}" style="width:110px;height:110px;object-fit:cover;border-radius:8px;margin:4px;" />`)
         .join('');
       return `
-        <h3 style="margin:18px 0 6px;color:#1f2937;font-size:14px;">${title ? escapeHtml(title) : 'General'}</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <h3 dir="rtl" style="margin:18px 0 6px;color:#1f2937;font-size:14px;text-align:right;">${title ? escapeHtml(title) : 'General'}</h3>
+        <table dir="rtl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;">
+          <colgroup>
+            <col style="width:55%;" />
+            <col style="width:15%;" />
+            <col style="width:30%;" />
+          </colgroup>
           <thead>
             <tr style="background:#f3f4f6;">
-              <th style="text-align:left;padding:6px 8px;">Question</th>
+              <th style="text-align:right;padding:6px 8px;">Question</th>
               <th style="padding:6px 8px;">Answer</th>
-              <th style="text-align:left;padding:6px 8px;">Note</th>
+              <th style="text-align:right;padding:6px 8px;">Note</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -120,8 +136,18 @@ export async function exportAuditReport(data: AuditReportData): Promise<void> {
   const html = buildHtml(data, logo);
   const { uri } = await Print.printToFileAsync({ html });
 
+  // printToFileAsync always names its output a random UUID — rename to
+  // something meaningful (the branch, the date) before handing it to the
+  // share sheet, so whatever the recipient sees/saves isn't a GUID.
+  const dateForFilename = new Date(data.completion.createdAt).toISOString().slice(0, 10);
+  const filename = `${safeFilenamePart(data.branchName)}-${dateForFilename}.pdf`;
+  const source = new File(uri);
+  const renamed = new File(Paths.cache, filename);
+  renamed.create({ overwrite: true });
+  renamed.write(await source.bytes());
+
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
+    await Sharing.shareAsync(renamed.uri, {
       mimeType: 'application/pdf',
       dialogTitle: `Audit — ${data.subjectName}`,
       UTI: 'com.adobe.pdf',
