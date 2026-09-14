@@ -2285,4 +2285,90 @@ begin
   raise notice 'PASS: brands, branch_brands, profile_teams.brand_id exist';
 end $$;
 
+-- ── create_brand: owner-only, unique per org ────────────────────────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_leader_id uuid;
+  v_brand_id uuid;
+  v_owner2_id uuid := gen_random_uuid();
+  v_org2_id uuid;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'brand-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Brand Test Org', 'Brand Owner', 'brandowner');
+  v_leader_id := public.admin_create_user('Leader', 'brandleader', 'initial123', 'team_admin', v_team_id);
+
+  -- owner creates a brand
+  v_brand_id := public.create_brand('360');
+  if v_brand_id is null then
+    raise exception 'FAIL: create_brand should return the new brand''s id';
+  end if;
+  if not exists (select 1 from public.brands where id = v_brand_id and name = '360' and org_id = v_org_id) then
+    raise exception 'FAIL: the new brand row was not saved correctly';
+  end if;
+  raise notice 'PASS: an owner can create a brand';
+
+  -- a team_admin is rejected
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  begin
+    perform public.create_brand('AA Chicken');
+    raise exception 'FAIL: a team_admin should not be able to create a brand';
+  exception when others then
+    if sqlerrm !~ 'only.*admin' then raise; end if;
+  end;
+  raise notice 'PASS: a team_admin cannot create a brand';
+
+  -- duplicate name in the same org is rejected
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  begin
+    perform public.create_brand('360');
+    raise exception 'FAIL: a duplicate brand name in the same org should be rejected';
+  exception when others then
+    if sqlerrm !~ 'already exists' then raise; end if;
+  end;
+  raise notice 'PASS: a duplicate brand name in the same org is rejected';
+
+  -- the same name in a different org is fine — needs its own fresh owner,
+  -- since create_organization refuses a caller who already has a profile
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner2_id, 'authenticated', 'authenticated',
+    'brand-owner2.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner2_id)::text, true);
+  select org_id into v_org2_id
+  from public.create_organization('Other Brand Org', 'Other Owner', 'otherbrandowner');
+  perform public.create_brand('360');
+  if not exists (select 1 from public.brands where name = '360' and org_id = v_org2_id) then
+    raise exception 'FAIL: the same brand name should be allowed in a different org';
+  end if;
+  raise notice 'PASS: the same brand name is allowed across different orgs';
+end $$;
+
 rollback;

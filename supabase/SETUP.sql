@@ -54,6 +54,7 @@ drop function if exists public.get_login_email(text, text) cascade;
 -- Both signatures: the old one took an admin to promote, the new one doesn't.
 drop function if exists public.create_team(text, uuid) cascade;
 drop function if exists public.create_team(text) cascade;
+drop function if exists public.create_brand(text) cascade;
 drop function if exists public.close_next_month() cascade;
 drop function if exists public.get_period_report(uuid) cascade;
 drop function if exists public.get_current_branch_summary() cascade;
@@ -1405,6 +1406,39 @@ begin
 end;
 $$;
 
+create function public.create_brand(p_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_org_id uuid;
+  v_role text;
+  v_name text := trim(coalesce(p_name, ''));
+  v_brand_id uuid;
+begin
+  select p.org_id, p.role into v_org_id, v_role
+  from public.profiles p where p.id = auth.uid();
+
+  if v_role is distinct from 'owner' then
+    raise exception 'only an admin can create a brand';
+  end if;
+  if v_name = '' then
+    raise exception 'a brand name is required';
+  end if;
+  if exists (select 1 from public.brands b where b.org_id = v_org_id and lower(b.name) = lower(v_name)) then
+    raise exception 'a brand named "%" already exists', v_name;
+  end if;
+
+  insert into public.brands (org_id, name)
+  values (v_org_id, v_name)
+  returning id into v_brand_id;
+
+  return v_brand_id;
+end;
+$$;
+
 -- Closes whichever calendar month has fully elapsed but has no
 -- report_periods row yet. If the admin is behind (skipped a month or two),
 -- calling this again catches up to the next oldest one — one per call.
@@ -2267,6 +2301,7 @@ $$;
 grant execute on function public.create_organization(text, text, text, text) to authenticated;
 grant execute on function public.get_login_email(text, text) to anon, authenticated;
 grant execute on function public.create_team(text) to authenticated;
+grant execute on function public.create_brand(text) to authenticated;
 grant execute on function public.close_next_month() to authenticated;
 grant execute on function public.get_period_report(uuid) to authenticated;
 grant execute on function public.get_current_branch_summary() to authenticated;
