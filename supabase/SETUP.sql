@@ -1525,6 +1525,8 @@ create function public.get_period_report(p_period_id uuid)
 returns table (
   branch_id uuid,
   branch_name text,
+  brand_id uuid,
+  brand_name text,
   subject_profile_id uuid,
   subject_name text,
   total_points numeric,
@@ -1559,6 +1561,8 @@ begin
   select
     t.id,
     t.name,
+    b.id,
+    b.name,
     tc.subject_profile_id,
     sp.name,
     sum(tc.points_awarded),
@@ -1567,12 +1571,13 @@ begin
   join public.profiles sp on sp.id = tc.subject_profile_id
   join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
   join public.teams t on t.id = pt.team_id
+  left join public.brands b on b.id = pt.brand_id
   where tc.org_id = v_org_id
     and tc.points_awarded is not null
     and (tc.created_at at time zone 'Asia/Baghdad') >= v_month
     and (tc.created_at at time zone 'Asia/Baghdad') < (v_month + interval '1 month')
-  group by t.id, t.name, tc.subject_profile_id, sp.name
-  order by t.name, sp.name;
+  group by t.id, t.name, b.id, b.name, tc.subject_profile_id, sp.name
+  order by t.name, b.name nulls last, sp.name;
 end;
 $$;
 
@@ -1583,6 +1588,8 @@ create function public.get_current_branch_summary()
 returns table (
   branch_id uuid,
   branch_name text,
+  brand_id uuid,
+  brand_name text,
   subject_profile_id uuid,
   subject_name text,
   total_points numeric,
@@ -1611,6 +1618,8 @@ begin
   select
     t.id,
     t.name,
+    b.id,
+    b.name,
     tc.subject_profile_id,
     sp.name,
     sum(tc.points_awarded),
@@ -1619,11 +1628,12 @@ begin
   join public.profiles sp on sp.id = tc.subject_profile_id
   join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
   join public.teams t on t.id = pt.team_id
+  left join public.brands b on b.id = pt.brand_id
   where tc.org_id = v_org_id
     and tc.points_awarded is not null
     and (tc.created_at at time zone 'Asia/Baghdad') >= v_month_start
-  group by t.id, t.name, tc.subject_profile_id, sp.name
-  order by t.name, sp.name;
+  group by t.id, t.name, b.id, b.name, tc.subject_profile_id, sp.name
+  order by t.name, b.name nulls last, sp.name;
 end;
 $$;
 

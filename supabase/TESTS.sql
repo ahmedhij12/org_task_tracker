@@ -395,6 +395,101 @@ begin
   reset role;
 end $$;
 
+-- ── Task 5: brand_id/brand_name on get_current_branch_summary and
+-- get_period_report — left-joined so a null-brand subject still appears ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_brand_id uuid;
+  v_emp_with_brand uuid;
+  v_emp_no_brand uuid;
+  v_task_id uuid;
+  v_period_id uuid;
+  v_period_month date;
+  v_returned_brand_name text;
+  v_null_brand_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'brandreport-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('BrandReport Org', 'BrandReport Owner', 'brandreportowner');
+  v_brand_id := public.create_brand('360');
+  perform public.set_branch_brands(v_team_id, array[v_brand_id]);
+  v_emp_with_brand := public.admin_create_user('With Brand', 'brandreportwith', 'initial123', 'employee', v_team_id, null, v_brand_id);
+  v_emp_no_brand := public.admin_create_user('No Brand', 'brandreportwithout', 'initial123', 'employee', v_team_id);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Brand Report Audit', v_owner_id, v_owner_id, true, 'medium', false)
+  returning id into v_task_id;
+
+  perform public.set_task_completion(v_task_id, true, null, '{}', null, '[]'::jsonb, v_emp_with_brand, 'morning', -1);
+  perform public.set_task_completion(v_task_id, true, null, '{}', null, '[]'::jsonb, v_emp_no_brand, 'morning', -1);
+
+  select brand_name into v_returned_brand_name
+  from public.get_current_branch_summary()
+  where subject_profile_id = v_emp_with_brand;
+  if v_returned_brand_name is distinct from '360' then
+    raise exception 'FAIL: expected brand_name ''360'', got %', coalesce(v_returned_brand_name, '<null>');
+  end if;
+  raise notice 'PASS: get_current_branch_summary returns the right brand_name';
+
+  select count(*) into v_null_brand_count
+  from public.get_current_branch_summary()
+  where subject_profile_id = v_emp_no_brand and brand_id is null;
+  if v_null_brand_count <> 1 then
+    raise exception 'FAIL: a null-brand subject should still appear, with brand_id null';
+  end if;
+  raise notice 'PASS: a null-brand subject still appears in get_current_branch_summary';
+
+  -- The brief's own "Produces" line claims brand_id/brand_name on BOTH RPCs,
+  -- but the test as originally written only ever called
+  -- get_current_branch_summary — get_period_report was never exercised.
+  -- Close the org's creation month into a real report_periods row (same
+  -- backdating pattern as the "attributes points to the SUBJECT's branch"
+  -- test above) and re-run the same two assertions against get_period_report.
+  update public.organizations set created_at = '2026-06-10'::timestamptz where id = v_org_id;
+  update public.task_completions set created_at = '2026-06-15'::timestamptz
+    where task_id = v_task_id and subject_profile_id in (v_emp_with_brand, v_emp_no_brand);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select period_id, period_month into v_period_id, v_period_month from public.close_next_month();
+  if v_period_month is distinct from '2026-06-01'::date then
+    raise exception 'FAIL: expected to close June 2026, got %', v_period_month;
+  end if;
+
+  select brand_name into v_returned_brand_name
+  from public.get_period_report(v_period_id)
+  where subject_profile_id = v_emp_with_brand;
+  if v_returned_brand_name is distinct from '360' then
+    raise exception 'FAIL: expected brand_name ''360'' from get_period_report, got %', coalesce(v_returned_brand_name, '<null>');
+  end if;
+  raise notice 'PASS: get_period_report returns the right brand_name';
+
+  select count(*) into v_null_brand_count
+  from public.get_period_report(v_period_id)
+  where subject_profile_id = v_emp_no_brand and brand_id is null;
+  if v_null_brand_count <> 1 then
+    raise exception 'FAIL: a null-brand subject should still appear in get_period_report, with brand_id null';
+  end if;
+  raise notice 'PASS: a null-brand subject still appears in get_period_report';
+end $$;
+
 -- ── admin_create_user: who may create whom, and does the account work ───
 
 do $$
