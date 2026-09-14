@@ -36,11 +36,12 @@ interface AuthContextValue extends AuthState {
     role: 'employee' | 'team_admin' | 'owner';
     teamId: string | null;
     title?: string;
+    brandId?: string | null;
   }) => Promise<string>;
   adminResetPassword: (profileId: string, newPassword: string) => Promise<void>;
   adminSetUserActive: (profileId: string, active: boolean) => Promise<void>;
   /** Adds a further team on top of whatever the person already belongs to. */
-  addProfileToTeam: (profileId: string, teamId: string) => Promise<void>;
+  addProfileToTeam: (profileId: string, teamId: string, brandId?: string | null) => Promise<void>;
   removeProfileFromTeam: (profileId: string, teamId: string) => Promise<void>;
   /** Used by the forced-change screen; clears mustChangePassword on success. */
   changeOwnPassword: (newPassword: string) => Promise<void>;
@@ -85,12 +86,14 @@ function mapProfile(
     recovery_email: string | null;
     created_at: string;
   },
-  teamIds: string[]
+  teamIds: string[],
+  teamBrandIds: Record<string, string | null>
 ): Profile {
   return {
     id: row.id,
     orgId: row.org_id,
     teamIds,
+    teamBrandIds,
     name: row.name,
     title: row.title,
     username: row.username,
@@ -140,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const [{ data: profileRow, error: profileError }, { data: membershipRows }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
-      supabase.from('profile_teams').select('team_id').eq('profile_id', session.user.id),
+      supabase.from('profile_teams').select('team_id, brand_id').eq('profile_id', session.user.id),
     ]);
 
     if (profileError || !profileRow) {
@@ -150,7 +153,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const teamIds = (membershipRows ?? []).map((r) => r.team_id as string);
-    const profile = mapProfile(profileRow, teamIds);
+    const teamBrandIds = Object.fromEntries(
+      (membershipRows ?? []).map((r) => [r.team_id as string, (r as { brand_id: string | null }).brand_id])
+    );
+    const profile = mapProfile(profileRow, teamIds, teamBrandIds);
 
     const [{ data: orgRow }, { data: teamRows }] = await Promise.all([
       supabase.from('organizations').select('*').eq('id', profile.orgId).maybeSingle(),
@@ -253,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role,
     teamId,
     title,
+    brandId,
   }) => {
     const { data, error } = await supabase.rpc('admin_create_user', {
       p_name: name.trim(),
@@ -261,6 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       p_role: role,
       p_team_id: teamId,
       p_title: title?.trim() || null,
+      p_brand_id: brandId ?? null,
     });
     if (error) throw error;
     return data as string;
@@ -282,8 +290,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-  const addProfileToTeam: AuthContextValue['addProfileToTeam'] = async (profileId, teamId) => {
-    const { error } = await supabase.rpc('add_profile_to_team', { p_profile_id: profileId, p_team_id: teamId });
+  const addProfileToTeam: AuthContextValue['addProfileToTeam'] = async (profileId, teamId, brandId) => {
+    const { error } = await supabase.rpc('add_profile_to_team', {
+      p_profile_id: profileId,
+      p_team_id: teamId,
+      p_brand_id: brandId ?? null,
+    });
     if (error) throw error;
     if (profileId === state.profile?.id) await refreshProfile();
   };

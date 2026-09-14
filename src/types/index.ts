@@ -11,6 +11,12 @@ export interface Profile {
    * nothing in the schema enforces that.
    */
   teamIds: string[];
+  /**
+   * teamId -> brand assigned in that branch, or null when none is set yet
+   * (or the role is team_admin/owner, which never has one). Only has an
+   * entry for teams this profile actually belongs to — mirrors teamIds.
+   */
+  teamBrandIds: Record<string, string | null>;
   name: string;
   title: string | null; // job title, e.g. "IT", "Accountant" — separate from permission role
   username: string | null;
@@ -36,6 +42,14 @@ export interface Team {
   id: string;
   orgId: string;
   name: string;
+  createdAt: string;
+}
+
+export interface Brand {
+  id: string;
+  orgId: string;
+  name: string;
+  archived: boolean;
   createdAt: string;
 }
 
@@ -229,6 +243,8 @@ export interface ReportPeriod {
 export interface BranchSummaryRow {
   branchId: string;
   branchName: string;
+  brandId: string | null;
+  brandName: string | null;
   subjectProfileId: string;
   subjectName: string;
   totalPoints: number;

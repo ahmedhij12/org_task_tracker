@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import type { ChecklistAnswer, ChecklistSectionPhoto, OrgTask, Priority, Profile, Team, TaskCompletion } from '../types';
+import type { Brand, ChecklistAnswer, ChecklistSectionPhoto, OrgTask, Priority, Profile, Team, TaskCompletion } from '../types';
 
 function mapTask(row: any): OrgTask {
   return {
@@ -60,11 +60,16 @@ function mapTeam(row: any): Team {
   return { id: row.id, orgId: row.org_id, name: row.name, createdAt: row.created_at };
 }
 
-function mapProfile(row: any, teamIds: string[]): Profile {
+function mapBrand(row: any): Brand {
+  return { id: row.id, orgId: row.org_id, name: row.name, archived: row.archived, createdAt: row.created_at };
+}
+
+function mapProfile(row: any, teamIds: string[], teamBrandIds: Record<string, string | null>): Profile {
   return {
     id: row.id,
     orgId: row.org_id,
     teamIds,
+    teamBrandIds,
     name: row.name,
     title: row.title,
     username: row.username,
@@ -148,6 +153,10 @@ interface OrgDataContextValue {
   reviewTaskCompletion: (completionId: string, reviewNote?: string) => Promise<void>;
   loadCompletionDetail: (completionId: string) => Promise<{ answers: ChecklistAnswer[]; photos: ChecklistSectionPhoto[] }>;
   createTeam: (name: string) => Promise<void>;
+  brands: Brand[];
+  branchBrandIds: Record<string, string[]>;
+  createBrand: (name: string) => Promise<string>;
+  setBranchBrands: (branchId: string, brandIds: string[]) => Promise<void>;
 }
 
 const OrgDataContext = createContext<OrgDataContextValue | null>(null);
@@ -166,6 +175,8 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Profile[]>([]);
   const [history, setHistory] = useState<TaskCompletion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [branchBrandIds, setBranchBrandIds] = useState<Record<string, string[]>>({});
 
   const refresh = useCallback(async () => {
     if (!profile || !organization) {
@@ -173,34 +184,52 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       setTeams([]);
       setMembers([]);
       setHistory([]);
+      setBrands([]);
+      setBranchBrandIds({});
       setLoading(false);
       return;
     }
     setLoading(true);
-    const [tasksRes, teamsRes, membersRes, historyRes] = await Promise.all([
+    const [tasksRes, teamsRes, membersRes, historyRes, brandsRes, branchBrandsRes] = await Promise.all([
       supabase.from('tasks').select('*').order('due', { ascending: true, nullsFirst: false }),
       supabase.from('teams').select('*').eq('org_id', organization.id).order('created_at', { ascending: true }),
       supabase.from('profiles').select('*').eq('org_id', organization.id),
       // No role filter here on purpose — the RLS policy already narrows this
       // to the whole org, one team, or just this user.
       supabase.from('task_completions').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('brands').select('*').eq('org_id', organization.id).order('created_at', { ascending: true }),
+      supabase.from('branch_brands').select('branch_id, brand_id'),
     ]);
     if (!teamsRes.error) setTeams((teamsRes.data ?? []).map(mapTeam));
+    if (!brandsRes.error) setBrands((brandsRes.data ?? []).map(mapBrand));
+    if (!branchBrandsRes.error) {
+      const byBranch = new Map<string, string[]>();
+      for (const r of branchBrandsRes.data ?? []) {
+        const list = byBranch.get(r.branch_id) ?? [];
+        list.push(r.brand_id);
+        byBranch.set(r.branch_id, list);
+      }
+      setBranchBrandIds(Object.fromEntries(byBranch));
+    }
 
     if (!membersRes.error) {
       const rows = membersRes.data ?? [];
       // Fetched separately so every member's memberships are known, not just
       // the signed-in profile's — People/Teams/task-assignment all need it.
       const { data: membershipRows } = rows.length
-        ? await supabase.from('profile_teams').select('profile_id, team_id').in('profile_id', rows.map((r) => r.id))
-        : { data: [] as { profile_id: string; team_id: string }[] };
+        ? await supabase.from('profile_teams').select('profile_id, team_id, brand_id').in('profile_id', rows.map((r) => r.id))
+        : { data: [] as { profile_id: string; team_id: string; brand_id: string | null }[] };
       const byProfile = new Map<string, string[]>();
+      const brandByProfile = new Map<string, Record<string, string | null>>();
       for (const m of membershipRows ?? []) {
         const list = byProfile.get(m.profile_id) ?? [];
         list.push(m.team_id);
         byProfile.set(m.profile_id, list);
+        const brandMap = brandByProfile.get(m.profile_id) ?? {};
+        brandMap[m.team_id] = m.brand_id;
+        brandByProfile.set(m.profile_id, brandMap);
       }
-      setMembers(rows.map((row) => mapProfile(row, byProfile.get(row.id) ?? [])));
+      setMembers(rows.map((row) => mapProfile(row, byProfile.get(row.id) ?? [], brandByProfile.get(row.id) ?? {})));
     }
 
     if (!tasksRes.error) setTasks((tasksRes.data ?? []).map(mapTask));
@@ -343,6 +372,25 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const createBrand = useCallback<OrgDataContextValue['createBrand']>(
+    async (name) => {
+      const { data, error } = await supabase.rpc('create_brand', { p_name: name });
+      if (error) throw error;
+      await refresh();
+      return data as string;
+    },
+    [refresh]
+  );
+
+  const setBranchBrands = useCallback<OrgDataContextValue['setBranchBrands']>(
+    async (branchId, brandIds) => {
+      const { error } = await supabase.rpc('set_branch_brands', { p_branch_id: branchId, p_brand_ids: brandIds });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
   const value = useMemo<OrgDataContextValue>(
     () => ({
       tasks,
@@ -359,6 +407,10 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       reviewTaskCompletion,
       loadCompletionDetail,
       createTeam,
+      brands,
+      branchBrandIds,
+      createBrand,
+      setBranchBrands,
     }),
     [
       tasks,
@@ -375,6 +427,10 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       reviewTaskCompletion,
       loadCompletionDetail,
       createTeam,
+      brands,
+      branchBrandIds,
+      createBrand,
+      setBranchBrands,
     ]
   );
 

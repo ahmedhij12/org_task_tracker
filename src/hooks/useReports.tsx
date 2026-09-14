@@ -17,6 +17,8 @@ function mapSummaryRow(row: any): BranchSummaryRow {
   return {
     branchId: row.branch_id,
     branchName: row.branch_name,
+    brandId: row.brand_id,
+    brandName: row.brand_name,
     subjectProfileId: row.subject_profile_id,
     subjectName: row.subject_name,
     totalPoints: Number(row.total_points),
