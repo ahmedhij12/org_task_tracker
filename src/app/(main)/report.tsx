@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 import { exportReportToExcel } from '@/lib/exportReport';
+import { groupBranchSummary } from '@/lib/branchSummary';
 import type { BranchSummaryRow, ReportPeriod } from '@/types';
 
 function formatPeriodLabel(period: ReportPeriod, locale: string) {
@@ -59,6 +60,7 @@ export default function ReportScreen() {
 
   const totalPoints = rows.reduce((sum, r) => sum + r.totalPoints, 0);
   const totalIqd = rows.reduce((sum, r) => sum + r.iqdAmount, 0);
+  const groups = useMemo(() => groupBranchSummary(rows), [rows]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -110,24 +112,27 @@ export default function ReportScreen() {
               <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 12 }}>{t('report.loadingReport')}</Text>
             ) : (
               <Card style={{ marginTop: 12 }}>
-                {rows.map((r) => (
-                  <View
-                    key={`${r.subjectProfileId}-${r.branchId}`}
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      paddingVertical: 8,
-                      borderBottomWidth: 1,
-                      borderBottomColor: c.border,
-                    }}
-                  >
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>{r.subjectName}</Text>
-                      <Text style={{ fontSize: 12, color: c.textMuted }}>{r.branchName}</Text>
-                    </View>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: r.totalPoints < 0 ? c.rose : c.emerald }}>
-                      {r.totalPoints} · {r.iqdAmount.toLocaleString(i18n.language)}
-                    </Text>
+                {groups.map((branch) => (
+                  <View key={branch.branchId} style={{ marginBottom: 14 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: c.text, marginBottom: 6 }}>{branch.branchName}</Text>
+                    {branch.brandGroups.map((bg) => (
+                      <View key={bg.brandKey} style={{ marginBottom: 8 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
+                          {bg.brandName}
+                        </Text>
+                        {bg.rows.map((r) => (
+                          <View
+                            key={`${r.subjectProfileId}-${r.branchId}`}
+                            style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}
+                          >
+                            <Text style={{ fontSize: 14, color: c.text }}>{r.subjectName}</Text>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: r.totalPoints < 0 ? c.rose : c.emerald }}>
+                              {r.totalPoints} · {r.iqdAmount.toLocaleString(i18n.language)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ))}
                   </View>
                 ))}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10 }}>

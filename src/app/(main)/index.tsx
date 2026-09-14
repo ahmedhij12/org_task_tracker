@@ -14,7 +14,8 @@ import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
 import { bucketTasks, effectiveTaskCompleted, latestCompletionForTask } from '@/lib/taskUtils';
-import type { OrgTask, BranchSummaryRow } from '@/types';
+import { groupBranchSummary } from '@/lib/branchSummary';
+import type { OrgTask } from '@/types';
 
 export default function MainIndex() {
   const { profile } = useAuth();
@@ -202,29 +203,7 @@ function OwnerDashboard() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const branches = useMemo(() => {
-    const map = new Map<
-      string,
-      { branchId: string; branchName: string; totalPoints: number; iqdAmount: number; supervisors: BranchSummaryRow[] }
-    >();
-    for (const row of currentSummary) {
-      const existing = map.get(row.branchId);
-      if (existing) {
-        existing.totalPoints += row.totalPoints;
-        existing.iqdAmount += row.iqdAmount;
-        existing.supervisors.push(row);
-      } else {
-        map.set(row.branchId, {
-          branchId: row.branchId,
-          branchName: row.branchName,
-          totalPoints: row.totalPoints,
-          iqdAmount: row.iqdAmount,
-          supervisors: [row],
-        });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.branchName.localeCompare(b.branchName));
-  }, [currentSummary]);
+  const branches = useMemo(() => groupBranchSummary(currentSummary), [currentSummary]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -296,13 +275,22 @@ function OwnerDashboard() {
                   </View>
                 </View>
                 {expanded ? (
-                  <View style={{ marginTop: 10, gap: 6 }}>
-                    {branch.supervisors.map((s) => (
-                      <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
-                          {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
+                  <View style={{ marginTop: 10, gap: 12 }}>
+                    {branch.brandGroups.map((bg) => (
+                      <View key={bg.brandKey}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
+                          {bg.brandName}
                         </Text>
+                        <View style={{ gap: 6 }}>
+                          {bg.rows.map((s) => (
+                            <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                              <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
+                                {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
                       </View>
                     ))}
                   </View>

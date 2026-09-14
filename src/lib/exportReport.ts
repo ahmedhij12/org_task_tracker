@@ -17,6 +17,7 @@ export async function exportReportToExcel(period: ReportPeriod, rows: BranchSumm
   const sheetData = rows.map((r) => ({
     Name: r.subjectName,
     Branch: r.branchName,
+    Brand: r.brandName ?? 'Unassigned',
     Points: r.totalPoints,
     'Amount (IQD)': r.iqdAmount,
   }));
