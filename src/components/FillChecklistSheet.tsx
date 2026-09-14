@@ -30,7 +30,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const c = useThemeColors();
   const { profile } = useAuth();
   const { templates, templateItems } = useChecklists();
-  const { teams, members, setTaskCompletion, declareTaskOffDuty } = useOrgData();
+  const { teams, members, brands, branchBrandIds, setTaskCompletion, declareTaskOffDuty } = useOrgData();
 
   const template = templates.find((t) => t.id === task.templateId);
   const items = useMemo(() => templateItems.filter((it) => it.templateId === task.templateId), [templateItems, task.templateId]);
@@ -44,15 +44,22 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
 
   // Audit-only: the branch, subject and shift are chosen fresh each time,
   // right here — never fixed when the audit task itself was created.
-  const [auditStep, setAuditStep] = useState<'branch' | 'subject' | 'shift' | 'fill'>('branch');
+  const [auditStep, setAuditStep] = useState<'branch' | 'brand' | 'subject' | 'shift' | 'fill'>('branch');
   const [auditBranchId, setAuditBranchId] = useState<string | null>(null);
+  const [auditBrandId, setAuditBrandId] = useState<string | null>(null);
   const [auditSubjectId, setAuditSubjectId] = useState<string | null>(null);
   const [auditShift, setAuditShift] = useState<'morning' | 'evening' | null>(null);
   const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
 
   const branchMembers = members.filter(
-    (m) => m.id !== profile?.id && m.role !== 'owner' && auditBranchId != null && m.teamIds.includes(auditBranchId)
+    (m) =>
+      m.id !== profile?.id &&
+      m.role !== 'owner' &&
+      auditBranchId != null &&
+      m.teamIds.includes(auditBranchId) &&
+      (auditBrandId == null || m.teamBrandIds[auditBranchId] === auditBrandId)
   );
+  const auditBrand = brands.find((b) => b.id === auditBrandId);
   const auditSubject = members.find((m) => m.id === auditSubjectId);
 
   const sections = useMemo(() => {
@@ -73,6 +80,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     setError(null);
     setAuditStep('branch');
     setAuditBranchId(null);
+    setAuditBrandId(null);
     setAuditSubjectId(null);
     setAuditShift(null);
     setSignatureSvg(null);
@@ -253,7 +261,8 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                         key={t.id}
                         onPress={() => {
                           setAuditBranchId(t.id);
-                          setAuditStep('subject');
+                          setAuditBrandId(null);
+                          setAuditStep((branchBrandIds[t.id] ?? []).length > 0 ? 'brand' : 'subject');
                         }}
                         style={{
                           paddingVertical: 14,
@@ -268,10 +277,43 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                       </Pressable>
                     ))}
                   </>
-                ) : auditStep === 'subject' ? (
+                ) : auditStep === 'brand' ? (
                   <>
                     <Pressable onPress={() => setAuditStep('branch')} style={{ marginBottom: 10 }}>
                       <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back to branch'}</Text>
+                    </Pressable>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Which brand?</Text>
+                    {(branchBrandIds[auditBranchId ?? ''] ?? []).map((bid) => {
+                      const brand = brands.find((b) => b.id === bid);
+                      if (!brand) return null;
+                      return (
+                        <Pressable
+                          key={bid}
+                          onPress={() => {
+                            setAuditBrandId(bid);
+                            setAuditStep('subject');
+                          }}
+                          style={{
+                            paddingVertical: 14,
+                            paddingHorizontal: 14,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: c.border,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>{brand.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </>
+                ) : auditStep === 'subject' ? (
+                  <>
+                    <Pressable
+                      onPress={() => setAuditStep((branchBrandIds[auditBranchId ?? ''] ?? []).length > 0 ? 'brand' : 'branch')}
+                      style={{ marginBottom: 10 }}
+                    >
+                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back'}</Text>
                     </Pressable>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Who are you auditing?</Text>
                     {branchMembers.length === 0 ? (
@@ -337,7 +379,8 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                 {task.isAudit ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                     <Text style={{ fontSize: 12, color: c.textMuted }}>
-                      {teams.find((t) => t.id === auditBranchId)?.name} • {auditSubject?.name} • {auditShift === 'morning' ? 'AM' : 'PM'}
+                      {teams.find((t) => t.id === auditBranchId)?.name}
+                      {auditBrand ? ` • ${auditBrand.name}` : ''} • {auditSubject?.name} • {auditShift === 'morning' ? 'AM' : 'PM'}
                     </Text>
                     <Pressable onPress={() => setAuditStep('branch')}>
                       <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>Change</Text>
