@@ -2252,4 +2252,37 @@ begin
   reset role;
 end $$;
 
+-- ── Brands schema foundation ─────────────────────────────────────────
+do $$
+declare
+  v_has_table boolean;
+  v_has_col boolean;
+begin
+  select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'brands'
+  ) into v_has_table;
+  if not v_has_table then
+    raise exception 'FAIL: public.brands table is missing';
+  end if;
+
+  select exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'branch_brands'
+  ) into v_has_table;
+  if not v_has_table then
+    raise exception 'FAIL: public.branch_brands table is missing';
+  end if;
+
+  select exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profile_teams'
+      and column_name = 'brand_id'
+  ) into v_has_col;
+  if not v_has_col then
+    raise exception 'FAIL: profile_teams.brand_id column is missing';
+  end if;
+  raise notice 'PASS: brands, branch_brands, profile_teams.brand_id exist';
+end $$;
+
 rollback;

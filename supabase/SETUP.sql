@@ -9,6 +9,8 @@
 
 -- ── Clean slate ─────────────────────────────────────────────────────
 
+drop table if exists public.branch_brands cascade;
+drop table if exists public.brands cascade;
 drop table if exists public.profile_teams cascade;
 drop table if exists public.task_occurrences cascade;
 drop table if exists public.points_adjustments cascade;
@@ -152,6 +154,24 @@ create table public.report_periods (
 
 create index report_periods_org_idx on public.report_periods(org_id, period_month desc);
 
+-- A branch (team) can run more than one brand (e.g. "360", "AA Chicken",
+-- "Center"). A supervisor's profile_teams row names both the branch and,
+-- optionally, which brand within it they cover — see brand_id below.
+create table public.brands (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  name text not null,
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (org_id, name)
+);
+
+create table public.branch_brands (
+  branch_id uuid not null references public.teams(id) on delete cascade,
+  brand_id uuid not null references public.brands(id) on delete cascade,
+  primary key (branch_id, brand_id)
+);
+
 -- A person can belong to more than one team (e.g. a supervisor who covers
 -- both the hygiene and kitchen checklists, each run by a different leader).
 -- In practice a team leader has exactly one row here — that's a usage
@@ -161,6 +181,7 @@ create table public.profile_teams (
   team_id uuid not null references public.teams(id) on delete cascade,
   added_by uuid not null references public.profiles(id) on delete cascade,
   added_at timestamptz not null default now(),
+  brand_id uuid references public.brands(id) on delete set null,
   primary key (profile_id, team_id)
 );
 
@@ -472,6 +493,8 @@ alter table public.organizations enable row level security;
 alter table public.teams enable row level security;
 alter table public.profiles enable row level security;
 alter table public.profile_teams enable row level security;
+alter table public.brands enable row level security;
+alter table public.branch_brands enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_completions enable row level security;
 alter table public.checklist_templates enable row level security;
@@ -539,6 +562,22 @@ create policy "org members can read their own org"
 create policy "org members can read their org's teams"
   on public.teams for select
   using (org_id = public.my_org_id());
+
+-- Mutations all go through SECURITY DEFINER RPCs (Task 2/3), which bypass
+-- RLS as the table owner — same pattern as checklist_templates/teams — so
+-- only SELECT policies are needed here.
+create policy "org members can read their org's brands"
+  on public.brands for select
+  using (org_id = public.my_org_id());
+
+create policy "org members can read their org's branch brands"
+  on public.branch_brands for select
+  using (
+    exists (
+      select 1 from public.teams t
+      where t.id = branch_id and t.org_id = public.my_org_id()
+    )
+  );
 
 create policy "org members can read profiles in their org"
   on public.profiles for select
