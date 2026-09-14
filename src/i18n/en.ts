@@ -101,6 +101,9 @@ export default {
     addLeaderHint: "After you create the branch, add its leader from the Staff tab.",
     createTeam: 'Create branch',
     genericError: 'Could not create branch.',
+    manageBrandsTitle: 'Brands at {{name}}',
+    manageBrandsHint: 'Choose which brands operate at this branch, or add a new one.',
+    newBrandPlaceholder: 'e.g. Basra Delight, Smoke House',
   },
   mainTabs: {
     myTasks: 'My Tasks',

@@ -97,6 +97,9 @@ export default {
     addLeaderHint: 'بعد إنشاء الفرع، أضف قائده من تبويب الموظفون.',
     createTeam: 'إنشاء فرع',
     genericError: 'تعذر إنشاء الفرع.',
+    manageBrandsTitle: 'العلامات التجارية في {{name}}',
+    manageBrandsHint: 'اختر العلامات التجارية العاملة في هذا الفرع، أو أضف علامة جديدة.',
+    newBrandPlaceholder: 'مثال: بصرة ديلايت، سموك هاوس',
   },
   mainTabs: {
     myTasks: 'مهامي',
