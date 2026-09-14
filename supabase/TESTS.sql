@@ -2371,4 +2371,128 @@ begin
   raise notice 'PASS: the same brand name is allowed across different orgs';
 end $$;
 
+-- ── set_branch_brands: owner-only, delete-and-reinsert ──────────────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_leader_id uuid;
+  v_brand_360 uuid;
+  v_brand_aa uuid;
+  v_brand_center uuid;
+  v_count int;
+  v_other_owner_id uuid := gen_random_uuid();
+  v_other_org_id uuid;
+  v_other_brand_id uuid;
+  v_third_owner_id uuid := gen_random_uuid();
+  v_other_team_id uuid;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'setbrands-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('SetBrands Org', 'SetBrands Owner', 'setbrandsowner');
+  v_leader_id := public.admin_create_user('Leader', 'setbrandsleader', 'initial123', 'team_admin', v_team_id);
+
+  v_brand_360 := public.create_brand('360');
+  v_brand_aa := public.create_brand('AA Chicken');
+  v_brand_center := public.create_brand('Center');
+
+  -- owner sets the branch's brands
+  perform public.set_branch_brands(v_team_id, array[v_brand_360, v_brand_aa]);
+  select count(*) into v_count from public.branch_brands where branch_id = v_team_id;
+  if v_count <> 2 then
+    raise exception 'FAIL: expected 2 branch_brands rows, got %', v_count;
+  end if;
+  raise notice 'PASS: an owner can set a branch''s brands';
+
+  -- calling again fully replaces the set
+  perform public.set_branch_brands(v_team_id, array[v_brand_center]);
+  select count(*) into v_count from public.branch_brands where branch_id = v_team_id;
+  if v_count <> 1 or not exists (select 1 from public.branch_brands where branch_id = v_team_id and brand_id = v_brand_center) then
+    raise exception 'FAIL: set_branch_brands should replace the full set, not add to it';
+  end if;
+  raise notice 'PASS: set_branch_brands replaces the full set';
+
+  -- a team_admin is rejected
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  begin
+    perform public.set_branch_brands(v_team_id, array[v_brand_360]);
+    raise exception 'FAIL: a team_admin should not be able to set a branch''s brands';
+  exception when others then
+    if sqlerrm !~ 'only.*admin' then raise; end if;
+  end;
+  raise notice 'PASS: a team_admin cannot set a branch''s brands';
+
+  -- a brand from a different org is rejected — needs its own fresh owner
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_other_owner_id, 'authenticated', 'authenticated',
+    'setbrands-other-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_other_owner_id)::text, true);
+  select org_id into v_other_org_id
+  from public.create_organization('SetBrands Other Org', 'Other Owner', 'setbrandsotherowner');
+  v_other_brand_id := public.create_brand('Foreign Brand');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  begin
+    perform public.set_branch_brands(v_team_id, array[v_other_brand_id]);
+    raise exception 'FAIL: a brand from another organization should be rejected';
+  exception when others then
+    if sqlerrm !~ 'not belong' then raise; end if;
+  end;
+  raise notice 'PASS: a brand from another organization is rejected';
+
+  -- a branch from a different org is rejected — needs its own fresh owner
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_third_owner_id, 'authenticated', 'authenticated',
+    'setbrands-third-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_third_owner_id)::text, true);
+  select team_id into v_other_team_id
+  from public.create_organization('SetBrands Third Org', 'Third Owner', 'setbrandsthirdowner');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  begin
+    perform public.set_branch_brands(v_other_team_id, array[v_brand_360]);
+    raise exception 'FAIL: a branch from another organization should be rejected';
+  exception when others then
+    if sqlerrm !~ 'does not belong' then raise; end if;
+  end;
+  raise notice 'PASS: a branch from another organization is rejected';
+end $$;
+
 rollback;

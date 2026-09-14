@@ -55,6 +55,7 @@ drop function if exists public.get_login_email(text, text) cascade;
 drop function if exists public.create_team(text, uuid) cascade;
 drop function if exists public.create_team(text) cascade;
 drop function if exists public.create_brand(text) cascade;
+drop function if exists public.set_branch_brands(uuid, uuid[]) cascade;
 drop function if exists public.close_next_month() cascade;
 drop function if exists public.get_period_report(uuid) cascade;
 drop function if exists public.get_current_branch_summary() cascade;
@@ -2243,6 +2244,47 @@ begin
 end;
 $$;
 
+create function public.set_branch_brands(p_branch_id uuid, p_brand_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller_role text;
+  v_caller_org uuid;
+  v_branch_org uuid;
+  v_foreign_count int;
+begin
+  select p.role, p.org_id into v_caller_role, v_caller_org
+  from public.profiles p where p.id = auth.uid();
+
+  if v_caller_role is distinct from 'owner' then
+    raise exception 'only an admin can set a branch''s brands';
+  end if;
+
+  select org_id into v_branch_org from public.teams where id = p_branch_id;
+  if v_branch_org is null then
+    raise exception 'branch not found';
+  end if;
+  if v_branch_org is distinct from v_caller_org then
+    raise exception 'that branch does not belong to your organization';
+  end if;
+
+  select count(*) into v_foreign_count
+  from unnest(coalesce(p_brand_ids, '{}')) bid
+  where not exists (select 1 from public.brands b where b.id = bid and b.org_id = v_caller_org);
+  if v_foreign_count > 0 then
+    raise exception 'one or more brands do not belong to your organization';
+  end if;
+
+  delete from public.branch_brands where branch_id = p_branch_id;
+
+  insert into public.branch_brands (branch_id, brand_id)
+  select p_branch_id, bid from unnest(coalesce(p_brand_ids, '{}')) bid;
+end;
+$$;
+
 -- p_fields shape: [{ "label": "...", "field_type": "text"|"number"|"date"|
 -- "time"|"select", "options": ["OK","Replace"] (select only, else omit/null),
 -- "unit": "%" (optional, cosmetic), "required": true|false (default true) }]
@@ -2302,6 +2344,7 @@ grant execute on function public.create_organization(text, text, text, text) to 
 grant execute on function public.get_login_email(text, text) to anon, authenticated;
 grant execute on function public.create_team(text) to authenticated;
 grant execute on function public.create_brand(text) to authenticated;
+grant execute on function public.set_branch_brands(uuid, uuid[]) to authenticated;
 grant execute on function public.close_next_month() to authenticated;
 grant execute on function public.get_period_report(uuid) to authenticated;
 grant execute on function public.get_current_branch_summary() to authenticated;
