@@ -15,7 +15,7 @@ interface Props {
 export function ManageUserSheet({ member, onClose }: Props) {
   const c = useThemeColors();
   const { profile, adminResetPassword, adminSetUserActive, addProfileToTeam, removeProfileFromTeam } = useAuth();
-  const { members, teams, refresh } = useOrgData();
+  const { members, teams, brands, branchBrandIds, refresh } = useOrgData();
 
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +26,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
   // the deactivation silently does nothing.
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [teamBusy, setTeamBusy] = useState<string | null>(null);
+  const [brandBusyTeamId, setBrandBusyTeamId] = useState<string | null>(null);
 
   useEffect(() => {
     setPassword('');
@@ -179,6 +180,57 @@ export function ManageUserSheet({ member, onClose }: Props) {
                       <Text style={{ fontSize: 12, color: c.textFaint }}>No branch — working unattached.</Text>
                     ) : null}
                   </View>
+
+                  {live.role === 'employee'
+                    ? memberTeams.map((t) => {
+                        const available = branchBrandIds[t.id] ?? [];
+                        if (available.length === 0) return null;
+                        return (
+                          <View key={`brand-${t.id}`} style={{ marginTop: 6 }}>
+                            <Text style={{ fontSize: 11, color: c.textFaint, marginBottom: 4 }}>{t.name} brand</Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                              {available.map((bid) => {
+                                const brand = brands.find((b) => b.id === bid);
+                                if (!brand) return null;
+                                const active = live.teamBrandIds[t.id] === bid;
+                                return (
+                                  <Pressable
+                                    key={bid}
+                                    disabled={brandBusyTeamId === t.id}
+                                    onPress={async () => {
+                                      setBrandBusyTeamId(t.id);
+                                      setError(null);
+                                      try {
+                                        await addProfileToTeam(live.id, t.id, active ? null : bid);
+                                        await refresh();
+                                      } catch (e: any) {
+                                        setError(e?.message ?? 'Could not set that brand.');
+                                      } finally {
+                                        setBrandBusyTeamId(null);
+                                      }
+                                    }}
+                                    style={{
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 5,
+                                      borderRadius: 999,
+                                      backgroundColor: active ? c.indigo : c.bgSubtle,
+                                      borderWidth: 1,
+                                      borderColor: active ? c.indigo : c.border,
+                                      opacity: brandBusyTeamId === t.id ? 0.5 : 1,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#fff' : c.text }}>
+                                      {brand.name}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        );
+                      })
+                    : null}
+
                   {addableTeams.length > 0 ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                       {addableTeams.map((t) => (

@@ -24,7 +24,7 @@ interface Props {
 export function CreateUserSheet({ visible, onClose }: Props) {
   const c = useThemeColors();
   const { profile, adminCreateUser } = useAuth();
-  const { teams, refresh } = useOrgData();
+  const { teams, brands, branchBrandIds, refresh } = useOrgData();
 
   const isOwner = profile?.role === 'owner';
 
@@ -34,6 +34,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const [password, setPassword] = useState(DEFAULT_TEMP_PASSWORD);
   const [role, setRole] = useState<'employee' | 'team_admin' | 'owner'>('employee');
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [brandId, setBrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Set once the account exists — the only time the password is ever shown.
@@ -50,6 +51,11 @@ export function CreateUserSheet({ visible, onClose }: Props) {
     }
   }, [visible, isOwner, profile?.teamIds]);
 
+  // An old brand selection can point at a branch that no longer applies.
+  useEffect(() => {
+    setBrandId(null);
+  }, [teamId, role]);
+
   const reset = () => {
     setName('');
     setTitle('');
@@ -57,6 +63,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
     setPassword(DEFAULT_TEMP_PASSWORD);
     setRole('employee');
     setTeamId(isOwner ? null : (profile?.teamIds[0] ?? null));
+    setBrandId(null);
     setError(null);
     setCreated(null);
     setCopied(false);
@@ -74,7 +81,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await adminCreateUser({ name, username, password, role, teamId, title });
+      await adminCreateUser({ name, username, password, role, teamId, title, brandId });
       setCreated({ username: username.trim(), password });
       await refresh();
     } catch (e: any) {
@@ -282,6 +289,41 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                             );
                           })}
                         </View>
+
+                        {role === 'employee' && teamId ? (
+                          <>
+                            <FieldLabel>Brand</FieldLabel>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                              {(branchBrandIds[teamId] ?? []).length === 0 ? (
+                                <Text style={{ fontSize: 12, color: c.textFaint }}>No brands configured for this branch yet.</Text>
+                              ) : (
+                                (branchBrandIds[teamId] ?? []).map((bid) => {
+                                  const brand = brands.find((b) => b.id === bid);
+                                  if (!brand) return null;
+                                  const active = brandId === bid;
+                                  return (
+                                    <Pressable
+                                      key={bid}
+                                      onPress={() => setBrandId(active ? null : bid)}
+                                      style={{
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 8,
+                                        borderRadius: 999,
+                                        backgroundColor: active ? c.indigo : c.bgSubtle,
+                                        borderWidth: 1,
+                                        borderColor: active ? c.indigo : c.border,
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
+                                        {brand.name}
+                                      </Text>
+                                    </Pressable>
+                                  );
+                                })
+                              )}
+                            </View>
+                          </>
+                        ) : null}
                       </>
                     ) : (
                       <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
@@ -290,9 +332,42 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                     )}
                   </>
                 ) : (
-                  <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
-                    They will join your branch as a supervisor.
-                  </Text>
+                  <>
+                    <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
+                      They will join your branch as a supervisor.
+                    </Text>
+
+                    <FieldLabel>Brand</FieldLabel>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                      {(branchBrandIds[profile?.teamIds[0] ?? ''] ?? []).length === 0 ? (
+                        <Text style={{ fontSize: 12, color: c.textFaint }}>No brands configured for this branch yet.</Text>
+                      ) : (
+                        (branchBrandIds[profile?.teamIds[0] ?? ''] ?? []).map((bid) => {
+                          const brand = brands.find((b) => b.id === bid);
+                          if (!brand) return null;
+                          const active = brandId === bid;
+                          return (
+                            <Pressable
+                              key={bid}
+                              onPress={() => setBrandId(active ? null : bid)}
+                              style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 999,
+                                backgroundColor: active ? c.indigo : c.bgSubtle,
+                                borderWidth: 1,
+                                borderColor: active ? c.indigo : c.border,
+                              }}
+                            >
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
+                                {brand.name}
+                              </Text>
+                            </Pressable>
+                          );
+                        })
+                      )}
+                    </View>
+                  </>
                 )}
 
                 <PrimaryButton title="Create account" onPress={handleCreate} loading={loading} disabled={!canSubmit} />
