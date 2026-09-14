@@ -203,11 +203,19 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
     if (!teamsRes.error) setTeams((teamsRes.data ?? []).map(mapTeam));
     if (!brandsRes.error) setBrands((brandsRes.data ?? []).map(mapBrand));
     if (!branchBrandsRes.error) {
+      // branch_brands has no ORDER BY, so Postgres doesn't guarantee row
+      // order for it — sort each branch's list by the brand's position in
+      // the already-ordered `brands` array so callers (Tasks 7-9) render a
+      // consistent, brands-insertion-order sequence of chips.
+      const brandOrder = new Map((brandsRes.data ?? []).map((b: any, i: number) => [b.id as string, i]));
       const byBranch = new Map<string, string[]>();
       for (const r of branchBrandsRes.data ?? []) {
         const list = byBranch.get(r.branch_id) ?? [];
         list.push(r.brand_id);
         byBranch.set(r.branch_id, list);
+      }
+      for (const list of byBranch.values()) {
+        list.sort((a, b) => (brandOrder.get(a) ?? 0) - (brandOrder.get(b) ?? 0));
       }
       setBranchBrandIds(Object.fromEntries(byBranch));
     }
