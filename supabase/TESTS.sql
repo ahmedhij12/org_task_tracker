@@ -2495,4 +2495,88 @@ begin
   raise notice 'PASS: a branch from another organization is rejected';
 end $$;
 
+-- ── Brand validation on admin_create_user and add_profile_to_team ───────
+
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_team2_id uuid;
+  v_brand_360 uuid;
+  v_brand_aa uuid;
+  v_emp_id uuid;
+  v_leader_id uuid;
+  v_saved_brand uuid;
+  v_row_count int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'brandval-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('BrandVal Org', 'BrandVal Owner', 'brandvalowner');
+  v_brand_360 := public.create_brand('360');
+  v_brand_aa := public.create_brand('AA Chicken');
+  perform public.set_branch_brands(v_team_id, array[v_brand_360]);
+  insert into public.teams (org_id, name) values (v_org_id, 'Second Branch') returning id into v_team2_id;
+
+  -- admin_create_user with a valid (team, brand) pair
+  v_emp_id := public.admin_create_user('Supervisor', 'brandvalemp', 'initial123', 'employee', v_team_id, null, v_brand_360);
+  select brand_id into v_saved_brand from public.profile_teams where profile_id = v_emp_id and team_id = v_team_id;
+  if v_saved_brand is distinct from v_brand_360 then
+    raise exception 'FAIL: admin_create_user should save the supervisor''s brand';
+  end if;
+  raise notice 'PASS: admin_create_user saves a valid brand for a supervisor';
+
+  -- a brand for a team_admin is rejected
+  begin
+    perform public.admin_create_user('Manager', 'brandvalmgr', 'initial123', 'team_admin', v_team_id, null, v_brand_360);
+    raise exception 'FAIL: a brand should be rejected for a team_admin';
+  exception when others then
+    if sqlerrm !~ 'brand' then raise; end if;
+  end;
+  raise notice 'PASS: admin_create_user rejects a brand for a non-employee role';
+
+  -- a brand not enabled at that branch is rejected
+  begin
+    perform public.admin_create_user('Supervisor2', 'brandvalemp2', 'initial123', 'employee', v_team_id, null, v_brand_aa);
+    raise exception 'FAIL: a brand not enabled at the branch should be rejected';
+  exception when others then
+    if sqlerrm !~ 'does not operate' then raise; end if;
+  end;
+  raise notice 'PASS: admin_create_user rejects a brand not enabled at that branch';
+
+  -- add_profile_to_team upserts the brand on an existing membership
+  perform public.set_branch_brands(v_team_id, array[v_brand_360, v_brand_aa]);
+  perform public.add_profile_to_team(v_emp_id, v_team_id, v_brand_aa);
+  select count(*) into v_row_count from public.profile_teams where profile_id = v_emp_id and team_id = v_team_id;
+  select brand_id into v_saved_brand from public.profile_teams where profile_id = v_emp_id and team_id = v_team_id;
+  if v_row_count <> 1 or v_saved_brand is distinct from v_brand_aa then
+    raise exception 'FAIL: add_profile_to_team should update the existing row''s brand in place, got % rows / brand %', v_row_count, v_saved_brand;
+  end if;
+  raise notice 'PASS: add_profile_to_team upserts the brand on an existing membership';
+
+  -- add_profile_to_team rejects a brand for a team_admin
+  v_leader_id := public.admin_create_user('Leader2', 'brandvalleader', 'initial123', 'team_admin', v_team2_id);
+  begin
+    perform public.add_profile_to_team(v_leader_id, v_team_id, v_brand_360);
+    raise exception 'FAIL: add_profile_to_team should reject a brand for a team_admin';
+  exception when others then
+    if sqlerrm !~ 'brand' then raise; end if;
+  end;
+  raise notice 'PASS: add_profile_to_team rejects a brand for a non-employee role';
+end $$;
+
 rollback;

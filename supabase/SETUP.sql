@@ -39,7 +39,9 @@ drop function if exists public.my_role() cascade;
 -- profile_teams, replaced by my_team_ids() below.
 drop function if exists public.my_team_id() cascade;
 drop function if exists public.my_team_ids() cascade;
+-- Both signatures: the old one had no brand parameter, the new one does.
 drop function if exists public.add_profile_to_team(uuid, uuid) cascade;
+drop function if exists public.add_profile_to_team(uuid, uuid, uuid) cascade;
 drop function if exists public.remove_profile_from_team(uuid, uuid) cascade;
 drop function if exists public.my_active() cascade;
 drop function if exists public.my_must_change_password() cascade;
@@ -59,7 +61,9 @@ drop function if exists public.set_branch_brands(uuid, uuid[]) cascade;
 drop function if exists public.close_next_month() cascade;
 drop function if exists public.get_period_report(uuid) cascade;
 drop function if exists public.get_current_branch_summary() cascade;
+-- Both signatures: the old one had no brand parameter, the new one does.
 drop function if exists public.admin_create_user(text, text, text, text, uuid, text) cascade;
+drop function if exists public.admin_create_user(text, text, text, text, uuid, text, uuid) cascade;
 drop function if exists public.assert_can_manage_user(uuid) cascade;
 drop function if exists public.admin_reset_password(uuid, text) cascade;
 drop function if exists public.admin_set_user_active(uuid, boolean) cascade;
@@ -989,7 +993,8 @@ create function public.admin_create_user(
   p_password text,
   p_role text default 'employee',
   p_team_id uuid default null,
-  p_title text default null
+  p_title text default null,
+  p_brand_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -1044,6 +1049,18 @@ begin
   ) then
     raise exception 'team not found in this organization';
   end if;
+
+  if p_brand_id is not null then
+    if p_role <> 'employee' then
+      raise exception 'a brand can only be set for a supervisor';
+    end if;
+    if p_team_id is null or not exists (
+      select 1 from public.branch_brands bb where bb.branch_id = p_team_id and bb.brand_id = p_brand_id
+    ) then
+      raise exception 'that brand does not operate at the chosen branch';
+    end if;
+  end if;
+
   if v_username = '' then
     raise exception 'a username is required';
   end if;
@@ -1108,8 +1125,8 @@ begin
   );
 
   if p_team_id is not null then
-    insert into public.profile_teams (profile_id, team_id, added_by)
-    values (v_new_id, p_team_id, auth.uid());
+    insert into public.profile_teams (profile_id, team_id, added_by, brand_id)
+    values (v_new_id, p_team_id, auth.uid(), p_brand_id);
   end if;
 
   return v_new_id;
@@ -1254,7 +1271,7 @@ $$;
 -- to. Same downward-only rule as everywhere else: an owner may add anyone
 -- (team leader or employee) to any team in the org; a team leader may only
 -- add an employee, and only to their own team.
-create function public.add_profile_to_team(p_profile_id uuid, p_team_id uuid)
+create function public.add_profile_to_team(p_profile_id uuid, p_team_id uuid, p_brand_id uuid default null)
 returns void
 language plpgsql
 security definer
@@ -1296,9 +1313,20 @@ begin
     raise exception 'only an admin or team leader can change team membership';
   end if;
 
-  insert into public.profile_teams (profile_id, team_id, added_by)
-  values (p_profile_id, p_team_id, auth.uid())
-  on conflict (profile_id, team_id) do nothing;
+  if p_brand_id is not null then
+    if v_target_role <> 'employee' then
+      raise exception 'a brand can only be set for a supervisor';
+    end if;
+    if not exists (
+      select 1 from public.branch_brands bb where bb.branch_id = p_team_id and bb.brand_id = p_brand_id
+    ) then
+      raise exception 'that brand does not operate at the chosen branch';
+    end if;
+  end if;
+
+  insert into public.profile_teams (profile_id, team_id, added_by, brand_id)
+  values (p_profile_id, p_team_id, auth.uid(), p_brand_id)
+  on conflict (profile_id, team_id) do update set brand_id = excluded.brand_id;
 end;
 $$;
 
@@ -2348,10 +2376,10 @@ grant execute on function public.set_branch_brands(uuid, uuid[]) to authenticate
 grant execute on function public.close_next_month() to authenticated;
 grant execute on function public.get_period_report(uuid) to authenticated;
 grant execute on function public.get_current_branch_summary() to authenticated;
-grant execute on function public.admin_create_user(text, text, text, text, uuid, text) to authenticated;
+grant execute on function public.admin_create_user(text, text, text, text, uuid, text, uuid) to authenticated;
 grant execute on function public.admin_reset_password(uuid, text) to authenticated;
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;
-grant execute on function public.add_profile_to_team(uuid, uuid) to authenticated;
+grant execute on function public.add_profile_to_team(uuid, uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
 grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb) to authenticated;
