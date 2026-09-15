@@ -12,6 +12,7 @@ export default {
     cancel: 'Cancel',
     save: 'Save',
     signIn: 'Sign in',
+    unassignedBrand: 'Unassigned',
   },
   auth: {
     landing: {

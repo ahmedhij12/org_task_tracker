@@ -2590,6 +2590,60 @@ begin
   raise notice 'PASS: a branch from another organization is rejected';
 end $$;
 
+-- ── set_branch_brands: removing a brand nulls out any supervisor who was
+-- assigned to it (profile_teams.brand_id must never point at a brand no
+-- longer configured for that branch — see Finding 2 of the whole-branch
+-- review) ──────────────────────────────────────────────────────────────
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_brand_360 uuid;
+  v_brand_aa uuid;
+  v_emp_id uuid;
+  v_saved_brand uuid;
+  v_has_brand boolean;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'setbrands-orphan-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('SetBrandsOrphan Org', 'SetBrandsOrphan Owner', 'setbrandsorphanowner');
+
+  v_brand_360 := public.create_brand('360');
+  v_brand_aa := public.create_brand('AA Chicken');
+  perform public.set_branch_brands(v_team_id, array[v_brand_360, v_brand_aa]);
+
+  v_emp_id := public.admin_create_user('Supervisor', 'setbrandsorphanemp', 'initial123', 'employee', v_team_id, null, v_brand_360);
+  select brand_id into v_saved_brand from public.profile_teams where profile_id = v_emp_id and team_id = v_team_id;
+  if v_saved_brand is distinct from v_brand_360 then
+    raise exception 'FAIL: supervisor should start out assigned to 360, got %', coalesce(v_saved_brand::text, '<null>');
+  end if;
+
+  -- owner reconfigures the branch's brands, omitting 360 (the supervisor's brand)
+  perform public.set_branch_brands(v_team_id, array[v_brand_aa]);
+
+  select brand_id, (brand_id is not null) into v_saved_brand, v_has_brand
+  from public.profile_teams where profile_id = v_emp_id and team_id = v_team_id;
+  if v_has_brand then
+    raise exception 'FAIL: removing a supervisor''s brand from the branch should null out profile_teams.brand_id, still got %', v_saved_brand;
+  end if;
+  raise notice 'PASS: set_branch_brands nulls out profile_teams.brand_id for a supervisor whose brand was removed';
+end $$;
+
 -- ── Brand validation on admin_create_user and add_profile_to_team ───────
 
 do $$

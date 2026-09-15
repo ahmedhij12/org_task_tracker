@@ -26,6 +26,11 @@ interface Shot {
 
 const MAX_PHOTOS_PER_SECTION = 4;
 
+// Same sentinel as branchSummary.ts's brandKey, for the same concept: a
+// deliberate "no brand" bucket, distinct from auditBrandId === null (which
+// means "no brand chosen yet / this branch has no brand step at all").
+const UNASSIGNED_BRAND_ID = '__unassigned__';
+
 export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const c = useThemeColors();
   const { profile } = useAuth();
@@ -57,9 +62,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
       m.role !== 'owner' &&
       auditBranchId != null &&
       m.teamIds.includes(auditBranchId) &&
-      (auditBrandId == null || m.teamBrandIds[auditBranchId] === auditBrandId)
+      (auditBrandId == null
+        ? true
+        : auditBrandId === UNASSIGNED_BRAND_ID
+          ? m.teamBrandIds[auditBranchId] == null
+          : m.teamBrandIds[auditBranchId] === auditBrandId)
   );
-  const auditBrand = brands.find((b) => b.id === auditBrandId);
+  const auditBrand =
+    auditBrandId === UNASSIGNED_BRAND_ID
+      ? { id: UNASSIGNED_BRAND_ID, name: 'Unassigned' }
+      : brands.find((b) => b.id === auditBrandId);
   const auditSubject = members.find((m) => m.id === auditSubjectId);
 
   const sections = useMemo(() => {
@@ -306,6 +318,23 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                         </Pressable>
                       );
                     })}
+                    <Pressable
+                      key={UNASSIGNED_BRAND_ID}
+                      onPress={() => {
+                        setAuditBrandId(UNASSIGNED_BRAND_ID);
+                        setAuditStep('subject');
+                      }}
+                      style={{
+                        paddingVertical: 14,
+                        paddingHorizontal: 14,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: c.border,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>Unassigned</Text>
+                    </Pressable>
                   </>
                 ) : auditStep === 'subject' ? (
                   <>

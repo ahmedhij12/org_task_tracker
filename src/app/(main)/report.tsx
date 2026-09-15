@@ -115,12 +115,9 @@ export default function ReportScreen() {
                 {groups.map((branch) => (
                   <View key={branch.branchId} style={{ marginBottom: 14 }}>
                     <Text style={{ fontSize: 13, fontWeight: '800', color: c.text, marginBottom: 6 }}>{branch.branchName}</Text>
-                    {branch.brandGroups.map((bg) => (
-                      <View key={bg.brandKey} style={{ marginBottom: 8 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
-                          {bg.brandName}
-                        </Text>
-                        {bg.rows.map((r) => (
+                    {branch.brandGroups.length === 1 && branch.brandGroups[0].brandKey === '__unassigned__' ? (
+                      <View style={{ marginBottom: 8 }}>
+                        {branch.brandGroups[0].rows.map((r) => (
                           <View
                             key={`${r.subjectProfileId}-${r.branchId}`}
                             style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}
@@ -132,7 +129,26 @@ export default function ReportScreen() {
                           </View>
                         ))}
                       </View>
-                    ))}
+                    ) : (
+                      branch.brandGroups.map((bg) => (
+                        <View key={bg.brandKey} style={{ marginBottom: 8 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
+                            {bg.brandName ?? t('common.unassignedBrand')}
+                          </Text>
+                          {bg.rows.map((r) => (
+                            <View
+                              key={`${r.subjectProfileId}-${r.branchId}`}
+                              style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}
+                            >
+                              <Text style={{ fontSize: 14, color: c.text }}>{r.subjectName}</Text>
+                              <Text style={{ fontSize: 14, fontWeight: '700', color: r.totalPoints < 0 ? c.rose : c.emerald }}>
+                                {r.totalPoints} · {r.iqdAmount.toLocaleString(i18n.language)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ))
+                    )}
                   </View>
                 ))}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10 }}>

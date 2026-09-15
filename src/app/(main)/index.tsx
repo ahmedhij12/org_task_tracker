@@ -276,23 +276,36 @@ function OwnerDashboard() {
                 </View>
                 {expanded ? (
                   <View style={{ marginTop: 10, gap: 12 }}>
-                    {branch.brandGroups.map((bg) => (
-                      <View key={bg.brandKey}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
-                          {bg.brandName}
-                        </Text>
-                        <View style={{ gap: 6 }}>
-                          {bg.rows.map((s) => (
-                            <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                              <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
-                              <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
-                                {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
+                    {branch.brandGroups.length === 1 && branch.brandGroups[0].brandKey === '__unassigned__' ? (
+                      <View style={{ gap: 6 }}>
+                        {branch.brandGroups[0].rows.map((s) => (
+                          <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
+                              {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
+                            </Text>
+                          </View>
+                        ))}
                       </View>
-                    ))}
+                    ) : (
+                      branch.brandGroups.map((bg) => (
+                        <View key={bg.brandKey}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>
+                            {bg.brandName ?? t('common.unassignedBrand')}
+                          </Text>
+                          <View style={{ gap: 6 }}>
+                            {bg.rows.map((s) => (
+                              <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
+                                  {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      ))
+                    )}
                   </View>
                 ) : null}
               </Card>

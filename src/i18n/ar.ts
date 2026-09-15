@@ -8,6 +8,7 @@ export default {
     cancel: 'إلغاء',
     save: 'حفظ',
     signIn: 'تسجيل الدخول',
+    unassignedBrand: 'غير محدد',
   },
   auth: {
     landing: {

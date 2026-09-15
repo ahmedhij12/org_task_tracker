@@ -2320,6 +2320,17 @@ begin
 
   insert into public.branch_brands (branch_id, brand_id)
   select p_branch_id, bid from unnest(coalesce(p_brand_ids, '{}')) bid;
+
+  -- A brand no longer configured for this branch can't stay assigned to any
+  -- supervisor there — otherwise profile_teams.brand_id silently points at a
+  -- brand the branch no longer offers (Dashboard/Report keep attributing
+  -- them to it, ManageUserSheet's chip goes stale, and the audit picker in
+  -- FillChecklistSheet can no longer find them under any real brand).
+  update public.profile_teams
+  set brand_id = null
+  where team_id = p_branch_id
+    and brand_id is not null
+    and brand_id <> all(coalesce(p_brand_ids, '{}'));
 end;
 $$;
 
