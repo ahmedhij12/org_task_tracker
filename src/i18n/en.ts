@@ -76,6 +76,7 @@ export default {
     noBranchActivity: 'No branch activity yet this month.',
     pointsSuffix: 'pts',
     iqdSuffix: 'IQD',
+    needsAttention: '{{count}}mo negative',
   },
   report: {
     title: 'Report',
@@ -152,6 +153,7 @@ export default {
     roleEmployee: 'Supervisor',
     inactiveBadge: 'INACTIVE',
     newBadge: 'NEW',
+    adminGroup: 'Admin / Unassigned',
   },
   changePassword: {
     title: 'Set your password',

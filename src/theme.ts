@@ -15,7 +15,13 @@ export interface ThemeColors {
   rose: string;
   roseSoft: string;
   sky: string;
+  /** The brand's second color alongside indigo — used for primary CTAs (PrimaryButton, "+Add" pills, the dashboard FAB) and the active tab, never for body text or icons, which stay indigo/neutral. */
+  gold: string;
+  goldSoft: string;
 }
+
+/** Fixed dark ink for text/icons sitting on a gold background — a light color fails contrast on gold in both themes, so this never comes from ThemeColors. */
+export const GOLD_INK = '#1C1300';
 
 export const Colors: { light: ThemeColors; dark: ThemeColors } = {
   light: {
@@ -35,6 +41,8 @@ export const Colors: { light: ThemeColors; dark: ThemeColors } = {
     rose: '#F43F5E',
     roseSoft: '#FFF1F2',
     sky: '#0EA5E9',
+    gold: '#EAB308',
+    goldSoft: '#FEF9C3',
   },
   dark: {
     bg: '#171717',
@@ -53,6 +61,8 @@ export const Colors: { light: ThemeColors; dark: ThemeColors } = {
     rose: '#FB7185',
     roseSoft: 'rgba(244,63,94,0.12)',
     sky: '#38BDF8',
+    gold: '#FACC15',
+    goldSoft: 'rgba(234,179,8,0.15)',
   },
 };
 

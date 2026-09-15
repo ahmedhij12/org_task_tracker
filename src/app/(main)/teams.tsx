@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { Card, FieldInput, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
+import { GOLD_INK } from '@/theme';
 import { initials } from '@/lib/taskUtils';
 
 export default function TeamsScreen() {
@@ -44,10 +45,10 @@ export default function TeamsScreen() {
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('teams.title')}</Text>
           <Pressable
             onPress={() => setCreating(true)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.indigo, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.gold, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
           >
-            <Ionicons name="add" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('teams.addTeam')}</Text>
+            <Ionicons name="add" size={16} color={GOLD_INK} />
+            <Text style={{ color: GOLD_INK, fontSize: 13, fontWeight: '700' }}>{t('teams.addTeam')}</Text>
           </Pressable>
         </View>
 

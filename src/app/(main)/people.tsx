@@ -8,6 +8,7 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { CreateUserSheet } from '@/components/CreateUserSheet';
 import { ManageUserSheet } from '@/components/ManageUserSheet';
 import { Card, useThemeColors } from '@/components/ui';
+import { GOLD_INK } from '@/theme';
 import { initials } from '@/lib/taskUtils';
 import type { Profile } from '@/types';
 
@@ -17,6 +18,13 @@ function roleLabel(role: Profile['role'], t: (key: string) => string): string {
   return t('people.roleEmployee');
 }
 
+// A dedicated bucket, distinct from any real team id: the owner, every
+// team_admin, and any employee not yet assigned to a branch. Grouping staff
+// by branch only makes sense for people a branch actually has — these
+// roles/states don't fit that, so they get their own section instead of
+// being forced under a branch or silently dropped.
+const ADMIN_GROUP_ID = '__admin__';
+
 export default function PeopleScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
@@ -24,6 +32,7 @@ export default function PeopleScreen() {
   const { members, teams } = useOrgData();
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState<Profile | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const isOwner = profile?.role === 'owner';
   // An owner manages the whole org; a team leader only people who share at
@@ -32,6 +41,32 @@ export default function PeopleScreen() {
   const visible = isOwner
     ? members
     : members.filter((m) => m.id !== profile?.id && m.teamIds.some((t) => profile?.teamIds.includes(t)));
+
+  // One group per branch (a member with more than one branch shows up in
+  // each — the same accepted edge case the monthly report already has),
+  // plus the admin/unassigned bucket. New branches appear automatically:
+  // this just reads the live teams list.
+  const groups = [
+    ...teams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      members: visible.filter((m) => m.teamIds.includes(team.id)),
+    })),
+    {
+      id: ADMIN_GROUP_ID,
+      name: t('people.adminGroup'),
+      members: visible.filter((m) => m.role === 'owner' || m.role === 'team_admin' || m.teamIds.length === 0),
+    },
+  ].filter((g) => g.members.length > 0);
+
+  const toggle = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -44,14 +79,14 @@ export default function PeopleScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 4,
-              backgroundColor: c.indigo,
+              backgroundColor: c.gold,
               borderRadius: 999,
               paddingHorizontal: 12,
               paddingVertical: 8,
             }}
           >
-            <Ionicons name="add" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('people.addStaff')}</Text>
+            <Ionicons name="add" size={16} color={GOLD_INK} />
+            <Text style={{ color: GOLD_INK, fontSize: 13, fontWeight: '700' }}>{t('people.addStaff')}</Text>
           </Pressable>
         </View>
 
@@ -61,41 +96,63 @@ export default function PeopleScreen() {
           </Text>
         ) : null}
 
-        {visible.map((m) => {
-          const memberTeams = teams.filter((t) => m.teamIds.includes(t.id));
+        {groups.map((group) => {
+          const isOpen = expanded.has(group.id);
           return (
-            <Pressable key={m.id} onPress={() => setManaging(m)}>
-              <Card style={{ marginBottom: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 20,
-                      backgroundColor: m.active ? c.indigo : c.textFaint,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{initials(m.name)}</Text>
+            <View key={group.id} style={{ marginBottom: 10 }}>
+              <Pressable onPress={() => toggle(group.id)}>
+                <Card>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name={group.id === ADMIN_GROUP_ID ? 'shield-outline' : 'business-outline'} size={18} color={c.indigo} />
+                    <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: c.text }}>{group.name}</Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>{group.members.length}</Text>
+                    <Ionicons name={isOpen ? 'chevron-down' : 'chevron-forward'} size={16} color={c.textFaint} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{m.name}</Text>
-                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-                      {m.username ? `@${m.username} • ` : ''}
-                      {roleLabel(m.role, t)}
-                      {memberTeams.length > 0 ? ` • ${memberTeams.map((team) => team.name).join(', ')}` : ''}
-                    </Text>
-                  </View>
-                  {!m.active ? (
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: c.rose }}>{t('people.inactiveBadge')}</Text>
-                  ) : m.mustChangePassword ? (
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: c.textFaint }}>{t('people.newBadge')}</Text>
-                  ) : null}
-                  <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                </Card>
+              </Pressable>
+
+              {isOpen ? (
+                <View style={{ marginTop: 6, gap: 8 }}>
+                  {group.members.map((m) => {
+                    const memberTeams = teams.filter((tm) => m.teamIds.includes(tm.id));
+                    return (
+                      <Pressable key={m.id} onPress={() => setManaging(m)}>
+                        <Card>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <View
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                backgroundColor: m.active ? c.indigo : c.textFaint,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{initials(m.name)}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{m.name}</Text>
+                              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
+                                {m.username ? `@${m.username} • ` : ''}
+                                {roleLabel(m.role, t)}
+                                {memberTeams.length > 0 ? ` • ${memberTeams.map((team) => team.name).join(', ')}` : ''}
+                              </Text>
+                            </View>
+                            {!m.active ? (
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: c.rose }}>{t('people.inactiveBadge')}</Text>
+                            ) : m.mustChangePassword ? (
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: c.textFaint }}>{t('people.newBadge')}</Text>
+                            ) : null}
+                            <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                          </View>
+                        </Card>
+                      </Pressable>
+                    );
+                  })}
                 </View>
-              </Card>
-            </Pressable>
+              ) : null}
+            </View>
           );
         })}
       </ScrollView>

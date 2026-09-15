@@ -21,7 +21,7 @@ export default function MainLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: c.indigo,
+          tabBarActiveTintColor: c.gold,
           tabBarInactiveTintColor: c.textFaint,
           tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.border },
         }}

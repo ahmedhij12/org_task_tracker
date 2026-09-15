@@ -64,8 +64,8 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
         <tr>
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${escapeHtml(a.question)}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700;color:${
-            a.answer ? '#059669' : '#dc2626'
-          };">${a.answer ? 'Yes' : 'No'}</td>
+            a.answer == null ? '#9ca3af' : a.answer ? '#059669' : '#dc2626'
+          };">${a.answer == null ? 'N/A' : a.answer ? 'Yes' : 'No'}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${a.note ? escapeHtml(a.note) : ''}</td>
         </tr>`
         )

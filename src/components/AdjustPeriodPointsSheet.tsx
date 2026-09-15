@@ -1,0 +1,151 @@
+import { useEffect, useState } from 'react';
+import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useReports } from '@/hooks/useReports';
+import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
+import type { BranchSummaryRow, PeriodAdjustment } from '@/types';
+
+interface Props {
+  periodId: string;
+  row: BranchSummaryRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function when(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function fmtPoints(points: number): string {
+  return `${points} pts · ${Math.abs(points * 25000).toLocaleString()} IQD`;
+}
+
+export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Props) {
+  const c = useThemeColors();
+  const { loadPeriodAdjustments, adjustPeriodPoints } = useReports();
+
+  const [adjustments, setAdjustments] = useState<PeriodAdjustment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [amountText, setAmountText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!row) {
+      setAdjustments([]);
+      return;
+    }
+    setAmountText(String(Math.round(row.totalPoints * 25000)));
+    setError(null);
+    setLoading(true);
+    loadPeriodAdjustments(periodId, row.subjectProfileId)
+      .then(setAdjustments)
+      .catch((e) => setError(e?.message ?? 'Could not load the adjustment history.'))
+      .finally(() => setLoading(false));
+  }, [row?.subjectProfileId, periodId]);
+
+  if (!row) return null;
+
+  const current = row.totalPoints;
+  const original = row.rawPoints ?? current;
+  const wasAdjusted = adjustments.length > 0;
+
+  const handleSave = async () => {
+    const parsedAmount = Number(amountText);
+    if (!Number.isFinite(parsedAmount)) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await adjustPeriodPoints(periodId, row.subjectProfileId, parsedAmount / 25000);
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save this adjustment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View
+            style={{
+              backgroundColor: c.bg,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 32,
+            }}
+          >
+            <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 2 }}>Adjust month total</Text>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>{row.subjectName}</Text>
+
+            {error ? <ErrorBanner message={error} /> : null}
+
+            {loading ? (
+              <ActivityIndicator color={c.indigo} style={{ marginVertical: 20 }} />
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                  <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>Original (natural sum)</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original)}</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>
+                      {wasAdjusted ? 'Current (adjusted)' : 'Current'}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: current < 0 ? c.rose : c.emerald }}>
+                      {fmtPoints(current)}
+                    </Text>
+                  </View>
+                </View>
+
+                {adjustments.length > 0 ? (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>History</Text>
+                    {adjustments.map((a) => (
+                      <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
+                        {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * 25000).toLocaleString() : '—'} →{' '}
+                        {Math.round(a.newPoints * 25000).toLocaleString()} IQD
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: c.text, marginBottom: 6 }}>New amount (IQD)</Text>
+                <TextInput
+                  value={amountText}
+                  onChangeText={setAmountText}
+                  keyboardType="numbers-and-punctuation"
+                  placeholderTextColor={c.textFaint}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: c.border,
+                    borderRadius: 12,
+                    padding: 12,
+                    fontSize: 15,
+                    color: c.text,
+                    marginBottom: 16,
+                  }}
+                />
+                {saving ? (
+                  <ActivityIndicator color={c.indigo} />
+                ) : (
+                  <PrimaryButton title="Save" onPress={handleSave} />
+                )}
+                <View style={{ height: 10 }} />
+              </>
+            )}
+
+            <SecondaryButton title="Close" onPress={onClose} disabled={saving} />
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}

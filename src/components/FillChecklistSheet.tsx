@@ -41,7 +41,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const items = useMemo(() => templateItems.filter((it) => it.templateId === task.templateId), [templateItems, task.templateId]);
 
   const [mode, setMode] = useState<'fill' | 'off_duty'>('fill');
-  const [answers, setAnswers] = useState<Record<string, { answer: boolean | null; note: string }>>({});
+  const [answers, setAnswers] = useState<Record<string, { answer: boolean | 'na' | null; note: string }>>({});
   const [sectionPhotos, setSectionPhotos] = useState<Record<string, Shot[]>>({});
   const [offDutyReason, setOffDutyReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +103,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     onClose();
   };
 
-  const setAnswer = (itemId: string, value: boolean) => {
+  const setAnswer = (itemId: string, value: boolean | 'na') => {
     setAnswers((prev) => ({ ...prev, [itemId]: { answer: value, note: prev[itemId]?.note ?? '' } }));
   };
 
@@ -190,13 +190,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         signatureUrl = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
       }
 
-      const payload = items.map((it, i) => ({
-        sectionTitle: it.sectionTitle,
-        question: it.question,
-        sortOrder: i,
-        answer: answers[it.id]!.answer!,
-        note: answers[it.id]!.note.trim() || undefined,
-      }));
+      const payload = items.map((it, i) => {
+        const a = answers[it.id]!.answer;
+        return {
+          sectionTitle: it.sectionTitle,
+          question: it.question,
+          sortOrder: i,
+          answer: a === 'na' ? null : a,
+          note: answers[it.id]!.note.trim() || undefined,
+        };
+      });
 
       await setTaskCompletion(
         task.id,
@@ -487,6 +490,22 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                               >
                                 <Text style={{ fontSize: 13, fontWeight: '700', color: state?.answer === false ? '#fff' : c.text }}>
                                   No
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => setAnswer(it.id, 'na')}
+                                style={{
+                                  flex: 1,
+                                  alignItems: 'center',
+                                  paddingVertical: 9,
+                                  borderRadius: 10,
+                                  backgroundColor: state?.answer === 'na' ? c.textMuted : c.bgSubtle,
+                                  borderWidth: 1,
+                                  borderColor: state?.answer === 'na' ? c.textMuted : c.border,
+                                }}
+                              >
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: state?.answer === 'na' ? '#fff' : c.text }}>
+                                  N/A
                                 </Text>
                               </Pressable>
                             </View>

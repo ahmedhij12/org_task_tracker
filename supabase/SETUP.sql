@@ -398,6 +398,26 @@ create table public.points_adjustments (
   created_at timestamptz not null default now()
 );
 
+-- Same append-only philosophy as points_adjustments, but for a whole
+-- closed period's total for one supervisor at once (an owner reviewing the
+-- month end-to-end deciding "reduce this person's total"), rather than one
+-- audit visit at a time. get_period_report applies the latest row per
+-- (period_id, subject_profile_id) on top of the natural sum from
+-- task_completions — nothing here is itself a source of truth, same as
+-- report_periods never snapshotting the underlying numbers.
+create table public.period_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  period_id uuid not null references public.report_periods(id) on delete cascade,
+  subject_profile_id uuid not null references public.profiles(id) on delete cascade,
+  previous_points numeric,
+  new_points numeric not null,
+  adjusted_by uuid not null references public.profiles(id) on delete cascade,
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+create index period_adjustments_lookup_idx on public.period_adjustments(period_id, subject_profile_id, created_at);
+
 -- One row per scheduled instance of a task with scheduled_times — the "16:00
 -- oil check for 2026-09-15" that someone can actually be reminded about and
 -- complete, as opposed to the bare '{12:00,16:00,22:00}' template on the task
@@ -428,7 +448,10 @@ create table public.checklist_answers (
   -- Snapshot of the question text at the moment it was answered.
   question text not null,
   sort_order int not null,
-  answer boolean not null,
+  -- null means the auditor marked this N/A (e.g. a kitchen-equipment
+  -- question at a brand with no kitchen) — excluded from yes/no counts and
+  -- from scoring, see set_task_completion, not just "no" with no penalty.
+  answer boolean,
   note text
 );
 
@@ -508,6 +531,7 @@ alter table public.checklist_template_items enable row level security;
 alter table public.checklist_answers enable row level security;
 alter table public.checklist_section_photos enable row level security;
 alter table public.points_adjustments enable row level security;
+alter table public.period_adjustments enable row level security;
 alter table public.report_periods enable row level security;
 alter table public.task_occurrences enable row level security;
 alter table public.form_templates enable row level security;
@@ -908,6 +932,18 @@ create policy "points adjustments follow their completion's visibility"
 create policy "report periods are visible only to the org owner"
   on public.report_periods for select
   using (org_id = public.my_org_id() and public.my_role() = 'owner');
+
+-- Same restriction as the report itself: only the owner can see a period's
+-- adjustment trail.
+create policy "period adjustments are visible only to the org owner"
+  on public.period_adjustments for select
+  using (
+    public.my_role() = 'owner'
+    and exists (
+      select 1 from public.report_periods rp
+      where rp.id = period_id and rp.org_id = public.my_org_id()
+    )
+  );
 
 -- ── RPCs ────────────────────────────────────────────────────────────
 
@@ -1521,6 +1557,14 @@ $$;
 -- the auditor/subject model). If a subject belongs to more than one branch
 -- (allowed for employees, rare for supervisors), their totals appear once
 -- per branch — a known, accepted edge case.
+--
+-- total_points/iqd_amount are the EFFECTIVE values: the natural sum from
+-- task_completions, overridden by the latest period_adjustments row for
+-- that subject if one exists (an owner's end-of-month "reduce this
+-- person's total" call, separate from adjusting any one audit visit).
+-- raw_points/raw_iqd_amount are always the untouched natural sum, so the
+-- UI can show "original" alongside "current (adjusted)" the same way an
+-- individual audit's points_adjustments trail does.
 create function public.get_period_report(p_period_id uuid)
 returns table (
   branch_id uuid,
@@ -1530,7 +1574,9 @@ returns table (
   subject_profile_id uuid,
   subject_name text,
   total_points numeric,
-  iqd_amount numeric
+  iqd_amount numeric,
+  raw_points numeric,
+  raw_iqd_amount numeric
 )
 language plpgsql
 security definer
@@ -1565,6 +1611,8 @@ begin
     b.name,
     tc.subject_profile_id,
     sp.name,
+    coalesce(pa.new_points, sum(tc.points_awarded)),
+    coalesce(pa.new_points, sum(tc.points_awarded)) * 25000,
     sum(tc.points_awarded),
     sum(tc.points_awarded) * 25000
   from public.task_completions tc
@@ -1572,11 +1620,17 @@ begin
   join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
   join public.teams t on t.id = pt.team_id
   left join public.brands b on b.id = pt.brand_id
+  left join lateral (
+    select pa2.new_points from public.period_adjustments pa2
+    where pa2.period_id = p_period_id and pa2.subject_profile_id = tc.subject_profile_id
+    order by pa2.created_at desc
+    limit 1
+  ) pa on true
   where tc.org_id = v_org_id
     and tc.points_awarded is not null
     and (tc.created_at at time zone 'Asia/Baghdad') >= v_month
     and (tc.created_at at time zone 'Asia/Baghdad') < (v_month + interval '1 month')
-  group by t.id, t.name, b.id, b.name, tc.subject_profile_id, sp.name
+  group by t.id, t.name, b.id, b.name, tc.subject_profile_id, sp.name, pa.new_points
   order by t.name, b.name nulls last, sp.name;
 end;
 $$;
@@ -1847,18 +1901,22 @@ begin
 
     -- The penalty is computed here, not taken from the client (p_points is
     -- deprecated — see its declaration above): sum each "No" answer's own
-    -- question's point_weight (0 for "Yes"), as a negative number. Matched
+    -- question's point_weight (0 for "Yes" and for N/A — a null answer must
+    -- fall to the else-0 branch, not the point_weight one: "is false" is
+    -- the only test that's true for false and false for both true AND
+    -- null, unlike a plain boolean check where "when null" never matches
+    -- and silently falls through to the penalty branch instead). Matched
     -- by question text + section, the same identity checklist_answers
     -- already snapshots by — there's no item id round-trip through the
     -- client today.
     if v_task.is_audit then
       select coalesce(sum(
-        case when (a ->> 'answer')::boolean then 0 else (
+        case when (a ->> 'answer')::boolean is false then (
           select it.point_weight from public.checklist_template_items it
           where it.template_id = v_task.template_id
             and it.question = (a ->> 'question')
             and it.section_title = coalesce(a ->> 'section_title', '')
-        ) end
+        ) else 0 end
       ), 0) * -1
       into v_points
       from jsonb_array_elements(p_answers) a;
@@ -2112,6 +2170,137 @@ begin
   values (p_completion_id, v_completion.points_awarded, p_new_points, auth.uid(), nullif(trim(coalesce(p_reason, '')), ''));
 
   update public.task_completions set points_awarded = p_new_points where id = p_completion_id;
+end;
+$$;
+
+-- Overrides a whole closed period's total for one supervisor at once —
+-- the owner's end-of-month "reduce this person's total" call, as opposed
+-- to adjust_completion_points which revises one audit visit. Nothing here
+-- touches task_completions: get_period_report applies the latest row on
+-- top of the natural sum at read time, same "never snapshot, always
+-- recompute" philosophy as report_periods itself. previous_points always
+-- records the effective value at the moment of this call (the natural sum,
+-- or the prior override if one already existed), so the trail stays
+-- readable even across repeated adjustments.
+create function public.adjust_period_points(
+  p_period_id uuid,
+  p_subject_profile_id uuid,
+  p_new_points numeric,
+  p_reason text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+  v_org_id uuid;
+  v_period_org_id uuid;
+  v_previous numeric;
+begin
+  select p.role, p.org_id into v_role, v_org_id
+  from public.profiles p where p.id = auth.uid();
+
+  if v_role is distinct from 'owner' then
+    raise exception 'only the org owner can adjust a period''s totals';
+  end if;
+
+  select org_id into v_period_org_id from public.report_periods where id = p_period_id;
+  if v_period_org_id is distinct from v_org_id then
+    raise exception 'that report period does not belong to your organization';
+  end if;
+
+  select coalesce(
+    (select pa.new_points from public.period_adjustments pa
+     where pa.period_id = p_period_id and pa.subject_profile_id = p_subject_profile_id
+     order by pa.created_at desc limit 1),
+    (select sum(tc.points_awarded) from public.task_completions tc, public.report_periods rp
+     where rp.id = p_period_id and tc.org_id = v_org_id and tc.subject_profile_id = p_subject_profile_id
+       and tc.points_awarded is not null
+       and (tc.created_at at time zone 'Asia/Baghdad') >= rp.period_month
+       and (tc.created_at at time zone 'Asia/Baghdad') < (rp.period_month + interval '1 month'))
+  ) into v_previous;
+
+  insert into public.period_adjustments (period_id, subject_profile_id, previous_points, new_points, adjusted_by, reason)
+  values (p_period_id, p_subject_profile_id, v_previous, p_new_points, auth.uid(), nullif(trim(coalesce(p_reason, '')), ''));
+end;
+$$;
+
+-- For each subject audited at least once, how many consecutive months —
+-- counting backward from the current live month through closed periods,
+-- most recent first — have an EFFECTIVE total below zero (period
+-- adjustments applied, same as get_period_report). Stops at the first
+-- month that's zero/positive, or the first month with no audit at all
+-- (silence isn't evidence of a problem, so it breaks the streak rather
+-- than being skipped). Powers the Dashboard's "needs attention" flag —
+-- this is a real management signal (repeated poor performance), not just
+-- a single bad day.
+create function public.get_supervisor_streaks()
+returns table (subject_profile_id uuid, negative_streak int)
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_role text;
+  v_org_id uuid;
+begin
+  select p.role, p.org_id into v_role, v_org_id from public.profiles p where p.id = auth.uid();
+  if v_role is distinct from 'owner' then
+    raise exception 'only the org owner can view performance trends';
+  end if;
+
+  return query
+  with month_defs as (
+    select 0 as rnk, date_trunc('month', now() at time zone 'Asia/Baghdad')::date as month_start, null::uuid as period_id
+    union all
+    select (row_number() over (order by rp.period_month desc))::int, rp.period_month, rp.id
+    from public.report_periods rp where rp.org_id = v_org_id
+  ),
+  subjects as (
+    select distinct tc.subject_profile_id
+    from public.task_completions tc
+    where tc.org_id = v_org_id and tc.points_awarded is not null
+  ),
+  grid as (
+    select s.subject_profile_id, md.rnk, md.month_start, md.period_id
+    from subjects s cross join month_defs md
+  ),
+  totals as (
+    select
+      g.subject_profile_id,
+      g.rnk,
+      count(tc.id) as n,
+      coalesce(pa.new_points, sum(tc.points_awarded)) as total
+    from grid g
+    left join public.task_completions tc
+      on tc.org_id = v_org_id
+      and tc.subject_profile_id = g.subject_profile_id
+      and tc.points_awarded is not null
+      and (tc.created_at at time zone 'Asia/Baghdad') >= g.month_start
+      and (tc.created_at at time zone 'Asia/Baghdad') < (g.month_start + interval '1 month')
+    left join lateral (
+      select pa2.new_points from public.period_adjustments pa2
+      where pa2.period_id = g.period_id and pa2.subject_profile_id = g.subject_profile_id
+      order by pa2.created_at desc limit 1
+    ) pa on true
+    group by g.subject_profile_id, g.rnk, pa.new_points
+  ),
+  flagged as (
+    select totals.subject_profile_id, totals.rnk, (totals.n > 0 and totals.total < 0) as ok
+    from totals
+  ),
+  first_fail as (
+    select flagged.subject_profile_id, min(flagged.rnk) as fail_rnk
+    from flagged
+    where not flagged.ok
+    group by flagged.subject_profile_id
+  )
+  select s.subject_profile_id, coalesce(ff.fail_rnk, (select max(month_defs.rnk) + 1 from month_defs))
+  from subjects s
+  left join first_fail ff on ff.subject_profile_id = s.subject_profile_id;
 end;
 $$;
 

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import type { Brand, ChecklistAnswer, ChecklistSectionPhoto, OrgTask, Priority, Profile, Team, TaskCompletion } from '../types';
+import type { Brand, ChecklistAnswer, ChecklistSectionPhoto, OrgTask, Priority, PointsAdjustment, Profile, Team, TaskCompletion } from '../types';
 
 function mapTask(row: any): OrgTask {
   return {
@@ -93,6 +93,18 @@ function mapAnswer(row: any): ChecklistAnswer {
   };
 }
 
+function mapPointsAdjustment(row: any): PointsAdjustment {
+  return {
+    id: row.id,
+    taskCompletionId: row.task_completion_id,
+    previousPoints: row.previous_points,
+    newPoints: row.new_points,
+    adjustedBy: row.adjusted_by,
+    reason: row.reason,
+    createdAt: row.created_at,
+  };
+}
+
 function mapPhoto(row: any): ChecklistSectionPhoto {
   return {
     id: row.id,
@@ -107,7 +119,8 @@ export interface SubmitAnswerInput {
   sectionTitle: string;
   question: string;
   sortOrder: number;
-  answer: boolean;
+  /** null means N/A — excluded from scoring, no note required. */
+  answer: boolean | null;
   note?: string;
 }
 
@@ -152,6 +165,9 @@ interface OrgDataContextValue {
   reviewOffDuty: (completionId: string, approve: boolean, reviewNote?: string) => Promise<void>;
   reviewTaskCompletion: (completionId: string, reviewNote?: string) => Promise<void>;
   loadCompletionDetail: (completionId: string) => Promise<{ answers: ChecklistAnswer[]; photos: ChecklistSectionPhoto[] }>;
+  loadPointsAdjustments: (completionId: string) => Promise<PointsAdjustment[]>;
+  /** Owner: any audit in the org. Team_admin: only ones they personally performed — same rule as adjust_completion_points itself. */
+  adjustCompletionPoints: (completionId: string, newPoints: number, reason?: string) => Promise<void>;
   createTeam: (name: string) => Promise<void>;
   brands: Brand[];
   branchBrandIds: Record<string, string[]>;
@@ -371,6 +387,29 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const loadPointsAdjustments = useCallback<OrgDataContextValue['loadPointsAdjustments']>(async (completionId) => {
+    const { data, error } = await supabase
+      .from('points_adjustments')
+      .select('*')
+      .eq('task_completion_id', completionId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(mapPointsAdjustment);
+  }, []);
+
+  const adjustCompletionPoints = useCallback<OrgDataContextValue['adjustCompletionPoints']>(
+    async (completionId, newPoints, reason) => {
+      const { error } = await supabase.rpc('adjust_completion_points', {
+        p_completion_id: completionId,
+        p_new_points: newPoints,
+        p_reason: reason ?? null,
+      });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
   const createTeam = useCallback<OrgDataContextValue['createTeam']>(
     async (name) => {
       const { error } = await supabase.rpc('create_team', { p_name: name });
@@ -414,6 +453,8 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       reviewOffDuty,
       reviewTaskCompletion,
       loadCompletionDetail,
+      loadPointsAdjustments,
+      adjustCompletionPoints,
       createTeam,
       brands,
       branchBrandIds,
@@ -434,6 +475,8 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       reviewOffDuty,
       reviewTaskCompletion,
       loadCompletionDetail,
+      loadPointsAdjustments,
+      adjustCompletionPoints,
       createTeam,
       brands,
       branchBrandIds,

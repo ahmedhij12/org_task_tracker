@@ -229,9 +229,9 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                           ) : null}
                           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
                             <Ionicons
-                              name={a.answer ? 'checkmark-circle' : 'close-circle'}
+                              name={a.answer == null ? 'remove-circle' : a.answer ? 'checkmark-circle' : 'close-circle'}
                               size={16}
-                              color={a.answer ? c.emerald : c.rose}
+                              color={a.answer == null ? c.textFaint : a.answer ? c.emerald : c.rose}
                             />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 13, color: c.text, textAlign: textAlignFor(a.question) }}>{a.question}</Text>

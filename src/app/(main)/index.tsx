@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -9,13 +9,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useReports } from '@/hooks/useReports';
 import { Card, useThemeColors } from '@/components/ui';
+import { GOLD_INK } from '@/theme';
 import { TaskRow } from '@/components/TaskRow';
 import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
 import { bucketTasks, effectiveTaskCompleted, latestCompletionForTask } from '@/lib/taskUtils';
 import { groupBranchSummary } from '@/lib/branchSummary';
-import type { OrgTask } from '@/types';
+import type { BranchSummaryRow, OrgTask } from '@/types';
 
 export default function MainIndex() {
   const { profile } = useAuth();
@@ -145,17 +146,17 @@ function TeamAdminDashboard() {
           width: 56,
           height: 56,
           borderRadius: 28,
-          backgroundColor: c.indigo,
+          backgroundColor: c.gold,
           alignItems: 'center',
           justifyContent: 'center',
-          shadowColor: c.indigo,
+          shadowColor: c.gold,
           shadowOpacity: 0.4,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 6 },
           elevation: 6,
         }}
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={GOLD_INK} />
       </Pressable>
     </SafeAreaView>
   );
@@ -165,11 +166,12 @@ function OwnerDashboard() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
-  const { currentSummary, loading, refresh } = useReports();
+  const { currentSummary, loading, refresh, loadSupervisorStreaks } = useReports();
   const { tasks, history, setTaskCompletion, deleteTask } = useOrgData();
   const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
+  const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
 
   // The owner is never assigned an ordinary task by anyone else (assignment
@@ -203,7 +205,33 @@ function OwnerDashboard() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const branches = useMemo(() => groupBranchSummary(currentSummary), [currentSummary]);
+  // Worst-to-best, both at the branch level and the supervisor level within
+  // each branch — this is the "who needs attention right now" view, not a
+  // directory, so the branches/supervisors most in the red lead.
+  const branches = useMemo(() => {
+    const groups = groupBranchSummary(currentSummary);
+    return [...groups]
+      .sort((a, b) => a.totalPoints - b.totalPoints)
+      .map((branch) => ({
+        ...branch,
+        brandGroups: branch.brandGroups.map((bg) => ({
+          ...bg,
+          rows: [...bg.rows].sort((a, b) => a.totalPoints - b.totalPoints),
+        })),
+      }));
+  }, [currentSummary]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSupervisorStreaks()
+      .then((m) => {
+        if (!cancelled) setStreaks(m);
+      })
+      .catch((e) => console.warn(e));
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSupervisorStreaks, currentSummary]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -279,12 +307,7 @@ function OwnerDashboard() {
                     {branch.brandGroups.length === 1 && branch.brandGroups[0].brandKey === '__unassigned__' ? (
                       <View style={{ gap: 6 }}>
                         {branch.brandGroups[0].rows.map((s) => (
-                          <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
-                              {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
-                            </Text>
-                          </View>
+                          <SupervisorSummaryRow key={s.subjectProfileId} row={s} locale={i18n.language} streak={streaks.get(s.subjectProfileId) ?? 0} />
                         ))}
                       </View>
                     ) : (
@@ -295,12 +318,7 @@ function OwnerDashboard() {
                           </Text>
                           <View style={{ gap: 6 }}>
                             {bg.rows.map((s) => (
-                              <View key={s.subjectProfileId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <Text style={{ fontSize: 13, color: c.text }}>{s.subjectName}</Text>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: s.totalPoints < 0 ? c.rose : c.emerald }}>
-                                  {s.totalPoints} · {s.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
-                                </Text>
-                              </View>
+                              <SupervisorSummaryRow key={s.subjectProfileId} row={s} locale={i18n.language} streak={streaks.get(s.subjectProfileId) ?? 0} />
                             ))}
                           </View>
                         </View>
@@ -346,17 +364,17 @@ function OwnerDashboard() {
           width: 56,
           height: 56,
           borderRadius: 28,
-          backgroundColor: c.indigo,
+          backgroundColor: c.gold,
           alignItems: 'center',
           justifyContent: 'center',
-          shadowColor: c.indigo,
+          shadowColor: c.gold,
           shadowOpacity: 0.4,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 6 },
           elevation: 6,
         }}
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={GOLD_INK} />
       </Pressable>
     </SafeAreaView>
   );
@@ -478,6 +496,29 @@ function TeamChip({ label, active, onPress }: { label: string; active: boolean; 
     >
       <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{label}</Text>
     </Pressable>
+  );
+}
+
+function SupervisorSummaryRow({ row, locale, streak }: { row: BranchSummaryRow; locale: string; streak: number }) {
+  const c = useThemeColors();
+  const { t } = useTranslation();
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+        <Text style={{ fontSize: 13, color: c.text }} numberOfLines={1}>
+          {row.subjectName}
+        </Text>
+        {streak >= 2 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: c.roseSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+            <Ionicons name="warning" size={10} color={c.rose} />
+            <Text style={{ fontSize: 10, fontWeight: '700', color: c.rose }}>{t('dashboard.needsAttention', { count: streak })}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={{ fontSize: 13, fontWeight: '600', color: row.totalPoints < 0 ? c.rose : c.emerald }}>
+        {row.totalPoints} · {row.iqdAmount.toLocaleString(locale)} {t('dashboard.iqdSuffix')}
+      </Text>
+    </View>
   );
 }
 

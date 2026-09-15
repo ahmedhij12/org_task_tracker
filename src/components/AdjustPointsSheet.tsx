@@ -1,0 +1,157 @@
+import { useEffect, useState } from 'react';
+import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useOrgData } from '@/hooks/useOrgData';
+import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
+import type { PointsAdjustment, TaskCompletion } from '@/types';
+
+interface Props {
+  completion: TaskCompletion | null;
+  /** Owner: any audit. Team_admin: only ones they personally performed — checked by the caller, matches adjust_completion_points itself. */
+  canEdit: boolean;
+  onClose: () => void;
+}
+
+function when(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function fmtPoints(points: number): string {
+  return `${points} pts · ${Math.abs(points * 25000).toLocaleString()} IQD`;
+}
+
+export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
+  const c = useThemeColors();
+  const { loadPointsAdjustments, adjustCompletionPoints } = useOrgData();
+
+  const [adjustments, setAdjustments] = useState<PointsAdjustment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [amountText, setAmountText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!completion) {
+      setAdjustments([]);
+      return;
+    }
+    setAmountText(String(Math.round((completion.pointsAwarded ?? 0) * 25000)));
+    setError(null);
+    setLoading(true);
+    loadPointsAdjustments(completion.id)
+      .then(setAdjustments)
+      .catch((e) => setError(e?.message ?? 'Could not load the adjustment history.'))
+      .finally(() => setLoading(false));
+  }, [completion?.id]);
+
+  if (!completion) return null;
+
+  const current = completion.pointsAwarded ?? 0;
+  const original = adjustments.length > 0 ? adjustments[0].previousPoints ?? current : current;
+  const wasAdjusted = adjustments.length > 0;
+
+  const handleSave = async () => {
+    const parsedAmount = Number(amountText);
+    if (!Number.isFinite(parsedAmount)) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await adjustCompletionPoints(completion.id, parsedAmount / 25000);
+      onClose();
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save this adjustment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View
+            style={{
+              backgroundColor: c.bg,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 32,
+            }}
+          >
+            <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 2 }}>
+              {canEdit ? 'Adjust points' : 'Points'}
+            </Text>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>{completion.taskTitle}</Text>
+
+            {error ? <ErrorBanner message={error} /> : null}
+
+            {loading ? (
+              <ActivityIndicator color={c.indigo} style={{ marginVertical: 20 }} />
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                  <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>Original</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original)}</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>
+                      {wasAdjusted ? 'Current (adjusted)' : 'Current'}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: current < 0 ? c.rose : c.emerald }}>
+                      {fmtPoints(current)}
+                    </Text>
+                  </View>
+                </View>
+
+                {adjustments.length > 0 ? (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>History</Text>
+                    {adjustments.map((a) => (
+                      <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
+                        {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * 25000).toLocaleString() : '—'} →{' '}
+                        {Math.round(a.newPoints * 25000).toLocaleString()} IQD
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {canEdit ? (
+                  <>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: c.text, marginBottom: 6 }}>New amount (IQD)</Text>
+                    <TextInput
+                      value={amountText}
+                      onChangeText={setAmountText}
+                      keyboardType="numbers-and-punctuation"
+                      placeholderTextColor={c.textFaint}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: c.border,
+                        borderRadius: 12,
+                        padding: 12,
+                        fontSize: 15,
+                        color: c.text,
+                        marginBottom: 16,
+                      }}
+                    />
+                    {saving ? (
+                      <ActivityIndicator color={c.indigo} />
+                    ) : (
+                      <PrimaryButton title="Save" onPress={handleSave} />
+                    )}
+                    <View style={{ height: 10 }} />
+                  </>
+                ) : null}
+              </>
+            )}
+
+            <SecondaryButton title="Close" onPress={onClose} disabled={saving} />
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}

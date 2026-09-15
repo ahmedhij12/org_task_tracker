@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import type { BranchSummaryRow, ReportPeriod } from '../types';
+import type { BranchSummaryRow, PeriodAdjustment, ReportPeriod } from '../types';
 
 function mapPeriod(row: any): ReportPeriod {
   return {
@@ -23,6 +23,21 @@ function mapSummaryRow(row: any): BranchSummaryRow {
     subjectName: row.subject_name,
     totalPoints: Number(row.total_points),
     iqdAmount: Number(row.iqd_amount),
+    rawPoints: row.raw_points != null ? Number(row.raw_points) : undefined,
+    rawIqdAmount: row.raw_iqd_amount != null ? Number(row.raw_iqd_amount) : undefined,
+  };
+}
+
+function mapPeriodAdjustment(row: any): PeriodAdjustment {
+  return {
+    id: row.id,
+    periodId: row.period_id,
+    subjectProfileId: row.subject_profile_id,
+    previousPoints: row.previous_points,
+    newPoints: row.new_points,
+    adjustedBy: row.adjusted_by,
+    reason: row.reason,
+    createdAt: row.created_at,
   };
 }
 
@@ -71,5 +86,46 @@ export function useReports() {
     return (data ?? []).map(mapSummaryRow);
   }, []);
 
-  return { periods, currentSummary, loading, refresh, closeNextMonth, getPeriodReport };
+  /** subjectProfileId -> consecutive negative months, counting back from the current live month. Owner only. */
+  const loadSupervisorStreaks = useCallback(async (): Promise<Map<string, number>> => {
+    const { data, error } = await supabase.rpc('get_supervisor_streaks');
+    if (error) throw error;
+    return new Map((data ?? []).map((row: any) => [row.subject_profile_id as string, Number(row.negative_streak)]));
+  }, []);
+
+  const loadPeriodAdjustments = useCallback(async (periodId: string, subjectProfileId: string): Promise<PeriodAdjustment[]> => {
+    const { data, error } = await supabase
+      .from('period_adjustments')
+      .select('*')
+      .eq('period_id', periodId)
+      .eq('subject_profile_id', subjectProfileId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(mapPeriodAdjustment);
+  }, []);
+
+  const adjustPeriodPoints = useCallback(
+    async (periodId: string, subjectProfileId: string, newPoints: number, reason?: string) => {
+      const { error } = await supabase.rpc('adjust_period_points', {
+        p_period_id: periodId,
+        p_subject_profile_id: subjectProfileId,
+        p_new_points: newPoints,
+        p_reason: reason ?? null,
+      });
+      if (error) throw error;
+    },
+    []
+  );
+
+  return {
+    periods,
+    currentSummary,
+    loading,
+    refresh,
+    closeNextMonth,
+    getPeriodReport,
+    loadPeriodAdjustments,
+    adjustPeriodPoints,
+    loadSupervisorStreaks,
+  };
 }

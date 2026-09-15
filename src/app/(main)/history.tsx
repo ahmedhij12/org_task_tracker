@@ -6,11 +6,13 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
+import { AdjustPointsSheet } from '@/components/AdjustPointsSheet';
 import { Card, useThemeColors } from '@/components/ui';
 import { isFailed, needsReview } from '@/types';
 import type { OrgTask, TaskCompletion } from '@/types';
 
-type Filter = 'all' | 'review' | 'done' | 'late' | 'failed' | 'audited';
+/** 'all' or a team (branch) id — new branches show up automatically since this just reads the live teams list. */
+type Filter = 'all' | string;
 
 function when(iso: string, locale: string): string {
   return new Date(iso).toLocaleString(locale, {
@@ -25,13 +27,19 @@ export default function HistoryScreen() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
-  const { history, tasks, members, loading, refresh } = useOrgData();
+  const { history, tasks, members, teams, loading, refresh } = useOrgData();
   const [filter, setFilter] = useState<Filter>('all');
   const [openEntry, setOpenEntry] = useState<TaskCompletion | null>(null);
+  const [pointsEntry, setPointsEntry] = useState<TaskCompletion | null>(null);
 
   const isOwner = profile?.role === 'owner';
   const isLeader = profile?.role === 'team_admin';
-  const isManager = isOwner || isLeader;
+
+  // Same ownership rule as adjust_completion_points itself: an owner can
+  // adjust any audit, a team_admin only the ones they personally performed.
+  const isAuditEntry = (h: TaskCompletion) => h.pointsAwarded != null && h.subjectProfileId !== h.actorId;
+  const canEditPoints = (h: TaskCompletion) => isAuditEntry(h) && (isOwner || (isLeader && h.actorId === profile?.id));
+  const canViewPoints = (h: TaskCompletion) => isAuditEntry(h) && !canEditPoints(h) && h.subjectProfileId === profile?.id;
 
   // Failed is derived, never stored: still open and past its deadline. Scoped
   // the same way the history rows are, so each role sees a consistent picture.
@@ -45,30 +53,29 @@ export default function HistoryScreen() {
   }, [tasks, isOwner, isLeader, profile?.teamIds, profile?.id]);
 
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
-  const needsReviewEntries = useMemo(() => {
-    if (!isManager) return [];
-    return history.filter((h) => needsReview(h, taskById.get(h.taskId) ?? { requiresReview: false }));
-  }, [history, isManager, taskById]);
+  // The branch a history entry belongs to, for the branch filter below —
+  // the SUBJECT's branch (via profile_teams) on an audit, since the audit
+  // task's own team_id can differ from who's actually being audited (the
+  // same attribution rule get_period_report already uses), and the actor's
+  // own team_id for an ordinary completion.
+  const branchIdOf = (h: TaskCompletion): string | null => {
+    if (h.pointsAwarded != null && h.subjectProfileId !== h.actorId) {
+      return memberById.get(h.subjectProfileId)?.teamIds[0] ?? null;
+    }
+    return h.teamId;
+  };
 
-  // Audits done ABOUT the viewer, by someone else — distinct from every
-  // other filter here, which is scoped by team/actor. Visible to any role:
-  // this is specifically how an audited supervisor sees their own results.
-  const auditedEntries = useMemo(() => {
-    if (!profile) return [];
-    return history.filter((h) => h.subjectProfileId === profile.id && h.actorId !== profile.id);
-  }, [history, profile]);
+  const missedShown = useMemo(
+    () => failedTasks.filter((t) => filter === 'all' || t.teamId === filter),
+    [failedTasks, filter]
+  );
 
-  const shown = useMemo(() => {
-    if (filter === 'failed') return [];
-    if (filter === 'review') return needsReviewEntries;
-    if (filter === 'audited') return auditedEntries;
-    return history.filter((h) => {
-      if (h.action !== 'completed') return filter === 'all';
-      if (filter === 'late') return h.wasLate;
-      return true;
-    });
-  }, [history, filter, needsReviewEntries, auditedEntries]);
+  const shown = useMemo(
+    () => history.filter((h) => filter === 'all' || branchIdOf(h) === filter),
+    [history, filter, memberById]
+  );
 
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? t('history.someone');
 
@@ -77,14 +84,6 @@ export default function HistoryScreen() {
     : isLeader
       ? t('history.scopeTeam')
       : t('history.scopeMine');
-
-  const counts = {
-    review: needsReviewEntries.length,
-    done: history.filter((h) => h.action === 'completed').length,
-    late: history.filter((h) => h.action === 'completed' && h.wasLate).length,
-    failed: failedTasks.length,
-    audited: auditedEntries.length,
-  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -95,19 +94,14 @@ export default function HistoryScreen() {
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 16 }}>
           {(
-            [
-              { key: 'all', label: t('history.filterAll') },
-              ...(isManager ? [{ key: 'review' as Filter, label: t('history.filterReview', { count: counts.review }) }] : []),
-              { key: 'done', label: t('history.filterDone', { count: counts.done }) },
-              { key: 'late', label: t('history.filterLate', { count: counts.late }) },
-              { key: 'failed', label: t('history.filterFailed', { count: counts.failed }) },
-              { key: 'audited', label: t('history.filterAudited', { count: counts.audited }) },
-            ] as { key: Filter; label: string }[]
+            [{ key: 'all', label: t('history.filterAll') }, ...teams.map((tm) => ({ key: tm.id, label: tm.name }))] as {
+              key: Filter;
+              label: string;
+            }[]
           ).map((opt) => {
             const active = filter === opt.key;
-            const isReviewChip = opt.key === 'review';
             return (
               <Pressable
                 key={opt.key}
@@ -116,39 +110,23 @@ export default function HistoryScreen() {
                   paddingHorizontal: 12,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: active ? c.indigo : isReviewChip && counts.review > 0 ? c.amberSoft : c.bgSubtle,
+                  backgroundColor: active ? c.indigo : c.bgSubtle,
                   borderWidth: 1,
-                  borderColor: active ? c.indigo : isReviewChip && counts.review > 0 ? c.amber : c.border,
+                  borderColor: active ? c.indigo : c.border,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: active ? '#fff' : isReviewChip && counts.review > 0 ? c.amber : c.text,
-                  }}
-                >
-                  {opt.label}
-                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{opt.label}</Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
-        {filter === 'failed' ? (
-          failedTasks.length === 0 ? (
-            <Text style={{ fontSize: 13, color: c.textFaint }}>{t('history.nothingMissed')}</Text>
-          ) : (
-            failedTasks.map((task) => <MissedRow key={task.id} task={task} nameOf={nameOf} />)
-          )
-        ) : shown.length === 0 ? (
-          <Text style={{ fontSize: 13, color: c.textFaint }}>
-            {filter === 'review'
-              ? t('history.nothingForReview')
-              : filter === 'audited'
-                ? t('history.nothingAudited')
-                : t('history.nothingYet')}
-          </Text>
+        {missedShown.map((task) => (
+          <MissedRow key={task.id} task={task} nameOf={nameOf} />
+        ))}
+
+        {shown.length === 0 && missedShown.length === 0 ? (
+          <Text style={{ fontSize: 13, color: c.textFaint }}>{t('history.nothingYet')}</Text>
         ) : (
           shown.map((h) => (
             <HistoryRow
@@ -157,12 +135,19 @@ export default function HistoryScreen() {
               task={taskById.get(h.taskId)}
               actorName={nameOf(h.actorId)}
               onPress={() => setOpenEntry(h)}
+              pointsAccess={canEditPoints(h) ? 'edit' : canViewPoints(h) ? 'view' : null}
+              onPointsPress={() => setPointsEntry(h)}
             />
           ))
         )}
       </ScrollView>
 
       <CompletionDetailSheet completion={openEntry} onClose={() => setOpenEntry(null)} />
+      <AdjustPointsSheet
+        completion={pointsEntry}
+        canEdit={pointsEntry ? canEditPoints(pointsEntry) : false}
+        onClose={() => setPointsEntry(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -193,11 +178,15 @@ function HistoryRow({
   task,
   actorName,
   onPress,
+  pointsAccess,
+  onPointsPress,
 }: {
   entry: TaskCompletion;
   task: OrgTask | undefined;
   actorName: string;
   onPress: () => void;
+  pointsAccess: 'edit' | 'view' | null;
+  onPointsPress: () => void;
 }) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
@@ -271,7 +260,18 @@ function HistoryRow({
               </Text>
             ) : null}
           </View>
-          <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+          <View style={{ alignItems: 'center', gap: 10 }}>
+            <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+            {pointsAccess ? (
+              <Pressable onPress={onPointsPress} hitSlop={8}>
+                <Ionicons
+                  name={pointsAccess === 'edit' ? 'pencil' : 'information-circle-outline'}
+                  size={16}
+                  color={c.textMuted}
+                />
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       </Card>
     </Pressable>

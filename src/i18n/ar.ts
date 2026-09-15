@@ -72,6 +72,7 @@ export default {
     noBranchActivity: 'لا يوجد نشاط للفروع هذا الشهر بعد.',
     pointsSuffix: 'نقطة',
     iqdSuffix: 'دينار',
+    needsAttention: 'سلبي {{count}} أشهر',
   },
   report: {
     title: 'التقرير',
@@ -148,6 +149,7 @@ export default {
     roleEmployee: 'مشرف',
     inactiveBadge: 'غير نشط',
     newBadge: 'جديد',
+    adminGroup: 'الإدارة / غير محدد',
   },
   changePassword: {
     title: 'عيّن كلمة المرور الخاصة بك',

@@ -248,7 +248,9 @@ declare
   v_period_id uuid;
   v_period_month date;
   v_points numeric;
+  v_raw_points numeric;
   v_branch_name text;
+  v_raised boolean;
 begin
   insert into auth.users (
     instance_id, id, aud, role, email, encrypted_password,
@@ -311,6 +313,74 @@ begin
     raise exception 'FAIL: report must attribute points to the SUBJECT''s branch (Zubair), not the auditor''s team; got %', v_branch_name;
   end if;
   raise notice 'PASS: get_period_report attributes points via profile_teams on the subject, not task_completions.team_id';
+
+  -- ── A team_admin cannot adjust a period's totals — owner-only, unlike
+  -- adjust_completion_points which a team_admin can do for their own audits ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  begin
+    perform public.adjust_period_points(v_period_id, v_subject_id, 0);
+    raise exception 'FAIL: a team_admin must not be able to adjust a period''s totals';
+  exception when others then
+    null; -- expected
+  end;
+  raise notice 'PASS: a team_admin cannot adjust a period''s totals';
+
+  -- ── The owner reduces the subject's whole-period total at once; the
+  -- natural sum stays visible as raw_points, same original/current split
+  -- as adjust_completion_points has for one audit visit ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.adjust_period_points(v_period_id, v_subject_id, -0.5, 'good faith reduction, end of month review');
+
+  select total_points, raw_points into v_points, v_raw_points from public.get_period_report(v_period_id)
+  where subject_profile_id = v_subject_id;
+  if v_points is distinct from -0.5::numeric then
+    raise exception 'FAIL: expected the adjusted total -0.5, got %', v_points;
+  end if;
+  if v_raw_points is distinct from -2::numeric then
+    raise exception 'FAIL: raw_points should stay the untouched natural sum (-2) even after an adjustment, got %', v_raw_points;
+  end if;
+  raise notice 'PASS: adjust_period_points overrides the effective total while raw_points keeps the natural sum';
+
+  -- ── get_supervisor_streaks: a team_admin can't call it ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  v_raised := false;
+  begin
+    perform * from public.get_supervisor_streaks();
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team_admin must not be able to view performance trends';
+  end if;
+  raise notice 'PASS: a team_admin cannot view performance trends';
+
+  -- ── The subject is already -0.5 (adjusted) in the one closed period
+  -- (June). Add a negative completion in the CURRENT month too: two
+  -- consecutive negative months, no gap, so the streak should be 2 —
+  -- capped at "every period on record", not an arbitrary number ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.set_task_completion(
+    v_task_id, true, 'bad visit', '{}', null, '[]'::jsonb, v_subject_id, 'morning', -1
+  );
+  select negative_streak into v_points from public.get_supervisor_streaks() where subject_profile_id = v_subject_id;
+  if v_points is distinct from 2::numeric then
+    raise exception 'FAIL: expected a streak of 2 (this month + June both negative), got %', v_points;
+  end if;
+  raise notice 'PASS: get_supervisor_streaks counts consecutive negative months back through closed periods';
+
+  -- ── A clean/positive current month breaks the streak back to 0, even
+  -- with a negative closed period behind it ──
+  perform public.adjust_completion_points(
+    (select id from public.task_completions where subject_profile_id = v_subject_id
+     and (created_at at time zone 'Asia/Baghdad') >= date_trunc('month', now() at time zone 'Asia/Baghdad')
+     order by created_at desc limit 1),
+    0.5, 'correcting the test data — this visit was actually fine'
+  );
+  select negative_streak into v_points from public.get_supervisor_streaks() where subject_profile_id = v_subject_id;
+  if v_points is distinct from 0::numeric then
+    raise exception 'FAIL: a non-negative current month should reset the streak to 0, got %', v_points;
+  end if;
+  raise notice 'PASS: a non-negative current month resets the streak, even with a bad month behind it';
 
   reset role;
 end $$;
@@ -2021,6 +2091,38 @@ begin
     raise exception 'FAIL: signature_url was not recorded on the audit completion';
   end if;
   raise notice 'PASS: the auditor''s signature is recorded on the completion';
+
+  -- ── N/A answers: a null answer (e.g. a kitchen question at a brand with
+  -- no kitchen) must be excluded from both the penalty and the yes/no
+  -- counts, not silently fall through to the "No" penalty branch ──
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_id, 'Scoring Audit with N/A', v_auditor_id, v_owner_id, v_template_id, true, 'medium', false)
+  returning id into v_task_id;
+
+  -- Q1 yes (0), Q2 N/A (0, not -1), Q3 no (-0.25) = -0.25.
+  v_completion_id := public.set_task_completion(
+    p_task_id => v_task_id, p_completed => true, p_note => null, p_photo_urls => '{}',
+    p_answers => '[
+      {"section_title":"","question":"Q1","sort_order":0,"answer":true},
+      {"section_title":"","question":"Q2","sort_order":1,"answer":null},
+      {"section_title":"","question":"Q3","sort_order":2,"answer":false}
+    ]'::jsonb,
+    p_section_photos => '[]'::jsonb,
+    p_subject_profile_id => v_subject_id, p_shift => 'evening'
+  );
+  select * into v_row from public.task_completions where id = v_completion_id;
+  if v_row.points_awarded is distinct from -0.25::numeric then
+    raise exception 'FAIL: expected -0.25 (0 + N/A + -0.25), got % — an N/A answer must not be penalized like a "No"', v_row.points_awarded;
+  end if;
+  if v_row.yes_count is distinct from 1 or v_row.no_count is distinct from 1 then
+    raise exception 'FAIL: N/A must not be counted as either yes or no, got yes=%, no=%', v_row.yes_count, v_row.no_count;
+  end if;
+  raise notice 'PASS: an N/A answer costs nothing and is excluded from the yes/no counts';
+
+  if (select answer from public.checklist_answers where task_completion_id = v_completion_id and question = 'Q2') is not null then
+    raise exception 'FAIL: an N/A answer should be stored as null, not as false';
+  end if;
+  raise notice 'PASS: an N/A answer is stored as null, distinguishable from a real "No"';
 
   reset role;
 end $$;

@@ -135,6 +135,17 @@ export interface TaskCompletion {
   createdAt: string;
 }
 
+/** One entry in the append-only trail of points_awarded changes on an audit completion. */
+export interface PointsAdjustment {
+  id: string;
+  taskCompletionId: string;
+  previousPoints: number | null;
+  newPoints: number;
+  adjustedBy: string;
+  reason: string | null;
+  createdAt: string;
+}
+
 /** Derived, never stored: a task is failed once its deadline passes while still open. */
 export function isFailed(task: Pick<OrgTask, 'completed' | 'due'>, now: Date = new Date()): boolean {
   if (task.completed || !task.due) return false;
@@ -198,7 +209,8 @@ export interface ChecklistAnswer {
   sectionTitle: string;
   question: string;
   sortOrder: number;
-  answer: boolean;
+  /** null means the auditor marked this N/A — excluded from scoring. */
+  answer: boolean | null;
   note: string | null;
 }
 
@@ -247,6 +259,22 @@ export interface BranchSummaryRow {
   brandName: string | null;
   subjectProfileId: string;
   subjectName: string;
+  /** Effective total — the natural sum, overridden by adjust_period_points if the owner made an end-of-month call. */
   totalPoints: number;
   iqdAmount: number;
+  /** Only set by get_period_report (a closed period never re-sums live): the untouched natural sum, before any period-level adjustment. */
+  rawPoints?: number;
+  rawIqdAmount?: number;
+}
+
+/** One entry in the append-only trail of a whole period's total being adjusted for one supervisor at once. */
+export interface PeriodAdjustment {
+  id: string;
+  periodId: string;
+  subjectProfileId: string;
+  previousPoints: number | null;
+  newPoints: number;
+  adjustedBy: string;
+  reason: string | null;
+  createdAt: string;
 }

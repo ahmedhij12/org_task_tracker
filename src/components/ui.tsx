@@ -1,6 +1,6 @@
 import { View, Text, Pressable, TextInput, ActivityIndicator, StyleSheet } from 'react-native';
 import type { ReactNode } from 'react';
-import { Colors, type ThemeColors } from '@/theme';
+import { Colors, GOLD_INK, type ThemeColors } from '@/theme';
 import { sanitizeUsername } from '@/lib/username';
 import { useThemePref } from '@/hooks/useThemePref';
 
@@ -111,7 +111,7 @@ export function PrimaryButton({
       disabled={isDisabled}
       style={({ pressed }) => [
         {
-          backgroundColor: c.indigo,
+          backgroundColor: c.gold,
           borderRadius: 14,
           paddingVertical: 14,
           alignItems: 'center',
@@ -119,7 +119,7 @@ export function PrimaryButton({
         },
       ]}
     >
-      {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{title}</Text>}
+      {loading ? <ActivityIndicator color={GOLD_INK} /> : <Text style={{ color: GOLD_INK, fontSize: 15, fontWeight: '700' }}>{title}</Text>}
     </Pressable>
   );
 }

@@ -3,10 +3,12 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/hooks/useAuth';
 import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 import { exportReportToExcel } from '@/lib/exportReport';
 import { groupBranchSummary } from '@/lib/branchSummary';
+import { AdjustPeriodPointsSheet } from '@/components/AdjustPeriodPointsSheet';
 import type { BranchSummaryRow, ReportPeriod } from '@/types';
 
 function formatPeriodLabel(period: ReportPeriod, locale: string) {
@@ -20,14 +22,25 @@ function formatPeriodLabel(period: ReportPeriod, locale: string) {
 export default function ReportScreen() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
+  const { profile } = useAuth();
   const { periods, closeNextMonth, getPeriodReport } = useReports();
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const [rows, setRows] = useState<BranchSummaryRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [adjustRow, setAdjustRow] = useState<BranchSummaryRow | null>(null);
 
+  const isOwner = profile?.role === 'owner';
   const selectedPeriod = periods.find((p) => p.id === selectedPeriodId) ?? periods[0] ?? null;
+
+  const reloadRows = () => {
+    if (!selectedPeriod) return;
+    setRowsLoading(true);
+    getPeriodReport(selectedPeriod.id)
+      .then(setRows)
+      .finally(() => setRowsLoading(false));
+  };
 
   useEffect(() => {
     if (!selectedPeriod) {
@@ -118,15 +131,7 @@ export default function ReportScreen() {
                     {branch.brandGroups.length === 1 && branch.brandGroups[0].brandKey === '__unassigned__' ? (
                       <View style={{ marginBottom: 8 }}>
                         {branch.brandGroups[0].rows.map((r) => (
-                          <View
-                            key={`${r.subjectProfileId}-${r.branchId}`}
-                            style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}
-                          >
-                            <Text style={{ fontSize: 14, color: c.text }}>{r.subjectName}</Text>
-                            <Text style={{ fontSize: 14, fontWeight: '700', color: r.totalPoints < 0 ? c.rose : c.emerald }}>
-                              {r.totalPoints} · {r.iqdAmount.toLocaleString(i18n.language)}
-                            </Text>
-                          </View>
+                          <SupervisorRow key={`${r.subjectProfileId}-${r.branchId}`} row={r} locale={i18n.language} canAdjust={isOwner} onAdjust={() => setAdjustRow(r)} />
                         ))}
                       </View>
                     ) : (
@@ -136,15 +141,7 @@ export default function ReportScreen() {
                             {bg.brandName ?? t('common.unassignedBrand')}
                           </Text>
                           {bg.rows.map((r) => (
-                            <View
-                              key={`${r.subjectProfileId}-${r.branchId}`}
-                              style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}
-                            >
-                              <Text style={{ fontSize: 14, color: c.text }}>{r.subjectName}</Text>
-                              <Text style={{ fontSize: 14, fontWeight: '700', color: r.totalPoints < 0 ? c.rose : c.emerald }}>
-                                {r.totalPoints} · {r.iqdAmount.toLocaleString(i18n.language)}
-                              </Text>
-                            </View>
+                            <SupervisorRow key={`${r.subjectProfileId}-${r.branchId}`} row={r} locale={i18n.language} canAdjust={isOwner} onAdjust={() => setAdjustRow(r)} />
                           ))}
                         </View>
                       ))
@@ -162,6 +159,56 @@ export default function ReportScreen() {
           </>
         )}
       </ScrollView>
+
+      {selectedPeriod ? (
+        <AdjustPeriodPointsSheet
+          periodId={selectedPeriod.id}
+          row={adjustRow}
+          onClose={() => setAdjustRow(null)}
+          onSaved={() => {
+            setAdjustRow(null);
+            reloadRows();
+          }}
+        />
+      ) : null}
     </SafeAreaView>
+  );
+}
+
+function SupervisorRow({
+  row,
+  locale,
+  canAdjust,
+  onAdjust,
+}: {
+  row: BranchSummaryRow;
+  locale: string;
+  canAdjust: boolean;
+  onAdjust: () => void;
+}) {
+  const c = useThemeColors();
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 6,
+        borderBottomWidth: 1,
+        borderBottomColor: c.border,
+      }}
+    >
+      <Text style={{ fontSize: 14, color: c.text }}>{row.subjectName}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: row.totalPoints < 0 ? c.rose : c.emerald }}>
+          {row.totalPoints} · {row.iqdAmount.toLocaleString(locale)}
+        </Text>
+        {canAdjust ? (
+          <Pressable onPress={onAdjust} hitSlop={8}>
+            <Ionicons name="pencil" size={14} color={c.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
   );
 }
