@@ -2,6 +2,68 @@
 
 One milestone at a time. Park mid-stream ideas here instead of building them immediately.
 
+## Status (2026-09-15) — Brands feature
+
+**Done, all 11 plan tasks plus a final-review fix wave** (spec:
+`docs/superpowers/specs/2026-09-14-brands-design.md`, plan:
+`docs/superpowers/plans/2026-09-14-brands-plan.md`, built with
+superpowers:subagent-driven-development — one fresh implementer + one
+independent reviewer per task, live-verified against the production
+Supabase project throughout, pushed to GitHub). A branch now has a
+configurable set of brands (e.g. Tuwaysah runs 360 + AA Chicken + Center);
+a supervisor belongs to a branch *and* a brand within it; a branch
+manager/admin never needs one. New: `brands`/`branch_brands` tables,
+`profile_teams.brand_id`; `create_brand`/`set_branch_brands` RPCs; brand
+validation added to `admin_create_user`/`add_profile_to_team`; brand
+columns on `get_current_branch_summary`/`get_period_report`. UI: a
+"manage brands" sheet on each branch card (Branches screen); a brand
+picker on staff create/edit; a Branch → Brand → Subject → Shift step in
+the audit picker; a branch → brand → supervisor breakdown on Dashboard,
+Report, and the `.xlsx` export.
+
+**Real bugs found and fixed along the way, all live-verified:**
+1. `branchBrandIds` (which brands a branch offers, for picker ordering)
+   wasn't actually sorted to match the brands list's own order — fixed in
+   a task-level fix round.
+2. The whole-branch final review caught a real gap no single task could
+   see: `branch_brands` (what a branch *offers*) and
+   `profile_teams.brand_id` (what a supervisor *holds*) were never
+   reconciled. Removing a brand from a branch left an already-assigned
+   supervisor silently pointing at a brand that no longer operated there
+   — invisible in the staff sheet, wrong in Dashboard/Report, and made
+   that supervisor un-auditable. Fixed: `set_branch_brands` now nulls a
+   stale `profile_teams.brand_id` when a supervisor's brand is dropped
+   from the branch; the audit picker gained an explicit "Unassigned"
+   option so a brand-less supervisor at a brand-configured branch stays
+   auditable; the Dashboard/Report's "Unassigned" bucket is now a real,
+   bilingual i18n string instead of a hardcoded English literal, and is
+   suppressed entirely for an org that hasn't configured any brands yet
+   (so day-one behavior is unchanged until the user opts in).
+3. This plan's own `TESTS.sql` blocks had real bugs three separate times
+   (a missing setup call, a singular/plural regex-vs-message mismatch, a
+   test that claimed to cover two RPCs but only ever called one) — all
+   caught and fixed by the task implementers before commit, not left for
+   later.
+
+**Deliberately parked, not fixed** (see the plan's own ledger,
+`.superpowers/sdd/2026-09-14-brands-plan/progress.md`, before that
+workspace is cleaned up, for the full reasoning on each):
+- A TOCTOU race in `create_brand`'s case-insensitive uniqueness check —
+  matches an existing, accepted pattern elsewhere in this codebase
+  (`create_team`, `admin_create_user`'s username check); owner-only,
+  low-frequency, low-cost-if-wrong.
+- `add_profile_to_team`'s upsert can silently null an existing brand if
+  ever called without an explicit brand id against an existing
+  membership — traced end-to-end, neither real call site does this
+  today; a real risk only for a not-yet-written future caller.
+
+**Still needs the user's own device QA** (this plan's own Task 11, not
+attempted by the agent): configure Tuwaysah's and Olympic's real brands,
+assign a real supervisor a brand, run a real audit through the new
+Branch → Brand → Subject → Shift flow, confirm Dashboard/Report show the
+right brand breakdown, and confirm removing a brand from a branch
+correctly clears it from an already-assigned supervisor.
+
 ## Status (2026-09-13, later) — Branch audit report
 
 **Done, all 11 implementation tasks** (spec/plan:
