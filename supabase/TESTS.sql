@@ -2240,7 +2240,12 @@ begin
 
   -- ── Backdate one occurrence so completing it proves the "late" path is
   -- keyed on the occurrence's own time, not tasks.due (which is null here) ──
+  -- As the table owner: `authenticated` has no UPDATE policy on
+  -- task_occurrences, so under it this silently updated 0 rows and the
+  -- test only passed after 12:00 Baghdad time.
+  reset role;
   update public.task_occurrences set scheduled_for = now() - interval '1 hour' where id = v_occ_a;
+  set role authenticated;
 
   -- ── A real completion links the occurrence and records lateness against
   -- its own scheduled_for ──
@@ -2828,6 +2833,108 @@ begin
     if sqlerrm !~ 'brand' then raise; end if;
   end;
   raise notice 'PASS: add_profile_to_team rejects a brand for a non-employee role';
+end $$;
+
+-- ── Point value (IQD per point): owner-only, applies from now on only ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_leader_id uuid;
+  v_emp_id uuid;
+  v_old_id uuid;
+  v_new_id uuid;
+  v_rate numeric;
+  v_period_id uuid;
+  v_iqd numeric;
+  v_raw_iqd numeric;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'rate-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Rate Org', 'Rate Owner', 'rateowner');
+  v_leader_id := public.admin_create_user('Leader', 'rateleader', 'initial123', 'team_admin', v_team_id);
+  v_emp_id := public.admin_create_user('Supervisor', 'rateemp', 'initial123', 'employee', v_team_id);
+
+  select iqd_per_point into v_rate from public.organizations where id = v_org_id;
+  if v_rate is distinct from 25000::numeric then
+    raise exception 'FAIL: a new org should default to 25000 IQD per point, got %', v_rate;
+  end if;
+  raise notice 'PASS: a new org defaults to 25000 IQD per point';
+
+  -- an audit scored at the old rate (a caller-supplied rate is ignored)
+  insert into public.task_completions (org_id, team_id, task_title, actor_id, action, subject_profile_id, points_awarded, iqd_per_point, created_at)
+  values (v_org_id, v_team_id, 'Audit', v_owner_id, 'completed', v_emp_id, -1, 1, date_trunc('month', now()) - interval '20 days')
+  returning id into v_old_id;
+  if (select iqd_per_point from public.task_completions where id = v_old_id) is distinct from 25000::numeric then
+    raise exception 'FAIL: a completion should be stamped with the org rate, not the caller''s';
+  end if;
+  raise notice 'PASS: a completion is stamped with the org rate, ignoring the caller';
+
+  -- a team_admin can't change the rate
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  begin
+    perform public.set_iqd_per_point(30000);
+    raise exception 'FAIL: a team_admin should not be able to change the point rate';
+  exception when others then
+    if sqlerrm !~ 'only the org owner' then raise; end if;
+  end;
+  raise notice 'PASS: a team_admin cannot change the point rate';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  begin
+    perform public.set_iqd_per_point(0);
+    raise exception 'FAIL: a zero rate should be rejected';
+  exception when others then
+    if sqlerrm !~ 'positive' then raise; end if;
+  end;
+  raise notice 'PASS: a non-positive rate is rejected';
+
+  perform public.set_iqd_per_point(30000);
+  insert into public.task_completions (org_id, team_id, task_title, actor_id, action, subject_profile_id, points_awarded, created_at)
+  values (v_org_id, v_team_id, 'Audit', v_owner_id, 'completed', v_emp_id, -1, date_trunc('month', now()) - interval '10 days')
+  returning id into v_new_id;
+  if (select iqd_per_point from public.task_completions where id = v_old_id) is distinct from 25000::numeric
+     or (select iqd_per_point from public.task_completions where id = v_new_id) is distinct from 30000::numeric then
+    raise exception 'FAIL: a rate change must only apply to new completions';
+  end if;
+  raise notice 'PASS: a rate change applies to new audits only';
+
+  -- a closed month mixing both rates sums each audit at its own rate
+  insert into public.report_periods (org_id, period_month, closed_by)
+  values (v_org_id, (date_trunc('month', now()) - interval '1 month')::date, v_owner_id)
+  returning id into v_period_id;
+  select iqd_amount, raw_iqd_amount into v_iqd, v_raw_iqd from public.get_period_report(v_period_id) where subject_profile_id = v_emp_id;
+  if v_iqd is distinct from -55000::numeric or v_raw_iqd is distinct from -55000::numeric then
+    raise exception 'FAIL: expected -55000 (25000 + 30000) for a mixed-rate month, got % / %', v_iqd, v_raw_iqd;
+  end if;
+  raise notice 'PASS: a mixed-rate month sums each audit at its own rate';
+
+  -- a month override keeps the IQD the owner typed, even after another rate change
+  perform public.adjust_period_points(v_period_id, v_emp_id, -40000 / 30000.0);
+  perform public.set_iqd_per_point(50000);
+  select iqd_amount, raw_iqd_amount into v_iqd, v_raw_iqd from public.get_period_report(v_period_id) where subject_profile_id = v_emp_id;
+  if round(v_iqd) is distinct from -40000::numeric or v_raw_iqd is distinct from -55000::numeric then
+    raise exception 'FAIL: an override should stay at -40000 after a rate change, got % (raw %)', v_iqd, v_raw_iqd;
+  end if;
+  if (select previous_iqd from public.period_adjustments where period_id = v_period_id) is distinct from -55000::numeric then
+    raise exception 'FAIL: previous_iqd should record the -55000 effective total before the override';
+  end if;
+  raise notice 'PASS: a month override keeps its typed IQD across rate changes';
 end $$;
 
 rollback;

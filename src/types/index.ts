@@ -35,6 +35,8 @@ export interface Organization {
   orgCode: string; // 5-digit numeric join code, e.g. "48213"
   name: string;
   ownerId: string;
+  /** What one penalty point is worth in IQD. Owner-editable in Settings; applies from then on only. */
+  iqdPerPoint: number;
   createdAt: string;
 }
 
@@ -128,8 +130,10 @@ export interface TaskCompletion {
   subjectProfileId: string;
   /** Only set on an is_audit completion. */
   shift: 'morning' | 'evening' | null;
-  /** Penalty (negative) or bonus (positive), in fractional points. Only set on an is_audit completion. IQD = points * 25000, computed at read time. */
+  /** Penalty (negative) or bonus (positive), in fractional points. Only set on an is_audit completion. IQD = points * iqdPerPoint. */
   pointsAwarded: number | null;
+  /** The org's IQD-per-point rate when this row was created — a later rate change never rewrites it. */
+  iqdPerPoint: number;
   /** The auditor's signature. Only set on an is_audit completion. */
   signatureUrl: string | null;
   createdAt: string;
@@ -274,6 +278,10 @@ export interface PeriodAdjustment {
   subjectProfileId: string;
   previousPoints: number | null;
   newPoints: number;
+  /** The rate in force when this override was made: IQD = newPoints * iqdPerPoint. */
+  iqdPerPoint: number;
+  /** Effective IQD total right before this override. */
+  previousIqd: number | null;
   adjustedBy: string;
   reason: string | null;
   createdAt: string;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useReports } from '@/hooks/useReports';
+import { useAuth } from '@/hooks/useAuth';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import type { BranchSummaryRow, PeriodAdjustment } from '@/types';
 
@@ -15,13 +16,16 @@ function when(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function fmtPoints(points: number): string {
-  return `${points} pts · ${Math.abs(points * 25000).toLocaleString()} IQD`;
+function fmtPoints(points: number, iqd: number): string {
+  return `${points} pts · ${Math.abs(iqd).toLocaleString()} IQD`;
 }
 
 export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Props) {
   const c = useThemeColors();
   const { loadPeriodAdjustments, adjustPeriodPoints } = useReports();
+  // A new override is always converted at today's rate; get_period_report
+  // then shows it back at that same stored rate, so the typed IQD sticks.
+  const rate = useAuth().organization?.iqdPerPoint ?? 25000;
 
   const [adjustments, setAdjustments] = useState<PeriodAdjustment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,7 +38,7 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
       setAdjustments([]);
       return;
     }
-    setAmountText(String(Math.round(row.totalPoints * 25000)));
+    setAmountText(String(Math.round(row.iqdAmount)));
     setError(null);
     setLoading(true);
     loadPeriodAdjustments(periodId, row.subjectProfileId)
@@ -58,7 +62,7 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
     setSaving(true);
     setError(null);
     try {
-      await adjustPeriodPoints(periodId, row.subjectProfileId, parsedAmount / 25000);
+      await adjustPeriodPoints(periodId, row.subjectProfileId, parsedAmount / rate);
       onSaved();
     } catch (e: any) {
       setError(e?.message ?? 'Could not save this adjustment.');
@@ -93,14 +97,14 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                   <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
                     <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>Original (natural sum)</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original, row.rawIqdAmount ?? row.iqdAmount)}</Text>
                   </View>
                   <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
                     <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>
                       {wasAdjusted ? 'Current (adjusted)' : 'Current'}
                     </Text>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: current < 0 ? c.rose : c.emerald }}>
-                      {fmtPoints(current)}
+                      {fmtPoints(current, row.iqdAmount)}
                     </Text>
                   </View>
                 </View>
@@ -110,8 +114,8 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
                     <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>History</Text>
                     {adjustments.map((a) => (
                       <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
-                        {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * 25000).toLocaleString() : '—'} →{' '}
-                        {Math.round(a.newPoints * 25000).toLocaleString()} IQD
+                        {when(a.createdAt)} — {a.previousIqd != null ? Math.round(a.previousIqd).toLocaleString() : '—'} →{' '}
+                        {Math.round(a.newPoints * a.iqdPerPoint).toLocaleString()} IQD
                       </Text>
                     ))}
                   </View>

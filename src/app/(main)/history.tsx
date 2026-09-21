@@ -254,7 +254,7 @@ function HistoryRow({
               <Text style={{ fontSize: 12, fontWeight: '700', color: entry.pointsAwarded < 0 ? c.rose : c.emerald, marginTop: 2 }}>
                 {t('history.auditPoints', {
                   points: entry.pointsAwarded,
-                  iqd: Math.abs(entry.pointsAwarded * 25000).toLocaleString(i18n.language),
+                  iqd: Math.abs(entry.pointsAwarded * entry.iqdPerPoint).toLocaleString(i18n.language),
                   shift: entry.shift === 'morning' ? 'AM' : entry.shift === 'evening' ? 'PM' : '',
                 })}
               </Text>

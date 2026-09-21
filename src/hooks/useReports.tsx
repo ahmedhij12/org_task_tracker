@@ -35,6 +35,8 @@ function mapPeriodAdjustment(row: any): PeriodAdjustment {
     subjectProfileId: row.subject_profile_id,
     previousPoints: row.previous_points,
     newPoints: row.new_points,
+    iqdPerPoint: Number(row.iqd_per_point),
+    previousIqd: row.previous_iqd != null ? Number(row.previous_iqd) : null,
     adjustedBy: row.adjusted_by,
     reason: row.reason,
     createdAt: row.created_at,

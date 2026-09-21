@@ -46,6 +46,8 @@ interface AuthContextValue extends AuthState {
   /** Used by the forced-change screen; clears mustChangePassword on success. */
   changeOwnPassword: (newPassword: string) => Promise<void>;
   addRecoveryEmail: (email: string) => Promise<void>;
+  /** Owner-only: what one penalty point is worth in IQD from now on. */
+  setIqdPerPoint: (rate: number) => Promise<void>;
   signOut: () => Promise<void>;
   /** Exchanges the emailed code for a session, then creates the organization. */
   verifySignUpCode: (code: string) => Promise<void>;
@@ -105,8 +107,15 @@ function mapProfile(
   };
 }
 
-function mapOrg(row: { id: string; org_code: string; name: string; owner_id: string; created_at: string }): Organization {
-  return { id: row.id, orgCode: row.org_code, name: row.name, ownerId: row.owner_id, createdAt: row.created_at };
+function mapOrg(row: { id: string; org_code: string; name: string; owner_id: string; iqd_per_point: number; created_at: string }): Organization {
+  return {
+    id: row.id,
+    orgCode: row.org_code,
+    name: row.name,
+    ownerId: row.owner_id,
+    iqdPerPoint: Number(row.iqd_per_point),
+    createdAt: row.created_at,
+  };
 }
 
 function mapTeam(row: { id: string; org_id: string; name: string; created_at: string }): Team {
@@ -333,6 +342,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
+  const setIqdPerPoint: AuthContextValue['setIqdPerPoint'] = async (rate) => {
+    const { error } = await supabase.rpc('set_iqd_per_point', { p_rate: rate });
+    if (error) throw error;
+    setState((s) => (s.organization ? { ...s, organization: { ...s.organization, iqdPerPoint: rate } } : s));
+  };
+
   const signInWithUsername: AuthContextValue['signInWithUsername'] = async (orgCode, username, password) => {
     setState((s) => ({ ...s, error: null }));
     const { data: email, error: lookupError } = await supabase.rpc('get_login_email', {
@@ -366,6 +381,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       removeProfileFromTeam,
       changeOwnPassword,
       addRecoveryEmail,
+      setIqdPerPoint,
       signOut,
       refreshProfile,
       clearError,

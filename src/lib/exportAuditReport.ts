@@ -41,7 +41,7 @@ export interface AuditReportData {
 function buildHtml(data: AuditReportData, logoDataUri: string): string {
   const { completion, branchName, subjectName, auditorName, answers, photos, locale } = data;
   const points = completion.pointsAwarded ?? 0;
-  const iqd = Math.abs(points * 25000).toLocaleString(locale);
+  const iqd = Math.abs(points * completion.iqdPerPoint).toLocaleString(locale);
   const shiftLabel = completion.shift === 'morning' ? 'AM' : completion.shift === 'evening' ? 'PM' : '—';
   const dateLabel = new Date(completion.createdAt).toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' });
 

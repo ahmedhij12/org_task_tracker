@@ -33,7 +33,7 @@ const UNASSIGNED_BRAND_ID = '__unassigned__';
 
 export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const c = useThemeColors();
-  const { profile } = useAuth();
+  const { profile, organization } = useAuth();
   const { templates, templateItems } = useChecklists();
   const { teams, members, brands, branchBrandIds, setTaskCompletion, declareTaskOffDuty } = useOrgData();
 
@@ -153,7 +153,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     (sum, it) => (answers[it.id]?.answer === false ? sum - it.pointWeight : sum),
     0
   );
-  const totalIqd = Math.abs(totalPoints) * 25000;
+  const totalIqd = Math.abs(totalPoints) * (organization?.iqdPerPoint ?? 25000);
   const canSubmit =
     unanswered.length === 0 &&
     missingNotes.length === 0 &&

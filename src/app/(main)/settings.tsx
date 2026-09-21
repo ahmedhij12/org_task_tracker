@@ -11,7 +11,7 @@ import type { ThemePref } from '@/types';
 
 export default function SettingsScreen() {
   const c = useThemeColors();
-  const { profile, organization, teams, signOut, addRecoveryEmail } = useAuth();
+  const { profile, organization, teams, signOut, addRecoveryEmail, setIqdPerPoint } = useAuth();
   const { themePref, setThemePref } = useThemePref();
   const { languagePref, setLanguagePref, needsRestartForDirection } = useLanguagePref();
   const [copied, setCopied] = useState(false);
@@ -19,6 +19,10 @@ export default function SettingsScreen() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [rateText, setRateText] = useState(String(organization?.iqdPerPoint ?? ''));
+  const [savingRate, setSavingRate] = useState(false);
+  const [rateNotice, setRateNotice] = useState<string | null>(null);
+  const [rateError, setRateError] = useState<string | null>(null);
   // In-app rather than Alert.alert: react-native-web does not implement Alert
   // with buttons, so the callback never fires and sign-out silently did nothing.
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -48,6 +52,24 @@ export default function SettingsScreen() {
     }
   };
 
+  const parsedRate = Number(rateText.replace(/,/g, '').trim());
+  const rateValid = rateText.trim() !== '' && Number.isFinite(parsedRate) && parsedRate > 0;
+
+  const handleSaveRate = async () => {
+    if (!rateValid || savingRate) return;
+    setSavingRate(true);
+    setRateNotice(null);
+    setRateError(null);
+    try {
+      await setIqdPerPoint(parsedRate);
+      setRateText(String(parsedRate));
+      setRateNotice(`Saved. Audits from now on use 1 point = ${parsedRate.toLocaleString()} IQD.`);
+    } catch (e: any) {
+      setRateError(e?.message ?? 'Could not save the rate. Please try again.');
+    } finally {
+      setSavingRate(false);
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
@@ -79,6 +101,39 @@ export default function SettingsScreen() {
             <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={c.textMuted} />
           </Pressable>
         </Card>
+
+        {profile?.role === 'owner' ? (
+          <Card style={{ marginBottom: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
+              Point value
+            </Text>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
+              How much 1 penalty point is worth. Currently 1 point = {(organization?.iqdPerPoint ?? 0).toLocaleString()} IQD.
+              A change applies to new audits only — past audits and closed months keep the value they were scored at.
+            </Text>
+            {rateError ? <ErrorBanner message={rateError} /> : null}
+            {rateNotice ? (
+              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+                <Text style={{ color: c.indigo, fontSize: 13 }}>{rateNotice}</Text>
+              </View>
+            ) : null}
+            <FieldInput
+              placeholder="25000"
+              value={rateText}
+              onChangeText={(v) => {
+                setRateText(v);
+                setRateNotice(null);
+              }}
+              keyboardType="number-pad"
+            />
+            <PrimaryButton
+              title="Save point value"
+              onPress={handleSaveRate}
+              loading={savingRate}
+              disabled={!rateValid || parsedRate === organization?.iqdPerPoint}
+            />
+          </Card>
+        ) : null}
 
         <Card style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>

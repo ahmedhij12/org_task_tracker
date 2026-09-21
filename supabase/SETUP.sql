@@ -59,6 +59,8 @@ drop function if exists public.create_team(text) cascade;
 drop function if exists public.create_brand(text) cascade;
 drop function if exists public.set_branch_brands(uuid, uuid[]) cascade;
 drop function if exists public.close_next_month() cascade;
+drop function if exists public.set_iqd_per_point(numeric) cascade;
+drop function if exists public.stamp_completion_iqd_rate() cascade;
 drop function if exists public.get_period_report(uuid) cascade;
 drop function if exists public.get_current_branch_summary() cascade;
 -- Both signatures: the old one had no brand parameter, the new one does.
@@ -111,6 +113,11 @@ create table public.organizations (
   org_code text unique not null,
   name text not null,
   owner_id uuid not null references auth.users(id) on delete cascade,
+  -- What one penalty point is worth in IQD. Owner-editable in Settings via
+  -- set_iqd_per_point; a change only applies from then on, because every
+  -- audit stamps the rate in force at submission onto its own row (see
+  -- task_completions.iqd_per_point).
+  iqd_per_point numeric not null default 25000 check (iqd_per_point > 0),
   created_at timestamptz not null default now()
 );
 
@@ -371,11 +378,15 @@ create table public.task_completions (
   -- template-based audit, computed server-side from the checklist answers'
   -- point_weight, never trusted from the client; for an audit with no
   -- template, taken directly from the auditor (nothing structured to
-  -- compute from) — see set_task_completion's scoring block. IQD is always
-  -- points * 25000 — computed at read time, never stored, so a future rate
-  -- change doesn't rewrite history. Only ever set on an is_audit
+  -- compute from) — see set_task_completion's scoring block. IQD is
+  -- points * iqd_per_point below. Only ever set on an is_audit
   -- completion; adjustable later, see points_adjustments.
   points_awarded numeric,
+  -- The org's IQD-per-point rate at the moment this row was inserted,
+  -- stamped by the task_completions_stamp_iqd_rate trigger (never trusted
+  -- from the caller). Changing the org's rate later never rewrites an
+  -- audit that already happened.
+  iqd_per_point numeric not null,
   -- The auditor's signature, captured at submission — only meaningful on an
   -- is_audit completion. Uploaded to the same task-proofs bucket as photos.
   signature_url text,
@@ -411,6 +422,12 @@ create table public.period_adjustments (
   subject_profile_id uuid not null references public.profiles(id) on delete cascade,
   previous_points numeric,
   new_points numeric not null,
+  -- The org's rate when this override was made, so the IQD the owner typed
+  -- is exactly what the report shows, even if the rate changes later.
+  iqd_per_point numeric not null,
+  -- The effective IQD total right before this override (the underlying
+  -- audits may span several rates, so previous_points alone can't recover it).
+  previous_iqd numeric,
   adjusted_by uuid not null references public.profiles(id) on delete cascade,
   reason text,
   created_at timestamptz not null default now()
@@ -1612,16 +1629,16 @@ begin
     tc.subject_profile_id,
     sp.name,
     coalesce(pa.new_points, sum(tc.points_awarded)),
-    coalesce(pa.new_points, sum(tc.points_awarded)) * 25000,
+    coalesce(pa.new_points * pa.iqd_per_point, sum(tc.points_awarded * tc.iqd_per_point)),
     sum(tc.points_awarded),
-    sum(tc.points_awarded) * 25000
+    sum(tc.points_awarded * tc.iqd_per_point)
   from public.task_completions tc
   join public.profiles sp on sp.id = tc.subject_profile_id
   join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
   join public.teams t on t.id = pt.team_id
   left join public.brands b on b.id = pt.brand_id
   left join lateral (
-    select pa2.new_points from public.period_adjustments pa2
+    select pa2.new_points, pa2.iqd_per_point from public.period_adjustments pa2
     where pa2.period_id = p_period_id and pa2.subject_profile_id = tc.subject_profile_id
     order by pa2.created_at desc
     limit 1
@@ -1630,7 +1647,7 @@ begin
     and tc.points_awarded is not null
     and (tc.created_at at time zone 'Asia/Baghdad') >= v_month
     and (tc.created_at at time zone 'Asia/Baghdad') < (v_month + interval '1 month')
-  group by t.id, t.name, b.id, b.name, tc.subject_profile_id, sp.name, pa.new_points
+  group by t.id, t.name, b.id, b.name, tc.subject_profile_id, sp.name, pa.new_points, pa.iqd_per_point
   order by t.name, b.name nulls last, sp.name;
 end;
 $$;
@@ -1677,7 +1694,7 @@ begin
     tc.subject_profile_id,
     sp.name,
     sum(tc.points_awarded),
-    sum(tc.points_awarded) * 25000
+    sum(tc.points_awarded * tc.iqd_per_point)
   from public.task_completions tc
   join public.profiles sp on sp.id = tc.subject_profile_id
   join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
@@ -2198,6 +2215,8 @@ declare
   v_org_id uuid;
   v_period_org_id uuid;
   v_previous numeric;
+  v_previous_iqd numeric;
+  v_rate numeric;
 begin
   select p.role, p.org_id into v_role, v_org_id
   from public.profiles p where p.id = auth.uid();
@@ -2222,8 +2241,66 @@ begin
        and (tc.created_at at time zone 'Asia/Baghdad') < (rp.period_month + interval '1 month'))
   ) into v_previous;
 
-  insert into public.period_adjustments (period_id, subject_profile_id, previous_points, new_points, adjusted_by, reason)
-  values (p_period_id, p_subject_profile_id, v_previous, p_new_points, auth.uid(), nullif(trim(coalesce(p_reason, '')), ''));
+  select coalesce(
+    (select pa.new_points * pa.iqd_per_point from public.period_adjustments pa
+     where pa.period_id = p_period_id and pa.subject_profile_id = p_subject_profile_id
+     order by pa.created_at desc limit 1),
+    (select sum(tc.points_awarded * tc.iqd_per_point) from public.task_completions tc, public.report_periods rp
+     where rp.id = p_period_id and tc.org_id = v_org_id and tc.subject_profile_id = p_subject_profile_id
+       and tc.points_awarded is not null
+       and (tc.created_at at time zone 'Asia/Baghdad') >= rp.period_month
+       and (tc.created_at at time zone 'Asia/Baghdad') < (rp.period_month + interval '1 month'))
+  ) into v_previous_iqd;
+
+  select iqd_per_point into v_rate from public.organizations where id = v_org_id;
+
+  insert into public.period_adjustments (period_id, subject_profile_id, previous_points, new_points, iqd_per_point, previous_iqd, adjusted_by, reason)
+  values (p_period_id, p_subject_profile_id, v_previous, p_new_points, v_rate, v_previous_iqd, auth.uid(), nullif(trim(coalesce(p_reason, '')), ''));
+end;
+$$;
+
+-- Stamps the org's current IQD-per-point rate onto every new completion,
+-- overwriting anything the caller passed, so an audit keeps the rate it
+-- was scored at no matter how the rate changes later.
+create function public.stamp_completion_iqd_rate()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  select o.iqd_per_point into new.iqd_per_point from public.organizations o where o.id = new.org_id;
+  return new;
+end;
+$$;
+
+create trigger task_completions_stamp_iqd_rate
+  before insert on public.task_completions
+  for each row execute function public.stamp_completion_iqd_rate();
+
+-- Owner-only: sets what one point is worth in IQD from now on. Past audits
+-- and period overrides keep the rate stamped on them.
+create function public.set_iqd_per_point(p_rate numeric)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+  v_org_id uuid;
+begin
+  select p.role, p.org_id into v_role, v_org_id
+  from public.profiles p where p.id = auth.uid();
+
+  if v_role is distinct from 'owner' then
+    raise exception 'only the org owner can change the point rate';
+  end if;
+  if p_rate is null or p_rate <= 0 then
+    raise exception 'the rate must be a positive amount';
+  end if;
+
+  update public.organizations set iqd_per_point = p_rate where id = v_org_id;
 end;
 $$;
 
@@ -2586,6 +2663,7 @@ grant execute on function public.set_branch_brands(uuid, uuid[]) to authenticate
 grant execute on function public.close_next_month() to authenticated;
 grant execute on function public.get_period_report(uuid) to authenticated;
 grant execute on function public.get_current_branch_summary() to authenticated;
+grant execute on function public.set_iqd_per_point(numeric) to authenticated;
 grant execute on function public.admin_create_user(text, text, text, text, uuid, text, uuid) to authenticated;
 grant execute on function public.admin_reset_password(uuid, text) to authenticated;
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;

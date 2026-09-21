@@ -51,6 +51,7 @@ function mapCompletion(row: any): TaskCompletion {
     subjectProfileId: row.subject_profile_id,
     shift: row.shift,
     pointsAwarded: row.points_awarded,
+    iqdPerPoint: Number(row.iqd_per_point),
     signatureUrl: row.signature_url,
     createdAt: row.created_at,
   };

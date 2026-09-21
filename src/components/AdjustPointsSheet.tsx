@@ -15,8 +15,8 @@ function when(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function fmtPoints(points: number): string {
-  return `${points} pts · ${Math.abs(points * 25000).toLocaleString()} IQD`;
+function fmtPoints(points: number, rate: number): string {
+  return `${points} pts · ${Math.abs(points * rate).toLocaleString()} IQD`;
 }
 
 export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
@@ -34,7 +34,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
       setAdjustments([]);
       return;
     }
-    setAmountText(String(Math.round((completion.pointsAwarded ?? 0) * 25000)));
+    setAmountText(String(Math.round((completion.pointsAwarded ?? 0) * completion.iqdPerPoint)));
     setError(null);
     setLoading(true);
     loadPointsAdjustments(completion.id)
@@ -58,7 +58,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
     setSaving(true);
     setError(null);
     try {
-      await adjustCompletionPoints(completion.id, parsedAmount / 25000);
+      await adjustCompletionPoints(completion.id, parsedAmount / completion.iqdPerPoint);
       onClose();
     } catch (e: any) {
       setError(e?.message ?? 'Could not save this adjustment.');
@@ -95,14 +95,14 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                   <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
                     <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>Original</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original, completion.iqdPerPoint)}</Text>
                   </View>
                   <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
                     <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>
                       {wasAdjusted ? 'Current (adjusted)' : 'Current'}
                     </Text>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: current < 0 ? c.rose : c.emerald }}>
-                      {fmtPoints(current)}
+                      {fmtPoints(current, completion.iqdPerPoint)}
                     </Text>
                   </View>
                 </View>
@@ -112,8 +112,8 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
                     <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>History</Text>
                     {adjustments.map((a) => (
                       <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
-                        {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * 25000).toLocaleString() : '—'} →{' '}
-                        {Math.round(a.newPoints * 25000).toLocaleString()} IQD
+                        {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * completion.iqdPerPoint).toLocaleString() : '—'} →{' '}
+                        {Math.round(a.newPoints * completion.iqdPerPoint).toLocaleString()} IQD
                       </Text>
                     ))}
                   </View>
