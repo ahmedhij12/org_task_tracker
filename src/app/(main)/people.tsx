@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -119,18 +119,22 @@ export default function PeopleScreen() {
                       <Pressable key={m.id} onPress={() => setManaging(m)}>
                         <Card>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                            <View
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: m.active ? c.indigo : c.textFaint,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{initials(m.name)}</Text>
-                            </View>
+                            {m.avatarUrl ? (
+                              <Image source={{ uri: m.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20, opacity: m.active ? 1 : 0.5 }} />
+                            ) : (
+                              <View
+                                style={{
+                                  width: 40,
+                                  height: 40,
+                                  borderRadius: 20,
+                                  backgroundColor: m.active ? c.indigo : c.textFaint,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{initials(m.name)}</Text>
+                              </View>
+                            )}
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{m.name}</Text>
                               <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>

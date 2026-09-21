@@ -52,6 +52,12 @@ function mapCompletion(row: any): TaskCompletion {
     shift: row.shift,
     pointsAwarded: row.points_awarded,
     iqdPerPoint: Number(row.iqd_per_point),
+    score: row.score != null ? Number(row.score) : null,
+    signedLat: row.signed_lat,
+    signedLng: row.signed_lng,
+    signedAccuracyM: row.signed_accuracy_m,
+    signedAddress: row.signed_address ?? null,
+    selfieUrl: row.selfie_url ?? null,
     signatureUrl: row.signature_url,
     createdAt: row.created_at,
   };
@@ -78,6 +84,9 @@ function mapProfile(row: any, teamIds: string[], teamBrandIds: Record<string, st
     mustChangePassword: row.must_change_password,
     active: row.active,
     recoveryEmail: row.recovery_email,
+    deletedAt: row.deleted_at ?? null,
+    avatarUrl: row.avatar_url ?? null,
+    employeeCode: row.employee_code ?? null,
     createdAt: row.created_at,
   };
 }
@@ -133,7 +142,10 @@ export interface SubmitPhotoInput {
 interface OrgDataContextValue {
   tasks: OrgTask[];
   teams: Team[];
+  /** Everyone current — deleted staff are left out, so no list or picker offers them. */
   members: Profile[];
+  /** Including deleted staff — only for resolving names on past records (History, audit detail). */
+  allMembers: Profile[];
   /** Audit log, already scoped by RLS to what this role is allowed to see. */
   history: TaskCompletion[];
   loading: boolean;
@@ -158,7 +170,14 @@ interface OrgDataContextValue {
     photoUrls?: string[],
     answers?: SubmitAnswerInput[],
     sectionPhotos?: SubmitPhotoInput[],
-    audit?: { subjectProfileId: string; shift: 'morning' | 'evening'; signatureUrl?: string }
+    audit?: {
+      subjectProfileId: string;
+      shift: 'morning' | 'evening';
+      signatureUrl?: string;
+      location?: { lat: number; lng: number; accuracy: number | null; address?: string | null };
+    },
+    /** Supervisor daily checklist proof: live selfie + where it was submitted. */
+    proof?: { selfieUrl: string; location: { lat: number; lng: number; accuracy: number | null; address?: string | null } }
   ) => Promise<void>;
   declareTaskOffDuty: (taskId: string, reason: string) => Promise<void>;
   /** Owner/team_admin only, matches the existing tasks DELETE RLS policy. Used for swipe-to-delete. */
@@ -306,7 +325,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
   );
 
   const setTaskCompletion = useCallback<OrgDataContextValue['setTaskCompletion']>(
-    async (taskId, completed, note, photoUrls, answers, sectionPhotos, audit) => {
+    async (taskId, completed, note, photoUrls, answers, sectionPhotos, audit, proof) => {
       const { error } = await supabase.rpc('set_task_completion', {
         p_task_id: taskId,
         p_completed: completed,
@@ -325,6 +344,8 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
         p_subject_profile_id: audit?.subjectProfileId ?? null,
         p_shift: audit?.shift ?? null,
         p_signature_url: audit?.signatureUrl ?? null,
+        p_location: audit?.location ?? proof?.location ?? null,
+        p_selfie_url: proof?.selfieUrl ?? null,
       });
       if (error) throw error;
       await refresh();
@@ -439,11 +460,14 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const currentMembers = useMemo(() => members.filter((m) => !m.deletedAt), [members]);
+
   const value = useMemo<OrgDataContextValue>(
     () => ({
       tasks,
       teams,
-      members,
+      members: currentMembers,
+      allMembers: members,
       history,
       loading,
       refresh,
@@ -466,6 +490,7 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
       tasks,
       teams,
       members,
+      currentMembers,
       history,
       loading,
       refresh,

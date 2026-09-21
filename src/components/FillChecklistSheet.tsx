@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, Image, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { ScoreRing } from '@/components/ScoreRing';
+import { computeScore } from '@/lib/score';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useOrgData } from '@/hooks/useOrgData';
 import { SignaturePad } from '@/components/SignaturePad';
+import { SigningLocation, type SignedLocation } from '@/components/SigningLocation';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 import type { OrgTask } from '@/types';
@@ -33,6 +37,7 @@ const UNASSIGNED_BRAND_ID = '__unassigned__';
 
 export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { profile, organization } = useAuth();
   const { templates, templateItems } = useChecklists();
   const { teams, members, brands, branchBrandIds, setTaskCompletion, declareTaskOffDuty } = useOrgData();
@@ -55,6 +60,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const [auditSubjectId, setAuditSubjectId] = useState<string | null>(null);
   const [auditShift, setAuditShift] = useState<'morning' | 'evening' | null>(null);
   const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
+  const [signedLocation, setSignedLocation] = useState<SignedLocation | null>(null);
+  const [selfie, setSelfie] = useState<{ uri: string; base64: string } | null>(null);
+  const handleLocation = useCallback((loc: SignedLocation | null) => setSignedLocation(loc), []);
 
   const branchMembers = members.filter(
     (m) =>
@@ -96,6 +104,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     setAuditSubjectId(null);
     setAuditShift(null);
     setSignatureSvg(null);
+    setSelfie(null);
   };
 
   const handleClose = () => {
@@ -115,12 +124,12 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     setError(null);
     const current = sectionPhotos[sectionTitle] ?? [];
     if (current.length >= MAX_PHOTOS_PER_SECTION) {
-      setError(`You can attach up to ${MAX_PHOTOS_PER_SECTION} photos per section.`);
+      setError(t('fill.maxPhotos', { count: MAX_PHOTOS_PER_SECTION }));
       return;
     }
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      setError('Camera access is needed to take photos. Enable it for Rungs in your device settings.');
+      setError(t('fill.cameraNeeded'));
       return;
     }
     try {
@@ -132,7 +141,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         }));
       }
     } catch (e: any) {
-      setError(e?.message ?? 'Could not open the camera on this device.');
+      setError(e?.message ?? t('fill.cameraFailed'));
     }
   };
 
@@ -154,12 +163,44 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     0
   );
   const totalIqd = Math.abs(totalPoints) * (organization?.iqdPerPoint ?? 25000);
+  const previewScore = computeScore(
+    items.map((it) => {
+      const a = answers[it.id]?.answer;
+      return { answer: a === true ? true : a === false ? false : null, weight: it.pointWeight };
+    })
+  );
+  // The supervisors' daily checklist carries proof they were really there.
+  const needsProof = !task.isAudit && !!template?.isSupervisorDaily;
   const canSubmit =
     unanswered.length === 0 &&
     missingNotes.length === 0 &&
     !submitting &&
     !!template &&
-    (!task.isAudit || !!signatureSvg);
+    (!task.isAudit || (!!signatureSvg && !!signedLocation)) &&
+    (!needsProof || (!!selfie && !!signedLocation));
+
+  const takeSelfie = async () => {
+    setError(null);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError(t('fill.selfieCameraNeeded'));
+      return;
+    }
+    try {
+      // Live front camera only — never the photo library.
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        cameraType: ImagePicker.CameraType.front,
+        quality: 0.5,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]?.base64) {
+        setSelfie({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      }
+    } catch (e: any) {
+      setError(e?.message ?? t('fill.cameraFailed'));
+    }
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -190,6 +231,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         signatureUrl = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
       }
 
+      let selfieUrl: string | undefined;
+      if (needsProof && selfie) {
+        const path = `${orgId}/selfie-${task.id}-${Date.now()}.jpg`;
+        const { error: selfieError } = await supabase.storage
+          .from('task-proofs')
+          .upload(path, decode(selfie.base64), { contentType: 'image/jpeg' });
+        if (selfieError) throw selfieError;
+        selfieUrl = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
+      }
+
       const payload = items.map((it, i) => {
         const a = answers[it.id]!.answer;
         return {
@@ -209,12 +260,13 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         payload,
         uploadedPhotos,
         task.isAudit && auditSubjectId && auditShift
-          ? { subjectProfileId: auditSubjectId, shift: auditShift, signatureUrl }
-          : undefined
+          ? { subjectProfileId: auditSubjectId, shift: auditShift, signatureUrl, location: signedLocation ?? undefined }
+          : undefined,
+        needsProof && selfieUrl && signedLocation ? { selfieUrl, location: signedLocation } : undefined
       );
       handleClose();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not submit this checklist. Please try again.');
+      setError(e?.message ?? t('fill.submitFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -228,7 +280,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
       await declareTaskOffDuty(task.id, offDutyReason.trim());
       handleClose();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not send this. Please try again.');
+      setError(e?.message ?? t('fill.sendFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -420,7 +472,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                   </View>
                 ) : (
                   <Pressable onPress={() => setMode('off_duty')} style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>Not on duty today?</Text>
+                    <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{t('fill.notOnDuty')}</Text>
                   </Pressable>
                 )}
 
@@ -473,7 +525,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                                 }}
                               >
                                 <Text style={{ fontSize: 13, fontWeight: '700', color: state?.answer === true ? '#fff' : c.text }}>
-                                  Yes
+                                  {t('fill.yes')}
                                 </Text>
                               </Pressable>
                               <Pressable
@@ -489,9 +541,11 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                                 }}
                               >
                                 <Text style={{ fontSize: 13, fontWeight: '700', color: state?.answer === false ? '#fff' : c.text }}>
-                                  No
+                                  {t('fill.no')}
                                 </Text>
                               </Pressable>
+                              {/* N/A is the auditor's alone (a question may not apply at a brand); supervisors answer Yes or No. */}
+                              {task.isAudit ? (
                               <Pressable
                                 onPress={() => setAnswer(it.id, 'na')}
                                 style={{
@@ -505,15 +559,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                                 }}
                               >
                                 <Text style={{ fontSize: 13, fontWeight: '700', color: state?.answer === 'na' ? '#fff' : c.text }}>
-                                  N/A
+                                  {t('fill.na')}
                                 </Text>
                               </Pressable>
+                              ) : null}
                             </View>
                             {state?.answer === false ? (
                               <TextInput
                                 value={state.note}
                                 onChangeText={(t) => setNote(it.id, t)}
-                                placeholder={template.requiresNoteOnNo ? 'Explain why (required)' : 'Note (optional)'}
+                                placeholder={template.requiresNoteOnNo ? t('fill.whyRequired') : t('fill.noteOptional')}
                                 placeholderTextColor={c.textFaint}
                                 style={{
                                   marginTop: 6,
@@ -581,31 +636,102 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                     <View
                       style={{
                         flexDirection: 'row',
-                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 16,
                         backgroundColor: c.bgSubtle,
-                        borderRadius: 12,
-                        padding: 12,
+                        borderRadius: 16,
+                        padding: 14,
                         marginBottom: 12,
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>Total</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
-                        {totalPoints} pts · {totalIqd.toLocaleString()} IQD
-                      </Text>
+                      {previewScore != null ? <ScoreRing score={previewScore} size={84} /> : null}
+                      <View style={{ flex: 1, gap: 8 }}>
+                        <View>
+                          <Text style={{ fontSize: 11, color: c.textMuted }}>{t('fill.penalty')}</Text>
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
+                            {totalPoints} pts
+                          </Text>
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 11, color: c.textMuted }}>{t('fill.amount')}</Text>
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
+                            {totalIqd.toLocaleString()} IQD
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>Sign to confirm</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('fill.signToConfirm')}</Text>
                     <SignaturePad onChange={setSignatureSvg} />
+                    <SigningLocation onChange={handleLocation} />
+                  </View>
+                ) : null}
+
+                {needsProof && unanswered.length === 0 && missingNotes.length === 0 ? (
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('fill.confirmHere')}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
+                      {selfie ? (
+                        <Image source={{ uri: selfie.uri }} style={{ width: 72, height: 72, borderRadius: 36 }} />
+                      ) : (
+                        <View
+                          style={{
+                            width: 72,
+                            height: 72,
+                            borderRadius: 36,
+                            borderWidth: 2,
+                            borderStyle: 'dashed',
+                            borderColor: c.border,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name="person" size={30} color={c.textFaint} />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, gap: 6 }}>
+                        <Text style={{ fontSize: 12, color: c.textMuted }}>
+                          {selfie ? t('fill.selfieTaken') : t('fill.selfieHint')}
+                        </Text>
+                        <Pressable
+                          onPress={takeSelfie}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            alignSelf: 'flex-start',
+                            backgroundColor: selfie ? c.card : c.indigo,
+                            borderWidth: 1,
+                            borderColor: selfie ? c.border : c.indigo,
+                            borderRadius: 999,
+                            paddingHorizontal: 14,
+                            paddingVertical: 8,
+                          }}
+                        >
+                          <Ionicons name="camera" size={15} color={selfie ? c.text : '#fff'} />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: selfie ? c.text : '#fff' }}>
+                            {selfie ? t('fill.retake') : t('fill.takeSelfie')}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                    <SigningLocation onChange={handleLocation} />
                   </View>
                 ) : null}
 
                 <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
                   {unanswered.length > 0
-                    ? `${unanswered.length} question${unanswered.length === 1 ? '' : 's'} left to answer`
+                    ? t('fill.left', { count: unanswered.length })
                     : missingNotes.length > 0
-                      ? `${missingNotes.length} "No" answer${missingNotes.length === 1 ? '' : 's'} need${missingNotes.length === 1 ? 's' : ''} a note`
+                      ? t('fill.needNote', { count: missingNotes.length })
                       : task.isAudit && !signatureSvg
-                        ? 'Sign above to submit'
-                        : 'Ready to submit'}
+                        ? t('fill.signAbove')
+                        : task.isAudit && !signedLocation
+                          ? t('fill.waitingLocation')
+                          : needsProof && !selfie
+                            ? t('fill.selfieToSubmit')
+                            : needsProof && !signedLocation
+                              ? t('fill.waitingLocation')
+                              : t('fill.ready')}
                 </Text>
 
                 {submitting ? (
@@ -614,17 +740,16 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                   </View>
                 ) : (
                   <>
-                    <PrimaryButton title="Submit" onPress={handleSubmit} disabled={!canSubmit} />
+                    <PrimaryButton title={t('fill.submit')} onPress={handleSubmit} disabled={!canSubmit} />
                     <View style={{ height: 10 }} />
-                    <SecondaryButton title="Cancel" onPress={handleClose} />
+                    <SecondaryButton title={t('fill.cancel')} onPress={handleClose} />
                   </>
                 )}
               </>
             ) : (
               <>
                 <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 14 }}>
-                  This tells your admin and team leader you're not on duty. They'll check and confirm — it doesn't clear
-                  this checklist on its own, and if it's not confirmed you'll still need to do it.
+                  {t('fill.offDutyExplain')}
                 </Text>
 
                 {error ? <ErrorBanner message={error} /> : null}
@@ -632,7 +757,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                 <TextInput
                   value={offDutyReason}
                   onChangeText={setOffDutyReason}
-                  placeholder="Why aren't you on duty today?"
+                  placeholder={t('fill.offDutyReason')}
                   placeholderTextColor={c.textFaint}
                   multiline
                   style={{
@@ -654,9 +779,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                   </View>
                 ) : (
                   <>
-                    <PrimaryButton title="Send" onPress={handleDeclareOffDuty} disabled={!offDutyReason.trim()} />
+                    <PrimaryButton title={t('fill.send')} onPress={handleDeclareOffDuty} disabled={!offDutyReason.trim()} />
                     <View style={{ height: 10 }} />
-                    <SecondaryButton title="Back to checklist" onPress={() => setMode('fill')} />
+                    <SecondaryButton title={t('fill.back')} onPress={() => setMode('fill')} />
                   </>
                 )}
               </>

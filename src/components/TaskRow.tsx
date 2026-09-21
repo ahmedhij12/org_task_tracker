@@ -15,9 +15,11 @@ interface Props {
   onPressCheckbox?: () => void;
   /** When set, swiping the row left reveals a Delete button. Owner/team_admin only — matches the existing tasks DELETE RLS policy. */
   onDelete?: () => void;
+  /** When set, shows a pencil at the end of the row (e.g. edit an audit type's questions and points). */
+  onEdit?: () => void;
 }
 
-export function TaskRow({ task, members, showAssignee, canComplete, onPressCheckbox, onDelete }: Props) {
+export function TaskRow({ task, members, showAssignee, canComplete, onPressCheckbox, onDelete, onEdit }: Props) {
   const c = useThemeColors();
   const [expanded, setExpanded] = useState(false);
   const overdue = isOverdue(task);
@@ -135,6 +137,28 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
             </View>
           ) : null}
         </View>
+
+        {onEdit ? (
+          <Pressable
+            onPress={onEdit}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Edit questions and points"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: c.bgSubtle,
+              borderWidth: 1,
+              borderColor: c.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+              alignSelf: 'center',
+            }}
+          >
+            <Ionicons name="pencil" size={15} color={c.text} />
+          </Pressable>
+        ) : null}
       </Pressable>
 
       {expanded && hasProof ? (

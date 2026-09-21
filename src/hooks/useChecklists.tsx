@@ -13,6 +13,7 @@ function mapTemplate(row: any): ChecklistTemplate {
     orgId: row.org_id,
     name: row.name,
     requiresNoteOnNo: row.requires_note_on_no,
+    isSupervisorDaily: row.is_supervisor_daily ?? false,
     archived: row.archived,
     createdBy: row.created_by,
     createdAt: row.created_at,

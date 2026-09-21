@@ -27,6 +27,12 @@ export interface Profile {
   active: boolean;
   /** Optional, added later by the user, only used for password recovery. */
   recoveryEmail: string | null;
+  /** Set once an owner deletes this (already deactivated) person. Kept only so past audits keep their name. */
+  deletedAt: string | null;
+  /** Self-set profile photo. */
+  avatarUrl: string | null;
+  /** Company ID code used at check-in/out, self-set. */
+  employeeCode: string | null;
   createdAt: string;
 }
 
@@ -134,6 +140,15 @@ export interface TaskCompletion {
   pointsAwarded: number | null;
   /** The org's IQD-per-point rate when this row was created — a later rate change never rewrites it. */
   iqdPerPoint: number;
+  /** Audit quality out of 100, computed server-side from the checklist answers. Null for non-audits and template-less audits. */
+  score: number | null;
+  /** Audit-only: where the auditor's phone was when they signed. */
+  signedLat: number | null;
+  signedLng: number | null;
+  signedAccuracyM: number | null;
+  signedAddress: string | null;
+  /** Supervisor daily checklist: the live selfie taken at submit. */
+  selfieUrl: string | null;
   /** The auditor's signature. Only set on an is_audit completion. */
   signatureUrl: string | null;
   createdAt: string;
@@ -192,6 +207,8 @@ export interface ChecklistTemplate {
   name: string;
   /** A note is required to explain a "No" answer; never required on "Yes". Photos are always optional. */
   requiresNoteOnNo: boolean;
+  /** The one checklist every supervisor fills daily — needs a live selfie + location at submit. */
+  isSupervisorDaily: boolean;
   archived: boolean;
   createdBy: string;
   createdAt: string;
@@ -269,6 +286,9 @@ export interface BranchSummaryRow {
   /** Only set by get_period_report (a closed period never re-sums live): the untouched natural sum, before any period-level adjustment. */
   rawPoints?: number;
   rawIqdAmount?: number;
+  /** Only set by get_current_branch_summary: sum and count of this month's audit scores. */
+  scoreSum?: number;
+  scoreCount?: number;
 }
 
 /** One entry in the append-only trail of a whole period's total being adjusted for one supervisor at once. */

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useOrgData } from '@/hooks/useOrgData';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
@@ -21,6 +22,7 @@ function fmtPoints(points: number, rate: number): string {
 
 export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
   const c = useThemeColors();
+  const { t } = useTranslation();
   const { loadPointsAdjustments, adjustCompletionPoints } = useOrgData();
 
   const [adjustments, setAdjustments] = useState<PointsAdjustment[]>([]);
@@ -39,7 +41,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
     setLoading(true);
     loadPointsAdjustments(completion.id)
       .then(setAdjustments)
-      .catch((e) => setError(e?.message ?? 'Could not load the adjustment history.'))
+      .catch((e) => setError(e?.message ?? t('pointsSheet.loadFailed')))
       .finally(() => setLoading(false));
   }, [completion?.id]);
 
@@ -52,7 +54,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
   const handleSave = async () => {
     const parsedAmount = Number(amountText);
     if (!Number.isFinite(parsedAmount)) {
-      setError('Enter a valid amount.');
+      setError(t('pointsSheet.invalid'));
       return;
     }
     setSaving(true);
@@ -61,7 +63,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
       await adjustCompletionPoints(completion.id, parsedAmount / completion.iqdPerPoint);
       onClose();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not save this adjustment.');
+      setError(e?.message ?? t('pointsSheet.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -82,7 +84,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
             }}
           >
             <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 2 }}>
-              {canEdit ? 'Adjust points' : 'Points'}
+              {canEdit ? t('pointsSheet.adjust') : t('pointsSheet.points')}
             </Text>
             <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>{completion.taskTitle}</Text>
 
@@ -94,12 +96,12 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
               <>
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                   <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
-                    <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>Original</Text>
+                    <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>{t('pointsSheet.original')}</Text>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{fmtPoints(original, completion.iqdPerPoint)}</Text>
                   </View>
                   <View style={{ flex: 1, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
                     <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>
-                      {wasAdjusted ? 'Current (adjusted)' : 'Current'}
+                      {wasAdjusted ? t('pointsSheet.currentAdjusted') : t('pointsSheet.current')}
                     </Text>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: current < 0 ? c.rose : c.emerald }}>
                       {fmtPoints(current, completion.iqdPerPoint)}
@@ -109,7 +111,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
 
                 {adjustments.length > 0 ? (
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>History</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>{t('pointsSheet.history')}</Text>
                     {adjustments.map((a) => (
                       <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
                         {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * completion.iqdPerPoint).toLocaleString() : '—'} →{' '}
@@ -121,7 +123,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
 
                 {canEdit ? (
                   <>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: c.text, marginBottom: 6 }}>New amount (IQD)</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: c.text, marginBottom: 6 }}>{t('pointsSheet.newAmount')}</Text>
                     <TextInput
                       value={amountText}
                       onChangeText={setAmountText}
@@ -140,7 +142,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
                     {saving ? (
                       <ActivityIndicator color={c.indigo} />
                     ) : (
-                      <PrimaryButton title="Save" onPress={handleSave} />
+                      <PrimaryButton title={t('pointsSheet.save')} onPress={handleSave} />
                     )}
                     <View style={{ height: 10 }} />
                   </>
@@ -148,7 +150,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
               </>
             )}
 
-            <SecondaryButton title="Close" onPress={onClose} disabled={saving} />
+            <SecondaryButton title={t('pointsSheet.close')} onPress={onClose} disabled={saving} />
           </View>
         </KeyboardAvoidingView>
       </View>

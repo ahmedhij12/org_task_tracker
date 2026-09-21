@@ -8,6 +8,9 @@ import { SecondaryButton, PrimaryButton, ErrorBanner, useThemeColors } from '@/c
 import { textAlignFor } from '@/lib/rtl';
 import { exportAuditReport } from '@/lib/exportAuditReport';
 import { needsReview } from '@/types';
+import { ScoreRing } from '@/components/ScoreRing';
+import { LocationMap } from '@/components/LocationMap';
+import { PhotoViewer } from '@/components/PhotoViewer';
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
 
 interface Props {
@@ -21,12 +24,13 @@ function when(iso: string): string {
 
 export function CompletionDetailSheet({ completion, onClose }: Props) {
   const c = useThemeColors();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { profile } = useAuth();
-  const { members, teams, tasks, loadCompletionDetail, reviewOffDuty, reviewTaskCompletion } = useOrgData();
+  const { allMembers: members, teams, tasks, loadCompletionDetail, reviewOffDuty, reviewTaskCompletion } = useOrgData();
 
   const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
   const [photos, setPhotos] = useState<ChecklistSectionPhoto[]>([]);
+  const [viewer, setViewer] = useState<{ urls: string[]; index: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [reviewNote, setReviewNote] = useState('');
   const [reviewing, setReviewing] = useState(false);
@@ -47,7 +51,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
         setAnswers(answers);
         setPhotos(photos);
       })
-      .catch((e) => setError(e?.message ?? 'Could not load this checklist.'))
+      .catch((e) => setError(e?.message ?? t('detail.loadFailed')))
       .finally(() => setLoading(false));
   }, [completion?.id]);
 
@@ -55,7 +59,13 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
 
   const task = tasks.find((t) => t.id === completion.taskId);
   const isManager = profile?.role === 'owner' || profile?.role === 'team_admin';
-  const canReview = isManager && needsReview(completion, task ?? { requiresReview: false });
+  const openViewer = (urls: string[], index: number) => setViewer({ urls, index });
+  const canReview =
+    isManager &&
+    (needsReview(completion, task ?? { requiresReview: false }) ||
+      (completion.action === 'completed' && !!completion.selfieUrl && !completion.reviewedBy));
+  const reviewerName = members.find((m) => m.id === completion.reviewedBy)?.name ?? t('detail.admin');
+  const isSupervisorProof = !!completion.selfieUrl;
   const actorName = members.find((m) => m.id === completion.actorId)?.name ?? 'Someone';
 
   const photosBySection = new Map<string, ChecklistSectionPhoto[]>();
@@ -88,7 +98,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
         locale: i18n.language,
       });
     } catch (e: any) {
-      setError(e?.message ?? 'Could not export this report.');
+      setError(e?.message ?? t('detail.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -101,7 +111,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
       await reviewOffDuty(completion.id, approve, reviewNote.trim() || undefined);
       onClose();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not save this review.');
+      setError(e?.message ?? t('detail.reviewFailed'));
     } finally {
       setReviewing(false);
     }
@@ -114,7 +124,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
       await reviewTaskCompletion(completion.id, reviewNote.trim() || undefined);
       onClose();
     } catch (e: any) {
-      setError(e?.message ?? 'Could not save this review.');
+      setError(e?.message ?? t('detail.reviewFailed'));
     } finally {
       setReviewing(false);
     }
@@ -149,27 +159,40 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
             </View>
             <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
               {actorName} • {when(completion.createdAt)}
-              {isChecklistCompletion ? ` • ${completion.yesCount} yes / ${completion.noCount} no` : ''}
-              {completion.reviewedBy ? ' • reviewed' : ''}
+              {isChecklistCompletion ? ` • ${t('detail.yesNo', { yes: completion.yesCount, no: completion.noCount })}` : ''}
             </Text>
+
+            {completion.reviewedBy && completion.action === 'completed' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.emeraldSoft, borderRadius: 12, padding: 10, marginBottom: 12 }}>
+                <Ionicons name="checkmark-circle" size={18} color={c.emerald} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: c.emerald }}>
+                    {t('detail.verifiedBy', { name: reviewerName, time: completion.reviewedAt ? when(completion.reviewedAt) : '' })}
+                  </Text>
+                  {completion.reviewNote ? (
+                    <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>"{completion.reviewNote}"</Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
 
             {error ? <ErrorBanner message={error} /> : null}
 
             {completion.action === 'off_duty' ? (
               <View>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 4 }}>Off-duty claim</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 4 }}>{t('detail.offDutyClaim')}</Text>
                 <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 12 }}>{completion.offDutyReason}</Text>
 
                 {completion.status === 'off_duty_approved' ? (
                   <Text style={{ fontSize: 12, color: c.emerald, fontWeight: '700', marginBottom: 12 }}>
-                    ✓ Confirmed{completion.reviewNote ? ` — ${completion.reviewNote}` : ''}
+                    ✓ {t('detail.confirmed')}{completion.reviewNote ? ` — ${completion.reviewNote}` : ''}
                   </Text>
                 ) : completion.status === 'off_duty_rejected' ? (
                   <Text style={{ fontSize: 12, color: c.rose, fontWeight: '700', marginBottom: 12 }}>
-                    ✕ Not confirmed{completion.reviewNote ? ` — ${completion.reviewNote}` : ''} — the checklist is due again.
+                    ✕ {t('detail.notConfirmed')}{completion.reviewNote ? ` — ${completion.reviewNote}` : ''} — {t('detail.dueAgain')}
                   </Text>
                 ) : (
-                  <Text style={{ fontSize: 12, color: c.amber, fontWeight: '700', marginBottom: 12 }}>Waiting for review</Text>
+                  <Text style={{ fontSize: 12, color: c.amber, fontWeight: '700', marginBottom: 12 }}>{t('detail.waitingReview')}</Text>
                 )}
 
                 {canReview ? (
@@ -177,7 +200,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                     <TextInput
                       value={reviewNote}
                       onChangeText={setReviewNote}
-                      placeholder="Note (optional) — e.g. what HR confirmed"
+                      placeholder={t('detail.hrNote')}
                       placeholderTextColor={c.textFaint}
                       style={{
                         borderWidth: 1,
@@ -197,13 +220,13 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                           onPress={() => handleReviewOffDuty(true)}
                           style={{ flex: 1, alignItems: 'center', backgroundColor: c.emerald, borderRadius: 12, paddingVertical: 12 }}
                         >
-                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Confirm off-duty</Text>
+                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('detail.confirmOffDuty')}</Text>
                         </Pressable>
                         <Pressable
                           onPress={() => handleReviewOffDuty(false)}
                           style={{ flex: 1, alignItems: 'center', backgroundColor: c.rose, borderRadius: 12, paddingVertical: 12 }}
                         >
-                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Not confirmed</Text>
+                          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('detail.notConfirmed')}</Text>
                         </Pressable>
                       </View>
                     )}
@@ -216,6 +239,43 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                   <ActivityIndicator color={c.indigo} style={{ marginVertical: 20 }} />
                 ) : isChecklistCompletion ? (
                   <ScrollView style={{ flexShrink: 1, minHeight: 0 }}>
+                    {completion.score != null ? (
+                      <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                        <ScoreRing score={completion.score} size={104} />
+                      </View>
+                    ) : null}
+
+                    {completion.selfieUrl || (completion.signedLat != null && completion.signedLng != null) ? (
+                      <View style={{ backgroundColor: c.bgSubtle, borderRadius: 14, padding: 10, marginBottom: 14, gap: 8 }}>
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                          {completion.selfieUrl ? (
+                            <Pressable onPress={() => openViewer([completion.selfieUrl!], 0)}>
+                              <Image source={{ uri: completion.selfieUrl }} style={{ width: 120, height: 150, borderRadius: 12 }} resizeMode="cover" />
+                            </Pressable>
+                          ) : null}
+                          {completion.signedLat != null && completion.signedLng != null ? (
+                            <View style={{ flex: 1 }}>
+                              <LocationMap lat={completion.signedLat} lng={completion.signedLng} height={150} />
+                            </View>
+                          ) : null}
+                        </View>
+                        {completion.signedLat != null ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
+                            <Ionicons name="location" size={16} color={c.emerald} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>
+                                {isSupervisorProof ? t('detail.submittedHere') : t('detail.signedHere')} · {when(completion.createdAt)}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: c.textMuted }} numberOfLines={2}>
+                                {completion.signedAddress ?? t('detail.tapMap')}
+                                {completion.signedAccuracyM != null ? ` · ±${Math.round(completion.signedAccuracyM)} m` : ''}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+
                     {answers.map((a) => {
                       const showHeader = a.sectionTitle && a.sectionTitle !== lastSection;
                       if (showHeader) lastSection = a.sectionTitle;
@@ -245,8 +305,10 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                           {sectionPhotosForThis && sectionPhotosForThis.length > 0 ? (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                               <View style={{ flexDirection: 'row', gap: 8 }}>
-                                {sectionPhotosForThis.map((p) => (
-                                  <Image key={p.id} source={{ uri: p.photoUrl }} style={{ width: 100, height: 100, borderRadius: 10 }} resizeMode="cover" />
+                                {sectionPhotosForThis.map((p, i) => (
+                                  <Pressable key={p.id} onPress={() => openViewer(sectionPhotosForThis.map((x) => x.photoUrl), i)}>
+                                    <Image source={{ uri: p.photoUrl }} style={{ width: 100, height: 100, borderRadius: 10 }} resizeMode="cover" />
+                                  </Pressable>
                                 ))}
                               </View>
                             </ScrollView>
@@ -258,26 +320,28 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                 ) : (
                   <ScrollView style={{ flexShrink: 1, minHeight: 0 }}>
                     {completion.action === 'reopened' ? (
-                      <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 12 }}>This task was reopened.</Text>
+                      <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 12 }}>{t('detail.reopened')}</Text>
                     ) : (
                       <>
                         {completion.wasLate ? (
                           <Text style={{ fontSize: 12, color: c.rose, fontWeight: '700', marginBottom: 8 }}>
-                            Late — deadline was {completion.dueAt ? when(completion.dueAt) : 'earlier'}
+                            {t('detail.late', { time: completion.dueAt ? when(completion.dueAt) : '' })}
                           </Text>
                         ) : null}
                         {completion.photoUrls.length > 0 ? (
                           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                             <View style={{ flexDirection: 'row', gap: 8 }}>
-                              {completion.photoUrls.map((url) => (
-                                <Image key={url} source={{ uri: url }} style={{ width: 140, height: 140, borderRadius: 12 }} resizeMode="cover" />
+                              {completion.photoUrls.map((url, i) => (
+                                <Pressable key={url} onPress={() => openViewer(completion.photoUrls, i)}>
+                                  <Image source={{ uri: url }} style={{ width: 140, height: 140, borderRadius: 12 }} resizeMode="cover" />
+                                </Pressable>
                               ))}
                             </View>
                           </ScrollView>
                         ) : null}
                         {completion.note ? <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 8 }}>"{completion.note}"</Text> : null}
                         {!completion.note && completion.photoUrls.length === 0 ? (
-                          <Text style={{ fontSize: 13, color: c.textFaint, marginBottom: 8 }}>No note or photos were attached.</Text>
+                          <Text style={{ fontSize: 13, color: c.textFaint, marginBottom: 8 }}>{t('detail.noProof')}</Text>
                         ) : null}
                       </>
                     )}
@@ -286,11 +350,13 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
 
                 {canReview ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: 12, marginTop: 12 }}>
-                    <Text style={{ fontSize: 12, color: c.amber, fontWeight: '700', marginBottom: 8 }}>Needs your review</Text>
+                    <Text style={{ fontSize: 12, color: c.amber, fontWeight: '700', marginBottom: 8 }}>
+                      {isSupervisorProof ? t('detail.checkThenVerify') : t('detail.needsReview')}
+                    </Text>
                     <TextInput
                       value={reviewNote}
                       onChangeText={setReviewNote}
-                      placeholder="Note (optional)"
+                      placeholder={t('detail.noteOptional')}
                       placeholderTextColor={c.textFaint}
                       style={{
                         borderWidth: 1,
@@ -305,7 +371,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                     {reviewing ? (
                       <ActivityIndicator color={c.indigo} />
                     ) : (
-                      <PrimaryButton title="Mark reviewed" onPress={handleAcknowledge} />
+                      <PrimaryButton title={isSupervisorProof ? t('detail.verify') : t('detail.markReviewed')} onPress={handleAcknowledge} />
                     )}
                   </View>
                 ) : null}
@@ -332,17 +398,18 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                     }}
                   >
                     <Ionicons name="document-text-outline" size={18} color={c.text} />
-                    <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>Export report</Text>
+                    <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>{t('detail.export')}</Text>
                   </Pressable>
                 )}
               </>
             ) : null}
 
             <View style={{ height: 10 }} />
-            <SecondaryButton title="Close" onPress={onClose} />
+            <SecondaryButton title={t('detail.close')} onPress={onClose} />
           </View>
         </KeyboardAvoidingView>
       </View>
+      <PhotoViewer urls={viewer?.urls ?? []} index={viewer ? viewer.index : null} onClose={() => setViewer(null)} />
     </Modal>
   );
 }

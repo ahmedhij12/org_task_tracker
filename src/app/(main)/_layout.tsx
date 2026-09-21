@@ -5,19 +5,31 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { OrgDataProvider } from '@/hooks/useOrgData';
 import { ChecklistDataProvider } from '@/hooks/useChecklists';
+import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useThemeColors } from '@/components/ui';
 
 export default function MainLayout() {
+  usePushRegistration();
+
+  return (
+    <OrgDataProvider>
+      <ChecklistDataProvider>
+        <MainTabs />
+      </ChecklistDataProvider>
+    </OrgDataProvider>
+  );
+}
+
+// Inside the data providers so the Checklists tab can show a live badge.
+function MainTabs() {
   const { profile } = useAuth();
   const c = useThemeColors();
   const { t } = useTranslation();
   const isOwner = profile?.role === 'owner';
   const isEmployee = profile?.role === 'employee';
-  usePushRegistration();
+  const unverified = useUnverifiedChecklistCount();
 
   return (
-    <OrgDataProvider>
-    <ChecklistDataProvider>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -29,8 +41,8 @@ export default function MainLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: isEmployee ? t('mainTabs.myTasks') : t('mainTabs.dashboard'),
-            tabBarIcon: ({ color, size }) => <Ionicons name={isEmployee ? 'list' : 'grid'} size={size} color={color} />,
+            title: t('mainTabs.dashboard'),
+            tabBarIcon: ({ color, size }) => <Ionicons name="grid" size={size} color={color} />,
           }}
         />
         <Tabs.Screen
@@ -47,6 +59,15 @@ export default function MainLayout() {
             title: t('mainTabs.report'),
             href: isOwner ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="checklists"
+          options={{
+            title: t('mainTabs.checklists'),
+            href: isOwner ? undefined : null,
+            tabBarBadge: isOwner && unverified > 0 ? unverified : undefined,
+            tabBarIcon: ({ color, size }) => <Ionicons name="clipboard" size={size} color={color} />,
           }}
         />
         <Tabs.Screen
@@ -79,7 +100,5 @@ export default function MainLayout() {
           }}
         />
       </Tabs>
-    </ChecklistDataProvider>
-    </OrgDataProvider>
   );
 }

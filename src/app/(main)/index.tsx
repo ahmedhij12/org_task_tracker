@@ -15,7 +15,11 @@ import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
 import { bucketTasks, effectiveTaskCompleted, latestCompletionForTask } from '@/lib/taskUtils';
-import { groupBranchSummary } from '@/lib/branchSummary';
+import { groupBranchSummary, type BranchGroup } from '@/lib/branchSummary';
+import { ScorePill } from '@/components/ScoreRing';
+import { formatScore, gradeColors, gradeOf } from '@/lib/score';
+import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
+import { MyAuditScore } from '@/components/MyAuditScore';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
 export default function MainIndex() {
@@ -167,12 +171,13 @@ function OwnerDashboard() {
   const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
   const { currentSummary, loading, refresh, loadSupervisorStreaks } = useReports();
-  const { tasks, history, setTaskCompletion, deleteTask } = useOrgData();
+  const { tasks, history, setTaskCompletion } = useOrgData();
   const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
   const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // The owner is never assigned an ordinary task by anyone else (assignment
   // only flows downward) — in practice this is their own audit tasks, but
@@ -257,10 +262,20 @@ function OwnerDashboard() {
         {myTasks.length > 0 ? (
           <>
             <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
-              {t('dashboard.myTasksHeading')}
+              {t('dashboard.auditTypesHeading')}
             </Text>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginTop: -4, marginBottom: 8 }}>{t('dashboard.auditTypesHint')}</Text>
+            {/* No swipe-to-delete here: with no "+" on the admin dashboard, deleting an audit type would leave no way to start that audit. */}
             {myTasks.map((tsk) => (
-              <TaskRow key={tsk.id} task={tsk} members={[]} showAssignee={false} canComplete onPressCheckbox={() => handlePressCheckbox(tsk)} onDelete={() => deleteTask(tsk.id).catch((e) => console.warn(e))} />
+              <TaskRow
+                key={tsk.id}
+                task={tsk}
+                members={[]}
+                showAssignee={false}
+                canComplete
+                onPressCheckbox={() => handlePressCheckbox(tsk)}
+                onEdit={tsk.templateId ? () => setEditingTemplateId(tsk.templateId) : undefined}
+              />
             ))}
           </>
         ) : null}
@@ -268,6 +283,8 @@ function OwnerDashboard() {
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}
         </Text>
+
+        <BranchScoreboard branches={branches} />
 
         {branches.length === 0 ? (
           <EmptyState text={t('dashboard.noBranchActivity')} />
@@ -283,7 +300,8 @@ function OwnerDashboard() {
                   <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>{branch.branchName}</Text>
                   <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={c.textMuted} />
                 </Pressable>
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {branch.avgScore != null ? <ScorePill score={branch.avgScore} showGrade={false} /> : null}
                   <View
                     style={{
                       backgroundColor: branch.totalPoints < 0 ? c.roseSoft : c.emeraldSoft,
@@ -352,30 +370,11 @@ function OwnerDashboard() {
           onClose={() => setChecklistTask(null)}
         />
       ) : null}
-
-      <Pressable
-        onPress={() => router.push('/(main)/create-task')}
-        accessibilityRole="button"
-        accessibilityLabel={t('dashboard.addTask')}
-        style={{
-          position: 'absolute',
-          right: 20,
-          bottom: 24,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: c.gold,
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: c.gold,
-          shadowOpacity: 0.4,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 6,
-        }}
-      >
-        <Ionicons name="add" size={28} color={GOLD_INK} />
-      </Pressable>
+      <CreateChecklistTemplateSheet
+        visible={!!editingTemplateId}
+        editingTemplateId={editingTemplateId ?? undefined}
+        onClose={() => setEditingTemplateId(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -392,6 +391,18 @@ function EmployeeHome() {
     .filter((t) => t.assigneeId === profile?.id || t.assigneeId === null)
     .map((t) => ({ ...t, completed: effectiveTaskCompleted(t, history) }));
   const { overdue, today, upcoming, completed } = bucketTasks(myTasks);
+
+  // Today's daily checklist (the one carrying a selfie) and whether an
+  // admin has checked it yet.
+  const todaysChecklist = history.find(
+    (h) =>
+      h.actorId === profile?.id &&
+      h.action === 'completed' &&
+      !!h.selfieUrl &&
+      new Date(h.createdAt).toDateString() === new Date().toDateString()
+  );
+  const reviewer = todaysChecklist?.reviewedBy ? members.find((m) => m.id === todaysChecklist.reviewedBy) : null;
+  const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
 
   const handlePressCheckbox = (task: OrgTask) => {
     if (task.templateId) {
@@ -419,9 +430,40 @@ function EmployeeHome() {
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginTop: 2 }}>{t('dashboard.myTasksTitle')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{organization?.name}</Text>
 
-        {myTasks.length === 0 ? (
-          <EmptyState text={t('dashboard.nothingAssigned')} />
-        ) : (
+        {todaysChecklist ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 16,
+              backgroundColor: todaysChecklist.reviewedBy ? c.emeraldSoft : c.amberSoft,
+            }}
+          >
+            <Ionicons
+              name={todaysChecklist.reviewedBy ? 'checkmark-circle' : 'time'}
+              size={26}
+              color={todaysChecklist.reviewedBy ? c.emerald : c.amber}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: todaysChecklist.reviewedBy ? c.emerald : c.amber }}>
+                {todaysChecklist.reviewedBy
+                  ? t('checklists.verifiedBy', { name: reviewer?.name ?? 'Admin', time: timeOf(todaysChecklist.reviewedAt ?? todaysChecklist.createdAt) })
+                  : t('checklists.waiting')}
+              </Text>
+              <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>
+                {t('checklists.submittedAt', { time: timeOf(todaysChecklist.createdAt) })}
+              </Text>
+              {todaysChecklist.reviewNote ? (
+                <Text style={{ fontSize: 12, color: c.text, marginTop: 4 }}>"{todaysChecklist.reviewNote}"</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {myTasks.length === 0 ? null : (
           <View style={{ marginTop: 16 }}>
             <Section title={t('dashboard.sectionOverdue')} count={overdue.length} iconColor={c.rose}>
               {overdue.map((task) => (
@@ -433,18 +475,11 @@ function EmployeeHome() {
                 <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
             </Section>
-            <Section title={t('dashboard.sectionUpcoming')} count={upcoming.length} iconColor={c.sky} defaultOpen={false}>
-              {upcoming.map((task) => (
-                <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
-              ))}
-            </Section>
-            <Section title={t('dashboard.sectionCompleted')} count={completed.length} iconColor={c.emerald} defaultOpen={false}>
-              {completed.map((task) => (
-                <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
-              ))}
-            </Section>
           </View>
         )}
+
+        <MyAuditScore />
+
       </ScrollView>
 
       {proofTask ? (
@@ -515,10 +550,51 @@ function SupervisorSummaryRow({ row, locale, streak }: { row: BranchSummaryRow; 
           </View>
         ) : null}
       </View>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: row.totalPoints < 0 ? c.rose : c.emerald }}>
-        {row.totalPoints} · {row.iqdAmount.toLocaleString(locale)} {t('dashboard.iqdSuffix')}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {row.scoreCount ? <ScorePill score={(row.scoreSum ?? 0) / row.scoreCount} showGrade={false} /> : null}
+        <Text style={{ fontSize: 13, fontWeight: '600', color: row.totalPoints < 0 ? c.rose : c.emerald }}>
+          {row.totalPoints} · {row.iqdAmount.toLocaleString(locale)} {t('dashboard.iqdSuffix')}
+        </Text>
+      </View>
     </View>
+  );
+}
+
+/** Best-to-worst by average audit score this month — the "which branch is doing well" view. */
+function BranchScoreboard({ branches }: { branches: BranchGroup[] }) {
+  const c = useThemeColors();
+  const { t } = useTranslation();
+  const scored = branches.filter((b) => b.avgScore != null).sort((a, b) => b.avgScore! - a.avgScore!);
+  if (scored.length === 0) return null;
+  return (
+    <Card style={{ marginBottom: 14 }}>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, marginBottom: 12 }}>{t('score.branchScores')}</Text>
+      <View style={{ gap: 12 }}>
+        {scored.map((b, i) => {
+          const grade = gradeOf(b.avgScore!);
+          const { fg } = gradeColors(grade, c);
+          return (
+            <View key={b.branchId}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+                <Text style={{ width: 22, fontSize: 13, fontWeight: '800', color: i === 0 ? c.gold : c.textFaint }}>{i + 1}</Text>
+                <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: c.text }} numberOfLines={1}>
+                  {b.branchName}
+                </Text>
+                <Text style={{ fontSize: 11, color: c.textMuted, marginRight: 8 }}>
+                  {t('score.auditsCount', { count: b.scoreCount })}
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: fg }}>{formatScore(b.avgScore!)}</Text>
+                <Text style={{ fontSize: 11, color: c.textMuted }}>/100</Text>
+              </View>
+              <View style={{ marginLeft: 22, height: 8, borderRadius: 4, backgroundColor: c.bgSubtle, overflow: 'hidden' }}>
+                <View style={{ width: `${Math.min(100, b.avgScore!)}%`, height: '100%', borderRadius: 4, backgroundColor: fg }} />
+              </View>
+              <Text style={{ marginLeft: 22, marginTop: 3, fontSize: 11, fontWeight: '700', color: fg }}>{t(`score.${grade}`)}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </Card>
   );
 }
 

@@ -40,12 +40,16 @@ interface AuthContextValue extends AuthState {
   }) => Promise<string>;
   adminResetPassword: (profileId: string, newPassword: string) => Promise<void>;
   adminSetUserActive: (profileId: string, active: boolean) => Promise<void>;
+  /** Owner-only, deactivated accounts only. Keeps their past audits. */
+  adminDeleteUser: (profileId: string) => Promise<void>;
   /** Adds a further team on top of whatever the person already belongs to. */
   addProfileToTeam: (profileId: string, teamId: string, brandId?: string | null) => Promise<void>;
   removeProfileFromTeam: (profileId: string, teamId: string) => Promise<void>;
   /** Used by the forced-change screen; clears mustChangePassword on success. */
   changeOwnPassword: (newPassword: string) => Promise<void>;
   addRecoveryEmail: (email: string) => Promise<void>;
+  /** Anyone: their own display name, company ID code and photo. */
+  updateMyProfile: (name: string, employeeCode: string, avatarUrl: string | null) => Promise<void>;
   /** Owner-only: what one penalty point is worth in IQD from now on. */
   setIqdPerPoint: (rate: number) => Promise<void>;
   signOut: () => Promise<void>;
@@ -86,6 +90,9 @@ function mapProfile(
     must_change_password: boolean;
     active: boolean;
     recovery_email: string | null;
+    deleted_at?: string | null;
+    avatar_url?: string | null;
+    employee_code?: string | null;
     created_at: string;
   },
   teamIds: string[],
@@ -103,6 +110,9 @@ function mapProfile(
     mustChangePassword: row.must_change_password,
     active: row.active,
     recoveryEmail: row.recovery_email,
+    deletedAt: row.deleted_at ?? null,
+    avatarUrl: row.avatar_url ?? null,
+    employeeCode: row.employee_code ?? null,
     createdAt: row.created_at,
   };
 }
@@ -291,6 +301,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
+  const adminDeleteUser: AuthContextValue['adminDeleteUser'] = async (profileId) => {
+    const { error } = await supabase.rpc('admin_delete_user', { p_target_profile_id: profileId });
+    if (error) throw error;
+  };
+
   const adminSetUserActive: AuthContextValue['adminSetUserActive'] = async (profileId, active) => {
     const { error } = await supabase.rpc('admin_set_user_active', {
       p_target_profile_id: profileId,
@@ -342,6 +357,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
+  const updateMyProfile: AuthContextValue['updateMyProfile'] = async (name, employeeCode, avatarUrl) => {
+    const { error } = await supabase.rpc('update_my_profile', {
+      p_name: name,
+      p_employee_code: employeeCode,
+      p_avatar_url: avatarUrl ?? '',
+    });
+    if (error) throw error;
+    await refreshProfile();
+  };
+
   const setIqdPerPoint: AuthContextValue['setIqdPerPoint'] = async (rate) => {
     const { error } = await supabase.rpc('set_iqd_per_point', { p_rate: rate });
     if (error) throw error;
@@ -377,11 +402,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       adminCreateUser,
       adminResetPassword,
       adminSetUserActive,
+      adminDeleteUser,
       addProfileToTeam,
       removeProfileFromTeam,
       changeOwnPassword,
       addRecoveryEmail,
       setIqdPerPoint,
+      updateMyProfile,
       signOut,
       refreshProfile,
       clearError,

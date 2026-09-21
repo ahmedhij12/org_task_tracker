@@ -44,7 +44,13 @@
       "expo-font",
       "expo-notifications",
       "expo-localization",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Rungs records where an audit is signed, to confirm the auditor was at the branch."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

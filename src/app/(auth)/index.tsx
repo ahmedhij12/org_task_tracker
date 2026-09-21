@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { useThemeColors } from '@/components/ui';
+import { PrimaryButton, useThemeColors } from '@/components/ui';
 
 export default function LandingScreen() {
   const c = useThemeColors();
@@ -34,66 +34,13 @@ export default function LandingScreen() {
           </Text>
         </View>
 
-        <ChoiceRow
-          icon="business"
-          title={t('auth.landing.createOrgTitle')}
-          subtitle={t('auth.landing.createOrgSubtitle')}
-          onPress={() => router.push('/(auth)/create')}
-        />
-
-        <Pressable onPress={() => router.push('/(auth)/signin')} style={{ marginTop: 24, alignItems: 'center' }}>
-          <Text style={{ fontSize: 14, color: c.textMuted }}>
-            {t('auth.landing.alreadyHaveAccount')} <Text style={{ color: c.indigo, fontWeight: '700' }}>{t('common.signIn')}</Text>
-          </Text>
-        </Pressable>
+        {/* Accounts are created by the admin, so sign-in is the only way in.
+            Creating a new organization stays reachable at /create by URL only. */}
+        <PrimaryButton title={t('common.signIn')} onPress={() => router.push('/(auth)/signin')} />
+        <Text style={{ fontSize: 12, color: c.textFaint, textAlign: 'center', marginTop: 14, lineHeight: 18 }}>
+          {t('auth.landing.signInHint')}
+        </Text>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function ChoiceRow({
-  icon,
-  title,
-  subtitle,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-}) {
-  const c = useThemeColors();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        borderWidth: 1,
-        borderColor: c.border,
-        borderRadius: 18,
-        padding: 16,
-        backgroundColor: pressed ? c.bgSubtle : c.card,
-      })}
-    >
-      <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 14,
-          backgroundColor: c.indigoSoft,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Ionicons name={icon} size={22} color={c.indigo} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>{title}</Text>
-        <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{subtitle}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
-    </Pressable>
   );
 }

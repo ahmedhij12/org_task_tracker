@@ -14,7 +14,7 @@ interface Props {
 
 export function ManageUserSheet({ member, onClose }: Props) {
   const c = useThemeColors();
-  const { profile, adminResetPassword, adminSetUserActive, addProfileToTeam, removeProfileFromTeam } = useAuth();
+  const { profile, adminResetPassword, adminSetUserActive, adminDeleteUser, addProfileToTeam, removeProfileFromTeam } = useAuth();
   const { members, teams, brands, branchBrandIds, refresh } = useOrgData();
 
   const [password, setPassword] = useState('');
@@ -25,6 +25,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
   // does not implement Alert with buttons, so on web the callback never fires and
   // the deactivation silently does nothing.
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [teamBusy, setTeamBusy] = useState<string | null>(null);
   const [brandBusyTeamId, setBrandBusyTeamId] = useState<string | null>(null);
 
@@ -33,6 +34,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
     setError(null);
     setNotice(null);
     setConfirmingDeactivate(false);
+    setConfirmingDelete(false);
   }, [member?.id]);
 
   if (!member) return null;
@@ -116,6 +118,22 @@ export function ManageUserSheet({ member, onClose }: Props) {
     }
   };
 
+  const applyDelete = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await adminDeleteUser(live.id);
+      await refresh();
+      setConfirmingDelete(false);
+      onClose();
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not delete that account. Please try again.');
+      setConfirmingDelete(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
@@ -142,6 +160,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
               </View>
               <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 18 }}>
                 {live.username ? `@${live.username}` : 'No username'}
+                {live.employeeCode ? ` • Company ID ${live.employeeCode}` : ''}
                 {live.active ? '' : ' • inactive'}
               </Text>
 
@@ -360,12 +379,84 @@ export function ManageUserSheet({ member, onClose }: Props) {
                       </Text>
                     </Pressable>
                   )}
+
+                  {isOwner && !live.active && !confirmingDeactivate ? (
+                    <Pressable
+                      onPress={() => setConfirmingDelete(true)}
+                      disabled={loading}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        marginTop: 10,
+                        borderRadius: 14,
+                        paddingVertical: 14,
+                        backgroundColor: c.rose,
+                        opacity: loading ? 0.5 : 1,
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#fff" />
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Delete staff member</Text>
+                    </Pressable>
+                  ) : null}
                 </>
               ) : null}
 
               <View style={{ height: 10 }} />
               <SecondaryButton title="Close" onPress={onClose} />
             </ScrollView>
+
+            {confirmingDelete ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  borderTopLeftRadius: 24,
+                  borderTopRightRadius: 24,
+                  backgroundColor: 'rgba(0,0,0,0.55)',
+                  justifyContent: 'center',
+                  padding: 24,
+                }}
+              >
+                <View style={{ backgroundColor: c.card, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: c.border }}>
+                  <View
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      backgroundColor: c.roseSoft,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      alignSelf: 'center',
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={22} color={c.rose} />
+                  </View>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: c.text, textAlign: 'center', marginBottom: 8 }}>
+                    Delete {live.name}?
+                  </Text>
+                  <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', marginBottom: 18, lineHeight: 19 }}>
+                    They'll be removed from Staff and can never sign in again. Their username becomes free to reuse. Audits
+                    already done on them stay in History and reports. This can't be undone.
+                  </Text>
+                  <Pressable
+                    onPress={applyDelete}
+                    disabled={loading}
+                    style={{ alignItems: 'center', backgroundColor: c.rose, borderRadius: 12, paddingVertical: 13, opacity: loading ? 0.5 : 1 }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{loading ? 'Deleting…' : 'Yes, delete'}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setConfirmingDelete(false)} disabled={loading} style={{ alignItems: 'center', paddingVertical: 12 }}>
+                    <Text style={{ color: c.text, fontWeight: '600', fontSize: 14 }}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </View>
         </KeyboardAvoidingView>
       </View>

@@ -9,6 +9,7 @@ import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { AdjustPointsSheet } from '@/components/AdjustPointsSheet';
 import { Card, useThemeColors } from '@/components/ui';
 import { isFailed, needsReview } from '@/types';
+import { ScorePill } from '@/components/ScoreRing';
 import type { OrgTask, TaskCompletion } from '@/types';
 
 /** 'all' or a team (branch) id — new branches show up automatically since this just reads the live teams list. */
@@ -27,7 +28,7 @@ export default function HistoryScreen() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
-  const { history, tasks, members, teams, loading, refresh } = useOrgData();
+  const { history, tasks, allMembers: members, teams, loading, refresh } = useOrgData();
   const [filter, setFilter] = useState<Filter>('all');
   const [openEntry, setOpenEntry] = useState<TaskCompletion | null>(null);
   const [pointsEntry, setPointsEntry] = useState<TaskCompletion | null>(null);
@@ -226,7 +227,21 @@ function HistoryRow({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{entry.taskTitle}</Text>
-              {pendingReview ? (
+              {entry.selfieUrl && entry.action === 'completed' ? (
+                // A supervisor's daily checklist: show the admin's check either way.
+                <View
+                  style={{
+                    backgroundColor: entry.reviewedBy ? c.emeraldSoft : c.amberSoft,
+                    borderRadius: 999,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                  }}
+                >
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: entry.reviewedBy ? c.emerald : c.amber }}>
+                    {entry.reviewedBy ? `✓ ${t('checklists.verified').toUpperCase()}` : t('checklists.waiting').toUpperCase()}
+                  </Text>
+                </View>
+              ) : pendingReview ? (
                 <View style={{ backgroundColor: c.amberSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
                   <Text style={{ fontSize: 9, fontWeight: '700', color: c.amber }}>{t('history.needsReviewBadge')}</Text>
                 </View>
@@ -258,6 +273,11 @@ function HistoryRow({
                   shift: entry.shift === 'morning' ? 'AM' : entry.shift === 'evening' ? 'PM' : '',
                 })}
               </Text>
+            ) : null}
+            {entry.score != null ? (
+              <View style={{ marginTop: 4 }}>
+                <ScorePill score={entry.score} />
+              </View>
             ) : null}
           </View>
           <View style={{ alignItems: 'center', gap: 10 }}>

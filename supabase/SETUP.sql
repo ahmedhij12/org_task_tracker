@@ -60,6 +60,9 @@ drop function if exists public.create_brand(text) cascade;
 drop function if exists public.set_branch_brands(uuid, uuid[]) cascade;
 drop function if exists public.close_next_month() cascade;
 drop function if exists public.set_iqd_per_point(numeric) cascade;
+drop function if exists public.admin_delete_user(uuid) cascade;
+drop function if exists public.update_my_profile(text, text, text) cascade;
+drop function if exists public.sync_mirrored_templates(uuid) cascade;
 drop function if exists public.stamp_completion_iqd_rate() cascade;
 drop function if exists public.get_period_report(uuid) cascade;
 drop function if exists public.get_current_branch_summary() cascade;
@@ -79,6 +82,10 @@ drop function if exists public.set_task_completion(uuid, boolean, text, text[], 
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb, text) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb, text, jsonb) cascade;
+drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb, text, jsonb, text) cascade;
+drop function if exists public.ensure_supervisor_daily_task() cascade;
 drop function if exists public.adjust_completion_points(uuid, numeric, text) cascade;
 drop function if exists public.generate_task_occurrences() cascade;
 drop function if exists public.create_checklist_template(text, int, boolean, jsonb) cascade;
@@ -144,6 +151,14 @@ create table public.profiles (
   -- Optional, added by the user later, purely so password reset can email
   -- them. NOT the auth email — the auth email stays synthetic.
   recovery_email text,
+  -- Set by admin_delete_user. A deleted person is gone from Staff and every
+  -- picker and can never sign in again (username cleared, auth banned), but
+  -- the row stays so their past audits keep their name in History/reports.
+  deleted_at timestamptz,
+  -- Self-service profile extras, set via update_my_profile: a photo (in the
+  -- task-proofs bucket) and the company ID code used at check-in/out.
+  avatar_url text,
+  employee_code text,
   created_at timestamptz not null default now()
 );
 
@@ -211,10 +226,24 @@ create table public.checklist_templates (
   -- A note is required to explain a "لا" answer; never required on "نعم".
   -- Photos are always optional, whatever this is set to.
   requires_note_on_no boolean not null default true,
+  -- The one template every supervisor fills daily. Marking it does three
+  -- things: each supervisor added to a branch automatically gets their own
+  -- copy (see ensure_supervisor_daily_task), a submission must carry a live
+  -- selfie and the device's location (enforced in set_task_completion),
+  -- and it's what the admin's Checklists tab reviews.
+  is_supervisor_daily boolean not null default false,
+  -- When set, this template's questions (sections, order, wording) are
+  -- replaced with the source template's every time the source is edited,
+  -- so the supervisors' daily checklist always asks exactly what the admin's
+  -- audit asks. Point weights are not copied: they only matter to an audit.
+  mirrors_template_id uuid references public.checklist_templates(id) on delete set null,
   archived boolean not null default false,
   created_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now()
 );
+
+create unique index checklist_templates_one_supervisor_daily_idx
+  on public.checklist_templates (org_id) where is_supervisor_daily;
 
 create table public.checklist_template_items (
   id uuid primary key default gen_random_uuid(),
@@ -387,6 +416,25 @@ create table public.task_completions (
   -- from the caller). Changing the org's rate later never rewrites an
   -- audit that already happened.
   iqd_per_point numeric not null,
+  -- Audit quality out of 100, computed server-side at submission for a
+  -- template-based audit: the share of the answered (Yes/No, never N/A)
+  -- questions' point_weight that passed, so a failed high-weight item costs
+  -- more than a failed trivial one. Falls back to a plain yes/(yes+no)
+  -- count if every answered item happens to weigh 0. Deliberately NOT
+  -- touched by points_adjustments — it grades the visit, not the penalty.
+  score numeric check (score between 0 and 100),
+  -- Audit-only: where the auditor's device was when they signed, as
+  -- reported by the phone's GPS (the server can't verify it, so it's
+  -- evidence, not proof). accuracy is the device's own radius in metres.
+  signed_lat double precision check (signed_lat between -90 and 90),
+  signed_lng double precision check (signed_lng between -180 and 180),
+  signed_accuracy_m double precision,
+  -- Street/area name the device resolved at signing, for display only.
+  signed_address text,
+  -- A supervisor-daily checklist's live front-camera selfie, uploaded to
+  -- task-proofs before the call. Required for that template, see
+  -- checklist_templates.is_supervisor_daily.
+  selfie_url text,
   -- The auditor's signature, captured at submission — only meaningful on an
   -- is_audit completion. Uploaded to the same task-proofs bucket as photos.
   signature_url text,
@@ -1302,6 +1350,52 @@ begin
 end;
 $$;
 
+-- Owner-only "delete" for a staff member who has already been
+-- deactivated. Soft by design: audits, scores and penalties recorded on
+-- them stay intact (task_completions cascades on profile delete, so a hard
+-- delete would silently rewrite history). Frees their username for reuse.
+create function public.admin_delete_user(p_target_profile_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_target public.profiles;
+begin
+  if public.role_of(auth.uid()) is distinct from 'owner' then
+    raise exception 'only the org owner can delete staff';
+  end if;
+  select * into v_target from public.profiles where id = p_target_profile_id;
+  if v_target.id is null or v_target.org_id is distinct from public.my_org_id() then
+    raise exception 'not found';
+  end if;
+  if v_target.role = 'owner' then
+    raise exception 'the organization owner cannot be deleted';
+  end if;
+  if v_target.active then
+    raise exception 'deactivate this account before deleting it';
+  end if;
+
+  update public.profiles
+  set deleted_at = now(), username = null, recovery_email = null
+  where id = p_target_profile_id;
+
+  -- The synthetic auth email is built from the username, so it has to move
+  -- too, or the freed username couldn't be given to anyone new.
+  update auth.users
+  set banned_until = 'infinity'::timestamptz,
+      email = 'deleted.' || p_target_profile_id || '@users.rungs.internal',
+      updated_at = now()
+  where id = p_target_profile_id;
+  update auth.identities
+  set identity_data = identity_data || jsonb_build_object('email', 'deleted.' || p_target_profile_id || '@users.rungs.internal')
+  where user_id = p_target_profile_id;
+  delete from auth.sessions where user_id = p_target_profile_id;
+  delete from auth.refresh_tokens where user_id = p_target_profile_id::text;
+end;
+$$;
+
 -- Called by the client right after supabase.auth.updateUser({ password })
 -- succeeds on the forced-change screen.
 create function public.clear_must_change_password()
@@ -1664,7 +1758,12 @@ returns table (
   subject_profile_id uuid,
   subject_name text,
   total_points numeric,
-  iqd_amount numeric
+  iqd_amount numeric,
+  -- Sum and count of this month's audit scores (see task_completions.score),
+  -- so the client can average across a whole branch correctly rather than
+  -- averaging per-supervisor averages.
+  score_sum numeric,
+  score_count int
 )
 language plpgsql
 security definer
@@ -1694,7 +1793,9 @@ begin
     tc.subject_profile_id,
     sp.name,
     sum(tc.points_awarded),
-    sum(tc.points_awarded * tc.iqd_per_point)
+    sum(tc.points_awarded * tc.iqd_per_point),
+    sum(tc.score),
+    count(tc.score)::int
   from public.task_completions tc
   join public.profiles sp on sp.id = tc.subject_profile_id
   join public.profile_teams pt on pt.profile_id = tc.subject_profile_id
@@ -1791,7 +1892,12 @@ create function public.set_task_completion(
   p_form_values jsonb default null,
   -- Audit-only: the auditor's signature, uploaded to task-proofs the same
   -- way photos are, before this call.
-  p_signature_url text default null
+  p_signature_url text default null,
+  -- { "lat": .., "lng": .., "accuracy": .., "address": ".." } from the device
+  -- at submission — an audit's signing spot, or a supervisor checklist's.
+  p_location jsonb default null,
+  -- Supervisor-daily checklist only: the live selfie's public URL.
+  p_selfie_url text default null
 )
 returns uuid
 language plpgsql
@@ -1812,6 +1918,7 @@ declare
   v_photo jsonb;
   v_yes int;
   v_no int;
+  v_score numeric;
   v_field public.form_template_fields;
   v_value jsonb;
   v_provided_field_ids uuid[];
@@ -1898,6 +2005,22 @@ begin
     if p_answers is null or jsonb_array_length(p_answers) < 1 then
       raise exception 'at least one answer is required';
     end if;
+    -- N/A exists only for an auditor (a question may not apply at a given
+    -- brand); anyone filling their own checklist answers every one Yes or No.
+    if not v_task.is_audit and exists (
+      select 1 from jsonb_array_elements(p_answers) a where (a ->> 'answer') is null
+    ) then
+      raise exception 'answer every question with Yes or No';
+    end if;
+    -- Proof the supervisor was really there, enforced here not just in the UI.
+    if v_template.is_supervisor_daily and not v_task.is_audit then
+      if coalesce(trim(p_selfie_url), '') = '' then
+        raise exception 'a selfie is required to submit this checklist';
+      end if;
+      if (p_location ->> 'lat') is null or (p_location ->> 'lng') is null then
+        raise exception 'your location is required to submit this checklist';
+      end if;
+    end if;
     -- Enforced here, not just in the UI: a "لا" answer needs its note
     -- whenever the template requires one, and the check can't be skipped by
     -- the client.
@@ -1937,6 +2060,24 @@ begin
       ), 0) * -1
       into v_points
       from jsonb_array_elements(p_answers) a;
+
+      -- Score out of 100 — see task_completions.score.
+      select case
+        when sum(w) filter (where ans is not null) > 0
+          then round(100 * coalesce(sum(w) filter (where ans), 0) / sum(w) filter (where ans is not null), 1)
+        when count(*) filter (where ans is not null) > 0
+          then round(100.0 * count(*) filter (where ans) / count(*) filter (where ans is not null), 1)
+      end
+      into v_score
+      from (
+        select (a ->> 'answer')::boolean as ans, coalesce((
+          select it.point_weight from public.checklist_template_items it
+          where it.template_id = v_task.template_id
+            and it.question = (a ->> 'question')
+            and it.section_title = coalesce(a ->> 'section_title', '')
+        ), 0) as w
+        from jsonb_array_elements(p_answers) a
+      ) scored;
     end if;
   end if;
 
@@ -1995,7 +2136,8 @@ begin
   insert into public.task_completions (
     task_id, org_id, team_id, task_title, actor_id, action,
     note, photo_urls, due_at, was_late, yes_count, no_count,
-    subject_profile_id, shift, points_awarded, signature_url
+    subject_profile_id, shift, points_awarded, signature_url, score,
+    signed_lat, signed_lng, signed_accuracy_m, signed_address, selfie_url
   ) values (
     v_task.id, v_task.org_id, v_task.team_id, v_task.title, v_my_profile_id,
     case when p_completed then 'completed' else 'reopened' end,
@@ -2005,7 +2147,12 @@ begin
     v_was_late,
     case when p_completed then v_yes else null end,
     case when p_completed then v_no else null end,
-    v_subject_id, v_shift, v_points, v_signature_url
+    v_subject_id, v_shift, v_points, v_signature_url, v_score,
+    case when p_completed then (p_location ->> 'lat')::double precision end,
+    case when p_completed then (p_location ->> 'lng')::double precision end,
+    case when p_completed then (p_location ->> 'accuracy')::double precision end,
+    case when p_completed then left(nullif(trim(p_location ->> 'address'), ''), 300) end,
+    case when p_completed and v_task.template_id is not null then nullif(trim(p_selfie_url), '') end
   )
   returning id into v_completion_id;
 
@@ -2259,6 +2406,48 @@ begin
 end;
 $$;
 
+-- Every supervisor (employee) added to a branch gets their own copy of the
+-- org's supervisor-daily checklist in that branch, so a brand-new account
+-- has something to fill on day one without anyone assigning it by hand.
+-- A trigger (not code in admin_create_user) so every path that adds a
+-- branch membership is covered. Cooldown 0: it's ready again the moment
+-- it's submitted (the admin's call).
+create function public.ensure_supervisor_daily_task()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile public.profiles;
+  v_template public.checklist_templates;
+begin
+  select * into v_profile from public.profiles where id = new.profile_id;
+  if v_profile.role is distinct from 'employee' then
+    return new;
+  end if;
+  select * into v_template from public.checklist_templates
+  where org_id = v_profile.org_id and is_supervisor_daily and not archived;
+  if v_template.id is null then
+    return new;
+  end if;
+  if exists (
+    select 1 from public.tasks
+    where assignee_id = new.profile_id and team_id = new.team_id and template_id = v_template.id
+  ) then
+    return new;
+  end if;
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, cooldown_hours, priority, requires_review)
+  values (v_profile.org_id, new.team_id, v_template.name, new.profile_id,
+          coalesce(new.added_by, v_template.created_by), v_template.id, 0, 'medium', true);
+  return new;
+end;
+$$;
+
+create trigger profile_teams_supervisor_daily
+  after insert on public.profile_teams
+  for each row execute function public.ensure_supervisor_daily_task();
+
 -- Stamps the org's current IQD-per-point rate onto every new completion,
 -- overwriting anything the caller passed, so an audit keeps the rate it
 -- was scored at no matter how the rate changes later.
@@ -2487,6 +2676,51 @@ $$;
 -- template. Existing checklist_answers rows are historical snapshots
 -- (question text already copied at answer time), so a delete-and-reinsert
 -- of the items never touches past completions.
+-- Copies a template's questions onto every template that mirrors it (see
+-- checklist_templates.mirrors_template_id). Past submissions are untouched:
+-- answers snapshot their own question text.
+create function public.sync_mirrored_templates(p_source_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_mirror uuid;
+begin
+  for v_mirror in select id from public.checklist_templates where mirrors_template_id = p_source_id
+  loop
+    delete from public.checklist_template_items where template_id = v_mirror;
+    insert into public.checklist_template_items (template_id, section_title, sort_order, question, point_weight)
+    select v_mirror, section_title, sort_order, question, 0
+    from public.checklist_template_items where template_id = p_source_id;
+  end loop;
+end;
+$$;
+
+-- A user editing their own profile: display name, photo, company ID code.
+-- Blank code/photo clears it; a blank name is refused.
+create function public.update_my_profile(p_name text, p_employee_code text, p_avatar_url text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if coalesce(trim(p_name), '') = '' then
+    raise exception 'your name cannot be empty';
+  end if;
+  update public.profiles
+  set name = left(trim(p_name), 80),
+      employee_code = left(nullif(trim(p_employee_code), ''), 40),
+      avatar_url = nullif(trim(p_avatar_url), '')
+  where id = auth.uid();
+end;
+$$;
+
 create function public.update_checklist_template(
   p_template_id uuid,
   p_name text,
@@ -2545,6 +2779,10 @@ begin
     );
     v_i := v_i + 1;
   end loop;
+
+  -- Keep any mirroring template (the supervisors' daily copy) asking the
+  -- same questions.
+  perform public.sync_mirrored_templates(p_template_id);
 end;
 $$;
 
@@ -2667,10 +2905,12 @@ grant execute on function public.set_iqd_per_point(numeric) to authenticated;
 grant execute on function public.admin_create_user(text, text, text, text, uuid, text, uuid) to authenticated;
 grant execute on function public.admin_reset_password(uuid, text) to authenticated;
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
+grant execute on function public.update_my_profile(text, text, text) to authenticated;
 grant execute on function public.add_profile_to_team(uuid, uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;
-grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb) to authenticated;
+grant execute on function public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb, text, jsonb, text) to authenticated;
 grant execute on function public.adjust_completion_points(uuid, numeric, text) to authenticated;
 -- Not granted to authenticated: this runs on a schedule (pg_cron) as a
 -- superuser-ish role, never called by a client directly.

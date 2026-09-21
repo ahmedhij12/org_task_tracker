@@ -2079,13 +2079,26 @@ begin
     ]'::jsonb,
     p_section_photos => '[]'::jsonb,
     p_subject_profile_id => v_subject_id, p_shift => 'evening', p_points => 999,
-    p_signature_url => 'https://x/signature.png'
+    p_signature_url => 'https://x/signature.png',
+    p_location => '{"lat": 30.5085, "lng": 47.7804, "accuracy": 12, "address": "Tuwaysah, Basra"}'::jsonb
   );
   select * into v_row from public.task_completions where id = v_completion_id;
   if v_row.points_awarded is distinct from -1.25::numeric then
     raise exception 'FAIL: expected -1.25 (0 + -1 + -0.25), got %, p_points was not actually ignored', v_row.points_awarded;
   end if;
   raise notice 'PASS: scoring sums each "No" answer''s own point_weight, and a client-supplied p_points is fully ignored';
+  -- score = passed weight / answered weight = 0.25 / 1.5
+  if v_row.score is distinct from 16.7::numeric then
+    raise exception 'FAIL: expected a score of 16.7 (0.25 of 1.5 weight passed), got %', v_row.score;
+  end if;
+  raise notice 'PASS: the audit score is the weighted share of passed answers, out of 100';
+  if v_row.signed_lat is distinct from 30.5085::double precision
+     or v_row.signed_lng is distinct from 47.7804::double precision
+     or v_row.signed_accuracy_m is distinct from 12::double precision
+     or v_row.signed_address is distinct from 'Tuwaysah, Basra' then
+    raise exception 'FAIL: the signing location was not stored on the audit, got %, % (±%)', v_row.signed_lat, v_row.signed_lng, v_row.signed_accuracy_m;
+  end if;
+  raise notice 'PASS: an audit stores where it was signed';
 
   if v_row.signature_url is distinct from 'https://x/signature.png' then
     raise exception 'FAIL: signature_url was not recorded on the audit completion';
@@ -2118,6 +2131,11 @@ begin
     raise exception 'FAIL: N/A must not be counted as either yes or no, got yes=%, no=%', v_row.yes_count, v_row.no_count;
   end if;
   raise notice 'PASS: an N/A answer costs nothing and is excluded from the yes/no counts';
+  -- Q1 (0.25) yes, Q3 (0.25) no, Q2 N/A left out entirely: 50/100
+  if v_row.score is distinct from 50::numeric then
+    raise exception 'FAIL: an N/A answer must be left out of the score, expected 50, got %', v_row.score;
+  end if;
+  raise notice 'PASS: an N/A answer is excluded from the score';
 
   if (select answer from public.checklist_answers where task_completion_id = v_completion_id and question = 'Q2') is not null then
     raise exception 'FAIL: an N/A answer should be stored as null, not as false';
@@ -2935,6 +2953,221 @@ begin
     raise exception 'FAIL: previous_iqd should record the -55000 effective total before the override';
   end if;
   raise notice 'PASS: a month override keeps its typed IQD across rate changes';
+end $$;
+
+-- ── admin_delete_user: owner-only soft delete that keeps audit history ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_leader_id uuid;
+  v_emp_id uuid;
+  v_completion_id uuid;
+  v_row public.profiles;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'delete-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Delete Org', 'Delete Owner', 'deleteowner');
+  v_leader_id := public.admin_create_user('Leader', 'delleader', 'initial123', 'team_admin', v_team_id);
+  v_emp_id := public.admin_create_user('Supervisor', 'delemp', 'initial123', 'employee', v_team_id);
+  insert into public.task_completions (org_id, team_id, task_title, actor_id, action, subject_profile_id, points_awarded)
+  values (v_org_id, v_team_id, 'Audit', v_owner_id, 'completed', v_emp_id, -1)
+  returning id into v_completion_id;
+
+  begin
+    perform public.admin_delete_user(v_emp_id);
+    raise exception 'FAIL: an active account should not be deletable';
+  exception when others then
+    if sqlerrm !~ 'deactivate' then raise; end if;
+  end;
+  raise notice 'PASS: an active account must be deactivated before it can be deleted';
+
+  perform public.admin_set_user_active(v_emp_id, false);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  begin
+    perform public.admin_delete_user(v_emp_id);
+    raise exception 'FAIL: a team_admin should not be able to delete staff';
+  exception when others then
+    if sqlerrm !~ 'only the org owner' then raise; end if;
+  end;
+  raise notice 'PASS: a team_admin cannot delete staff';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.admin_delete_user(v_emp_id);
+  select * into v_row from public.profiles where id = v_emp_id;
+  if v_row.deleted_at is null or v_row.username is not null then
+    raise exception 'FAIL: a deleted profile should be marked deleted with its username freed';
+  end if;
+  if not exists (select 1 from public.task_completions where id = v_completion_id) then
+    raise exception 'FAIL: deleting staff must not erase audits recorded on them';
+  end if;
+  raise notice 'PASS: deleting staff frees the username and keeps their audits';
+
+  -- the freed username can be reused
+  perform public.admin_create_user('New Supervisor', 'delemp', 'initial123', 'employee', v_team_id);
+  raise notice 'PASS: a deleted person''s username can be reused';
+end $$;
+
+-- ── Supervisor daily checklist: auto-assigned, selfie + location required ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_emp_id uuid;
+  v_template_id uuid;
+  v_task_id uuid;
+  v_completion_id uuid;
+  v_row public.task_completions;
+  v_answers jsonb := '[{"section_title":"","question":"Q1","sort_order":0,"answer":true}]'::jsonb;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'daily-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('Daily Org', 'Daily Owner', 'dailyowner');
+  v_template_id := public.create_checklist_template('Daily Hygiene', false, '[{"section_title":"","question":"Q1"}]'::jsonb);
+  update public.checklist_templates set is_supervisor_daily = true where id = v_template_id;
+
+  v_emp_id := public.admin_create_user('Supervisor', 'dailyemp', 'initial123', 'employee', v_team_id);
+  select id into v_task_id from public.tasks where assignee_id = v_emp_id and template_id = v_template_id and team_id = v_team_id;
+  if v_task_id is null then
+    raise exception 'FAIL: a new supervisor should automatically get the daily checklist in their branch';
+  end if;
+  raise notice 'PASS: a new supervisor is automatically assigned the daily checklist';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}', v_answers, '[]'::jsonb,
+      p_location => '{"lat": 30.5, "lng": 47.8}'::jsonb);
+    raise exception 'FAIL: submitting without a selfie should be rejected';
+  exception when others then
+    if sqlerrm !~ 'selfie' then raise; end if;
+  end;
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}', v_answers, '[]'::jsonb,
+      p_selfie_url => 'https://x/selfie.jpg');
+    raise exception 'FAIL: submitting without a location should be rejected';
+  exception when others then
+    if sqlerrm !~ 'location' then raise; end if;
+  end;
+  raise notice 'PASS: the daily checklist requires both a selfie and a location';
+
+  v_completion_id := public.set_task_completion(v_task_id, true, null, '{}', v_answers, '[]'::jsonb,
+    p_location => '{"lat": 30.5, "lng": 47.8, "accuracy": 8, "address": "Tuwaysah"}'::jsonb,
+    p_selfie_url => 'https://x/selfie.jpg');
+  select * into v_row from public.task_completions where id = v_completion_id;
+  if v_row.selfie_url is distinct from 'https://x/selfie.jpg' or v_row.signed_lat is distinct from 30.5::double precision then
+    raise exception 'FAIL: the selfie and location should be stored on the checklist';
+  end if;
+  raise notice 'PASS: a supervisor checklist stores its selfie and location';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.review_task_completion(v_completion_id, 'Looks good');
+  select * into v_row from public.task_completions where id = v_completion_id;
+  if v_row.reviewed_by is distinct from v_owner_id or v_row.reviewed_at is null or v_row.review_note is distinct from 'Looks good' then
+    raise exception 'FAIL: the admin''s verification should be recorded with time and note';
+  end if;
+  raise notice 'PASS: the admin can verify a supervisor checklist with a note';
+end $$;
+
+-- ── Supervisor role: mirrored questions, Yes/No only, own profile ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_id uuid;
+  v_emp_id uuid;
+  v_audit_tpl uuid;
+  v_sup_tpl uuid;
+  v_task_id uuid;
+  v_questions text[];
+  v_row public.profiles;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'suprole-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_id
+  from public.create_organization('SupRole Org', 'SupRole Owner', 'suproleowner');
+  v_audit_tpl := public.create_checklist_template('Audit', false, '[{"section_title":"A","question":"Q1"}]'::jsonb);
+  v_sup_tpl := public.create_checklist_template('Daily', true, '[{"section_title":"A","question":"Old"}]'::jsonb);
+  update public.checklist_templates set is_supervisor_daily = true, mirrors_template_id = v_audit_tpl where id = v_sup_tpl;
+
+  perform public.update_checklist_template(v_audit_tpl, 'Audit', false,
+    '[{"section_title":"A","question":"Q1","point_weight":1},{"section_title":"B","question":"Q2","point_weight":0.5}]'::jsonb);
+  select array_agg(question order by sort_order) into v_questions from public.checklist_template_items where template_id = v_sup_tpl;
+  if v_questions is distinct from array['Q1','Q2'] then
+    raise exception 'FAIL: editing the audit should copy its questions to the supervisor checklist, got %', v_questions;
+  end if;
+  raise notice 'PASS: editing the audit checklist updates the supervisors'' questions';
+
+  v_emp_id := public.admin_create_user('Supervisor', 'suproleemp', 'initial123', 'employee', v_team_id);
+  select id into v_task_id from public.tasks where assignee_id = v_emp_id and template_id = v_sup_tpl;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_emp_id)::text, true);
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}',
+      '[{"section_title":"A","question":"Q1","sort_order":0,"answer":true},{"section_title":"B","question":"Q2","sort_order":1,"answer":null}]'::jsonb,
+      '[]'::jsonb, p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/s.jpg');
+    raise exception 'FAIL: a supervisor should not be able to answer N/A';
+  exception when others then
+    if sqlerrm !~ 'Yes or No' then raise; end if;
+  end;
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}',
+      '[{"section_title":"A","question":"Q1","sort_order":0,"answer":true},{"section_title":"B","question":"Q2","sort_order":1,"answer":false}]'::jsonb,
+      '[]'::jsonb, p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/s.jpg');
+    raise exception 'FAIL: a supervisor''s No without a reason should be rejected';
+  exception when others then
+    if sqlerrm !~ 'note' then raise; end if;
+  end;
+  raise notice 'PASS: a supervisor answers Yes/No only, and a No needs a reason';
+
+  perform public.update_my_profile('Sup Renamed', ' EMP-042 ', 'https://x/me.jpg');
+  select * into v_row from public.profiles where id = v_emp_id;
+  if v_row.name <> 'Sup Renamed' or v_row.employee_code <> 'EMP-042' or v_row.avatar_url <> 'https://x/me.jpg' then
+    raise exception 'FAIL: a user should be able to update their own name, code and photo';
+  end if;
+  raise notice 'PASS: a supervisor can edit their own name, company code and photo';
 end $$;
 
 rollback;

@@ -23,7 +23,7 @@ interface Props {
 
 export function CreateUserSheet({ visible, onClose }: Props) {
   const c = useThemeColors();
-  const { profile, adminCreateUser } = useAuth();
+  const { profile, organization, adminCreateUser } = useAuth();
   const { teams, brands, branchBrandIds, refresh } = useOrgData();
 
   const isOwner = profile?.role === 'owner';
@@ -93,7 +93,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
 
   const handleCopy = async () => {
     if (!created) return;
-    await Clipboard.setStringAsync(`Username: ${created.username}\nPassword: ${created.password}`);
+    await Clipboard.setStringAsync(
+      `Rungs sign-in\nOrganization ID: ${organization?.orgCode ?? ''}\nUsername: ${created.username}\nPassword: ${created.password}`
+    );
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -126,6 +128,10 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                 </Text>
 
                 <Card style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>Organization ID</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 10 }}>
+                    {organization?.orgCode}
+                  </Text>
                   <Text style={{ fontSize: 12, color: c.textMuted }}>Username</Text>
                   <Text style={{ fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 10 }}>
                     {created.username}
@@ -150,7 +156,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={c.text} />
                   <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>
-                    {copied ? 'Copied' : 'Copy username and password'}
+                    {copied ? 'Copied' : 'Copy sign-in details'}
                   </Text>
                 </Pressable>
 

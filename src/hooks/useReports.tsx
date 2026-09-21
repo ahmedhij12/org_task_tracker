@@ -25,6 +25,8 @@ function mapSummaryRow(row: any): BranchSummaryRow {
     iqdAmount: Number(row.iqd_amount),
     rawPoints: row.raw_points != null ? Number(row.raw_points) : undefined,
     rawIqdAmount: row.raw_iqd_amount != null ? Number(row.raw_iqd_amount) : undefined,
+    scoreSum: row.score_sum != null ? Number(row.score_sum) : undefined,
+    scoreCount: row.score_count != null ? Number(row.score_count) : undefined,
   };
 }
 

@@ -15,6 +15,9 @@ export interface BranchGroup {
   branchName: string;
   totalPoints: number;
   iqdAmount: number;
+  /** Across every scored audit in the branch — null when none has a score yet. */
+  avgScore: number | null;
+  scoreCount: number;
   brandGroups: BrandGroup[];
 }
 
@@ -24,14 +27,20 @@ export interface BranchGroup {
  * never dropped — the caller decides how to label/render that group. */
 export function groupBranchSummary(rows: BranchSummaryRow[]): BranchGroup[] {
   const branches = new Map<string, BranchGroup>();
+  const scoreSums = new Map<string, number>();
   for (const row of rows) {
     let branch = branches.get(row.branchId);
     if (!branch) {
-      branch = { branchId: row.branchId, branchName: row.branchName, totalPoints: 0, iqdAmount: 0, brandGroups: [] };
+      branch = { branchId: row.branchId, branchName: row.branchName, totalPoints: 0, iqdAmount: 0, avgScore: null, scoreCount: 0, brandGroups: [] };
       branches.set(row.branchId, branch);
     }
     branch.totalPoints += row.totalPoints;
     branch.iqdAmount += row.iqdAmount;
+    if (row.scoreCount) {
+      branch.scoreCount += row.scoreCount;
+      scoreSums.set(row.branchId, (scoreSums.get(row.branchId) ?? 0) + (row.scoreSum ?? 0));
+      branch.avgScore = scoreSums.get(row.branchId)! / branch.scoreCount;
+    }
 
     const brandKey = row.brandId ?? '__unassigned__';
     let brandGroup = branch.brandGroups.find((g) => g.brandKey === brandKey);

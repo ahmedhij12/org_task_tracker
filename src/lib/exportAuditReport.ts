@@ -1,7 +1,12 @@
+import { Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
+import { tileGrid } from '@/lib/maps';
+import { GRADE_HEX, formatScore, gradeOf, type ScoreGrade } from '@/lib/score';
+
+const GRADE_LABEL: Record<ScoreGrade, string> = { excellent: 'Excellent', good: 'Good', needsWork: 'Needs work', critical: 'Critical' };
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
 
 // Embedded as a data URI (via a real file read, not a hardcoded base64
@@ -12,6 +17,8 @@ async function getLogoDataUri(): Promise<string> {
   if (cachedLogoDataUri) return cachedLogoDataUri;
   const asset = Asset.fromModule(require('../../assets/basra-delight-logo-white-bg.png'));
   await asset.downloadAsync();
+  // The browser can load the bundled asset by URL; there's no local file to read.
+  if (Platform.OS === 'web') return asset.uri;
   const file = new File(asset.localUri!);
   const base64 = await file.base64();
   cachedLogoDataUri = `data:image/png;base64,${base64}`;
@@ -42,6 +49,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   const { completion, branchName, subjectName, auditorName, answers, photos, locale } = data;
   const points = completion.pointsAwarded ?? 0;
   const iqd = Math.abs(points * completion.iqdPerPoint).toLocaleString(locale);
+  const score = completion.score;
   const shiftLabel = completion.shift === 'morning' ? 'AM' : completion.shift === 'evening' ? 'PM' : '—';
   const dateLabel = new Date(completion.createdAt).toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' });
 
@@ -104,43 +112,102 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   </div>
   <h1 style="font-size:19px;margin:0 0 2px;text-align:center;">Branch Audit Report</h1>
   <p style="color:#6b7280;font-size:12px;margin:0 0 20px;text-align:center;">${dateLabel}</p>
+  ${
+    score != null
+      ? `<div style="text-align:center;margin:-6px 0 20px;">
+    <div style="display:inline-block;border:4px solid ${GRADE_HEX[gradeOf(score)]};border-radius:999px;width:92px;height:92px;line-height:1;box-sizing:border-box;padding-top:22px;">
+      <div style="font-size:30px;font-weight:800;color:#111827;">${formatScore(score)}</div>
+      <div style="font-size:11px;color:#6b7280;margin-top:3px;">/ 100</div>
+    </div>
+    <div style="font-size:13px;font-weight:700;color:${GRADE_HEX[gradeOf(score)]};margin-top:6px;">${GRADE_LABEL[gradeOf(score)]}</div>
+  </div>`
+      : ''
+  }
 
   <table style="width:100%;font-size:13px;margin-bottom:18px;border-collapse:collapse;">
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Branch</td><td style="font-weight:700;">${escapeHtml(branchName)}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Subject</td><td style="font-weight:700;">${escapeHtml(subjectName)}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Auditor</td><td style="font-weight:700;">${escapeHtml(auditorName)}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Shift</td><td style="font-weight:700;">${shiftLabel}</td></tr>
+    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Penalty</td><td style="font-weight:700;color:${points < 0 ? '#dc2626' : '#111827'};">${points} pts</td></tr>
+    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Amount</td><td style="font-weight:700;color:${points < 0 ? '#dc2626' : '#111827'};">${iqd} IQD</td></tr>
   </table>
 
   ${sectionsHtml}
 
-  <div style="margin-top:22px;padding:14px;background:#f3f4f6;border-radius:10px;display:flex;justify-content:space-between;">
-    <strong style="font-size:13px;">Total</strong>
-    <strong style="font-size:13px;color:${points < 0 ? '#dc2626' : '#111827'};">${points} pts · ${iqd} IQD</strong>
-  </div>
 
-  ${
-    completion.signatureUrl
-      ? `<div style="margin-top:22px;">
-    <p style="font-size:11px;color:#6b7280;margin-bottom:6px;">Signature</p>
-    <img src="${completion.signatureUrl}" style="width:220px;height:110px;border:1px solid #e5e7eb;border-radius:8px;" />
-  </div>`
-      : ''
-  }
+  ${signatureAndLocationHtml(completion)}
 </body>
 </html>`;
+}
+
+
+/**
+ * A static mini map for the PDF, built from OpenStreetMap's standard tiles
+ * (CARTO's now need an API key and come back watermarked) laid out so the
+ * signing point sits dead centre, with a pin on top. Tiles are fetched one
+ * zoom level deeper and drawn at half size, so the print stays sharp.
+ * Plain positioned <img>s, so it prints the same from expo-print and from
+ * a browser. Only fetched when someone exports a PDF — light use, within
+ * OSM's tile policy, attribution included.
+ */
+function miniMapHtml(lat: number, lng: number, width: number, height: number): string {
+  const tiles = tileGrid(lat, lng, width, height).map(
+    (t) =>
+      `<img src="${t.url}" style="position:absolute;left:${t.left}px;top:${t.top}px;width:${t.size}px;height:${t.size}px;" />`
+  );
+  const pin = `<svg width="26" height="34" viewBox="0 0 26 34" style="position:absolute;left:${width / 2 - 13}px;top:${height / 2 - 32}px;">
+      <path d="M13 1C6.4 1 1 6.3 1 12.8 1 21.6 13 33 13 33s12-11.4 12-20.2C25 6.3 19.6 1 13 1z" fill="#dc2626" stroke="#fff" stroke-width="2"/>
+      <circle cx="13" cy="12.5" r="4.5" fill="#fff"/>
+    </svg>`;
+  return `<div style="position:relative;width:${width}px;height:${height}px;overflow:hidden;border:1px solid #e5e7eb;border-radius:8px;background:#eef0f3;">
+    ${tiles.join('')}
+    ${pin}
+    <div style="position:absolute;right:3px;bottom:2px;font-size:7px;color:#6b7280;background:rgba(255,255,255,0.85);padding:0 3px;border-radius:3px;">© OpenStreetMap contributors</div>
+  </div>`;
+}
+
+/** Signature on the left, where it was signed on the right — side by side, same height. */
+function signatureAndLocationHtml(completion: TaskCompletion): string {
+  const hasSig = !!completion.signatureUrl;
+  const hasLoc = completion.signedLat != null && completion.signedLng != null;
+  if (!hasSig && !hasLoc) return '';
+  const sig = hasSig
+    ? `<div>
+    <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Signature</p>
+    <img src="${completion.signatureUrl}" style="width:220px;height:130px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#fff;" />
+  </div>`
+    : '<div></div>';
+  const loc = hasLoc
+    ? `<div>
+    <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Signed at</p>
+    <a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">
+      ${miniMapHtml(completion.signedLat!, completion.signedLng!, 240, 130)}
+      <p style="font-size:11px;color:#111827;font-weight:600;margin:6px 0 0;max-width:240px;">${escapeHtml(completion.signedAddress ?? 'Open in Maps')}${
+        completion.signedAccuracyM != null ? ` <span style="color:#6b7280;font-weight:400;">(±${Math.round(completion.signedAccuracyM)} m)</span>` : ''
+      }</p>
+    </a>
+  </div>`
+    : '';
+  return `<div style="margin-top:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;page-break-inside:avoid;">${sig}${loc}</div>`;
 }
 
 export async function exportAuditReport(data: AuditReportData): Promise<void> {
   const logo = await getLogoDataUri();
   const html = buildHtml(data, logo);
+  const dateForFilename = new Date(data.completion.createdAt).toISOString().slice(0, 10);
+  const filename = `${safeFilenamePart(data.branchName)}-${dateForFilename}.pdf`;
+
+  if (Platform.OS === 'web') {
+    printHtmlInBrowser(html, filename.replace(/\.pdf$/, ''));
+    return;
+  }
+
   const { uri } = await Print.printToFileAsync({ html });
 
   // printToFileAsync always names its output a random UUID — rename to
   // something meaningful (the branch, the date) before handing it to the
   // share sheet, so whatever the recipient sees/saves isn't a GUID.
-  const dateForFilename = new Date(data.completion.createdAt).toISOString().slice(0, 10);
-  const filename = `${safeFilenamePart(data.branchName)}-${dateForFilename}.pdf`;
   const source = new File(uri);
   const renamed = new File(Paths.cache, filename);
   renamed.create({ overwrite: true });
@@ -153,4 +220,58 @@ export async function exportAuditReport(data: AuditReportData): Promise<void> {
       UTI: 'com.adobe.pdf',
     });
   }
+}
+
+/**
+ * expo-print can't produce a file in a browser, so on web the report is
+ * printed from a hidden iframe instead — the browser's own dialog offers
+ * "Save as PDF", and the document title becomes the suggested filename.
+ * An iframe (not window.open) so no popup blocker gets in the way after
+ * the awaits above.
+ */
+function printHtmlInBrowser(html: string, title: string): void {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow!.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  doc.title = title;
+  const originalTitle = document.title;
+  const print = () => {
+    // Some browsers take the suggested filename from the top page's title.
+    document.title = title;
+    iframe.contentWindow!.focus();
+    iframe.contentWindow!.print();
+    setTimeout(() => {
+      document.title = originalTitle;
+      iframe.remove();
+    }, 1000);
+  };
+  // Wait for the logo, signature and any photos to load before printing.
+  const images = Array.from(doc.images);
+  const pending = images.filter((img) => !img.complete);
+  if (pending.length === 0) {
+    print();
+    return;
+  }
+  let left = pending.length;
+  const done = () => {
+    left -= 1;
+    if (left === 0) print();
+  };
+  pending.forEach((img) => {
+    img.addEventListener('load', done);
+    img.addEventListener('error', done);
+  });
+  setTimeout(() => {
+    if (left > 0) {
+      left = 0;
+      print();
+    }
+  }, 5000);
 }
