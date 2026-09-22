@@ -11,6 +11,7 @@ import { needsReview } from '@/types';
 import { ScoreRing } from '@/components/ScoreRing';
 import { LocationMap } from '@/components/LocationMap';
 import { PhotoViewer } from '@/components/PhotoViewer';
+import { SvgUri } from 'react-native-svg';
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
 
 interface Props {
@@ -85,16 +86,23 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   // gotcha already documented on task_completions and handled in the
   // reporting RPCs.
   const subjectBranchName = teams.find((t) => t.id === subjectProfile?.teamIds[0])?.name ?? '—';
+  const actorBranchName =
+    teams.find((t) => t.id === completion.teamId)?.name ??
+    teams.find((t) => t.id === members.find((m) => m.id === completion.actorId)?.teamIds[0])?.name ??
+    '—';
 
   const handleExport = async () => {
     setExporting(true);
     setError(null);
     try {
       await exportAuditReport({
+        kind: isAudit ? 'audit' : 'checklist',
         completion,
-        branchName: subjectBranchName,
-        subjectName: subjectProfile?.name ?? 'Someone',
+        // A checklist is about the person who filled it, at their own branch.
+        branchName: isAudit ? subjectBranchName : actorBranchName,
+        subjectName: isAudit ? subjectProfile?.name ?? 'Someone' : actorName,
         auditorName: actorName,
+        verifiedByName: completion.reviewedBy ? reviewerName : null,
         answers,
         photos,
         locale: i18n.language,
@@ -278,6 +286,15 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                       </View>
                     ) : null}
 
+                    {completion.signatureUrl ? (
+                      <View style={{ marginBottom: 14 }}>
+                        <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 6 }}>{t('detail.signature')}</Text>
+                        <View style={{ backgroundColor: '#fff', borderRadius: 12, height: 120, overflow: 'hidden' }}>
+                          <SvgUri uri={completion.signatureUrl} width="100%" height="100%" />
+                        </View>
+                      </View>
+                    ) : null}
+
                     {answers.map((a) => {
                       const showHeader = a.sectionTitle && a.sectionTitle !== lastSection;
                       if (showHeader) lastSection = a.sectionTitle;
@@ -380,7 +397,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
               </>
             )}
 
-            {isAudit && !loading ? (
+            {(isAudit || isChecklistCompletion) && !loading ? (
               <>
                 <View style={{ height: 10 }} />
                 {exporting ? (

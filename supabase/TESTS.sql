@@ -3109,16 +3109,24 @@ begin
   exception when others then
     if sqlerrm !~ 'location' then raise; end if;
   end;
-  raise notice 'PASS: the daily checklist requires both a selfie and a location';
+  begin
+    perform public.set_task_completion(v_task_id, true, null, '{}', v_answers, '[]'::jsonb,
+      p_location => '{"lat": 30.5, "lng": 47.8}'::jsonb, p_selfie_url => 'https://x/selfie.jpg');
+    raise exception 'FAIL: submitting without a signature should be rejected';
+  exception when others then
+    if sqlerrm !~ 'signature' then raise; end if;
+  end;
+  raise notice 'PASS: the daily checklist requires a selfie, a location and a signature';
 
   v_completion_id := public.set_task_completion(v_task_id, true, null, '{}', v_answers, '[]'::jsonb,
     p_location => '{"lat": 30.5, "lng": 47.8, "accuracy": 8, "address": "Tuwaysah"}'::jsonb,
-    p_selfie_url => 'https://x/selfie.jpg');
+    p_selfie_url => 'https://x/selfie.jpg', p_signature_url => 'https://x/sig.svg');
   select * into v_row from public.task_completions where id = v_completion_id;
-  if v_row.selfie_url is distinct from 'https://x/selfie.jpg' or v_row.signed_lat is distinct from 30.5::double precision then
-    raise exception 'FAIL: the selfie and location should be stored on the checklist';
+  if v_row.selfie_url is distinct from 'https://x/selfie.jpg' or v_row.signed_lat is distinct from 30.5::double precision
+     or v_row.signature_url is distinct from 'https://x/sig.svg' then
+    raise exception 'FAIL: the selfie, location and signature should be stored on the checklist';
   end if;
-  raise notice 'PASS: a supervisor checklist stores its selfie and location';
+  raise notice 'PASS: a supervisor checklist stores its selfie, location and signature';
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   perform public.review_task_completion(v_completion_id, 'Looks good');
@@ -3177,7 +3185,7 @@ begin
   begin
     perform public.set_task_completion(v_task_id, true, null, '{}',
       '[{"section_title":"A","question":"Q1","sort_order":0,"answer":true},{"section_title":"B","question":"Q2","sort_order":1,"answer":null}]'::jsonb,
-      '[]'::jsonb, p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/s.jpg');
+      '[]'::jsonb, p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/s.jpg', p_signature_url => 'https://x/s.svg');
     raise exception 'FAIL: a supervisor should not be able to answer N/A';
   exception when others then
     if sqlerrm !~ 'Yes or No' then raise; end if;
@@ -3185,7 +3193,7 @@ begin
   begin
     perform public.set_task_completion(v_task_id, true, null, '{}',
       '[{"section_title":"A","question":"Q1","sort_order":0,"answer":true},{"section_title":"B","question":"Q2","sort_order":1,"answer":false}]'::jsonb,
-      '[]'::jsonb, p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/s.jpg');
+      '[]'::jsonb, p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/s.jpg', p_signature_url => 'https://x/s.svg');
     raise exception 'FAIL: a supervisor''s No without a reason should be rejected';
   exception when others then
     if sqlerrm !~ 'note' then raise; end if;
@@ -3286,7 +3294,7 @@ begin
   -- a manager can't verify their own checklist
   v_mgr_completion := public.set_task_completion(v_mgr_task, true, null, '{}',
     '[{"section_title":"","question":"M1","sort_order":0,"answer":true}]'::jsonb, '[]'::jsonb,
-    p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/m.jpg');
+    p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/m.jpg', p_signature_url => 'https://x/m.svg');
   begin
     perform public.review_task_completion(v_mgr_completion, null);
     raise exception 'FAIL: a manager should not verify their own checklist';

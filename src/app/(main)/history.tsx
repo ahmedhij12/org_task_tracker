@@ -81,6 +81,10 @@ export default function HistoryScreen() {
 
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? t('history.someone');
 
+  // Only the branches this person belongs to (the admin sees all), and no
+  // filter row at all when that's a single branch — nothing to choose between.
+  const filterTeams = isOwner ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id));
+
   const scopeNote = isOwner
     ? t('history.scopeAll')
     : isLeader
@@ -96,9 +100,10 @@ export default function HistoryScreen() {
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>
 
+        {filterTeams.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 16 }}>
           {(
-            [{ key: 'all', label: t('history.filterAll') }, ...teams.map((tm) => ({ key: tm.id, label: tm.name }))] as {
+            [{ key: 'all', label: t('history.filterAll') }, ...filterTeams.map((tm) => ({ key: tm.id, label: tm.name }))] as {
               key: Filter;
               label: string;
             }[]
@@ -122,6 +127,7 @@ export default function HistoryScreen() {
             );
           })}
         </ScrollView>
+        ) : null}
 
         {missedShown.map((task) => (
           <MissedRow key={task.id} task={task} nameOf={nameOf} />

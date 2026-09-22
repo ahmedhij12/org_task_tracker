@@ -36,17 +36,20 @@ function safeFilenamePart(s: string): string {
 }
 
 export interface AuditReportData {
+  /** An admin's audit of someone, or a supervisor/manager's own daily checklist. */
+  kind: 'audit' | 'checklist';
   completion: TaskCompletion;
   branchName: string;
   subjectName: string;
   auditorName: string;
+  verifiedByName?: string | null;
   answers: ChecklistAnswer[];
   photos: ChecklistSectionPhoto[];
   locale: string;
 }
 
 function buildHtml(data: AuditReportData, logoDataUri: string): string {
-  const { completion, branchName, subjectName, auditorName, answers, photos, locale } = data;
+  const { kind, completion, branchName, subjectName, auditorName, verifiedByName, answers, photos, locale } = data;
   const points = completion.pointsAwarded ?? 0;
   const iqd = Math.abs(points * completion.iqdPerPoint).toLocaleString(locale);
   const score = completion.score;
@@ -110,7 +113,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   <div style="text-align:center;margin-bottom:20px;">
     <img src="${logoDataUri}" style="height:56px;" />
   </div>
-  <h1 style="font-size:19px;margin:0 0 2px;text-align:center;">Branch Audit Report</h1>
+  <h1 style="font-size:19px;margin:0 0 2px;text-align:center;">${kind === 'audit' ? 'Branch Audit Report' : escapeHtml(completion.taskTitle)}</h1>
   <p style="color:#6b7280;font-size:12px;margin:0 0 20px;text-align:center;">${dateLabel}</p>
   ${
     score != null
@@ -124,14 +127,15 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
       : ''
   }
 
-  <table style="width:100%;font-size:13px;margin-bottom:18px;border-collapse:collapse;">
+  ${kind === 'audit' ? '' : checklistInfoHtml(completion, branchName, subjectName, verifiedByName ?? null)}
+  ${kind === 'audit' ? `<table style="width:100%;font-size:13px;margin-bottom:18px;border-collapse:collapse;">
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Branch</td><td style="font-weight:700;">${escapeHtml(branchName)}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Subject</td><td style="font-weight:700;">${escapeHtml(subjectName)}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Auditor</td><td style="font-weight:700;">${escapeHtml(auditorName)}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Shift</td><td style="font-weight:700;">${shiftLabel}</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Penalty</td><td style="font-weight:700;color:${points < 0 ? '#dc2626' : '#111827'};">${points} pts</td></tr>
     <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Amount</td><td style="font-weight:700;color:${points < 0 ? '#dc2626' : '#111827'};">${iqd} IQD</td></tr>
-  </table>
+  </table>` : ''}
 
   ${sectionsHtml}
 
@@ -141,6 +145,22 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
 </html>`;
 }
 
+/** The header for a daily checklist: who filled it, where, the tally, the selfie. */
+function checklistInfoHtml(completion: TaskCompletion, branchName: string, byName: string, verifiedByName: string | null): string {
+  const row = (label: string, value: string, color = '#111827') =>
+    `<tr><td style="padding:4px 8px 4px 0;color:#6b7280;">${label}</td><td style="font-weight:700;color:${color};">${value}</td></tr>`;
+  const table = `<table style="font-size:13px;border-collapse:collapse;">
+    ${row('Branch', escapeHtml(branchName))}
+    ${row('Filled by', escapeHtml(byName))}
+    ${row('Yes', String(completion.yesCount ?? 0), '#059669')}
+    ${row('No', String(completion.noCount ?? 0), (completion.noCount ?? 0) > 0 ? '#dc2626' : '#111827')}
+    ${row('Verified', verifiedByName ? `✓ ${escapeHtml(verifiedByName)}` : 'Waiting for the admin', verifiedByName ? '#059669' : '#d97706')}
+  </table>`;
+  const selfie = completion.selfieUrl
+    ? `<img src="${completion.selfieUrl}" style="width:96px;height:120px;object-fit:cover;border-radius:8px;" />`
+    : '';
+  return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;">${table}${selfie}</div>`;
+}
 
 /**
  * A static mini map for the PDF, built from OpenStreetMap's standard tiles
@@ -216,7 +236,7 @@ export async function exportAuditReport(data: AuditReportData): Promise<void> {
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(renamed.uri, {
       mimeType: 'application/pdf',
-      dialogTitle: `Audit — ${data.subjectName}`,
+      dialogTitle: `${data.kind === 'audit' ? 'Audit' : data.completion.taskTitle} — ${data.subjectName}`,
       UTI: 'com.adobe.pdf',
     });
   }

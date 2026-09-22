@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, Image, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,6 +51,11 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const [offDutyReason, setOffDutyReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Left to answer" filter: the question ids that were still open when it
+  // was turned on. A snapshot, not live — otherwise a question would vanish
+  // the moment it's answered No, before its note can be typed.
+  const [leftOnly, setLeftOnly] = useState<Set<string> | null>(null);
+  const listRef = useRef<ScrollView>(null);
 
   // Audit-only: the branch, subject and shift are chosen fresh each time,
   // right here — never fixed when the audit task itself was created.
@@ -95,6 +100,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const reset = () => {
     setMode('fill');
     setAnswers({});
+    setLeftOnly(null);
     setSectionPhotos({});
     setOffDutyReason('');
     setError(null);
@@ -156,6 +162,15 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const missingNotes = template?.requiresNoteOnNo
     ? items.filter((it) => answers[it.id]?.answer === false && !answers[it.id]?.note.trim())
     : [];
+  const leftCount = unanswered.length + missingNotes.length;
+  const showLeftOnly = () => {
+    setLeftOnly(new Set([...unanswered, ...missingNotes].map((it) => it.id)));
+    listRef.current?.scrollTo({ y: 0, animated: false });
+  };
+  const showAll = () => {
+    setLeftOnly(null);
+    listRef.current?.scrollTo({ y: 0, animated: false });
+  };
   // A preview only — the real total that gets stored is always computed
   // server-side in set_task_completion, from the same answers.
   const totalPoints = items.reduce(
@@ -177,7 +192,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     !submitting &&
     !!template &&
     (!task.isAudit || (!!signatureSvg && !!signedLocation)) &&
-    (!needsProof || (!!selfie && !!signedLocation));
+    (!needsProof || (!!selfie && !!signedLocation && !!signatureSvg));
 
   const takeSelfie = async () => {
     setError(null);
@@ -222,7 +237,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
       }
 
       let signatureUrl: string | undefined;
-      if (task.isAudit && signatureSvg) {
+      if ((task.isAudit || needsProof) && signatureSvg) {
         const path = `${orgId}/signature-${task.id}-${Date.now()}.svg`;
         const { error: sigError } = await supabase.storage
           .from('task-proofs')
@@ -248,7 +263,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
           question: it.question,
           sortOrder: i,
           answer: a === 'na' ? null : a,
-          note: answers[it.id]!.note.trim() || undefined,
+          // The note box only shows on a "No" — a reason typed and then
+          // switched to Yes is hidden, so it must not be saved either.
+          note: a === false ? answers[it.id]!.note.trim() || undefined : undefined,
         };
       });
 
@@ -262,7 +279,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         task.isAudit && auditSubjectId && auditShift
           ? { subjectProfileId: auditSubjectId, shift: auditShift, signatureUrl, location: signedLocation ?? undefined }
           : undefined,
-        needsProof && selfieUrl && signedLocation ? { selfieUrl, location: signedLocation } : undefined
+        needsProof && selfieUrl && signedLocation ? { selfieUrl, signatureUrl, location: signedLocation } : undefined
       );
       handleClose();
     } catch (e: any) {
@@ -478,8 +495,38 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
 
                 {error ? <ErrorBanner message={error} /> : null}
 
-                <ScrollView keyboardShouldPersistTaps="handled" style={{ marginBottom: 14, flexShrink: 1, minHeight: 0 }}>
-                  {sections.map(([sectionTitle, sectionItems]) => (
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { key: 'all', label: t('fill.filterAll', { count: items.length }), active: !leftOnly, onPress: showAll },
+                    { key: 'left', label: t('fill.filterLeft', { count: leftCount }), active: !!leftOnly, onPress: showLeftOnly },
+                  ].map((opt) => (
+                    <Pressable
+                      key={opt.key}
+                      onPress={opt.onPress}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 999,
+                        backgroundColor: opt.active ? c.indigo : c.bgSubtle,
+                        borderWidth: 1,
+                        borderColor: opt.active ? c.indigo : c.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: opt.active ? '#fff' : c.text }}>{opt.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <ScrollView ref={listRef} keyboardShouldPersistTaps="handled" style={{ marginBottom: 14, flexShrink: 1, minHeight: 0 }}>
+                  {leftOnly && leftCount === 0 ? (
+                    <Text style={{ fontSize: 13, color: c.emerald, fontWeight: '600', paddingVertical: 12 }}>
+                      {t('fill.allAnswered')}
+                    </Text>
+                  ) : null}
+                  {sections.map(([sectionTitle, allSectionItems]) => {
+                    const sectionItems = leftOnly ? allSectionItems.filter((it) => leftOnly.has(it.id)) : allSectionItems;
+                    if (sectionItems.length === 0) return null;
+                    return (
                     <View key={sectionTitle || '_'} style={{ marginBottom: 18 }}>
                       {sectionTitle ? (
                         <Text
@@ -586,6 +633,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                         );
                       })}
 
+                      {leftOnly ? null : (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                         {(sectionPhotos[sectionTitle] ?? []).map((s, i) => (
                           <View key={s.uri + i} style={{ position: 'relative' }}>
@@ -627,8 +675,10 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                           </Pressable>
                         ) : null}
                       </View>
+                      )}
                     </View>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
 
                 {task.isAudit && unanswered.length === 0 && missingNotes.length === 0 ? (
@@ -714,11 +764,18 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                         </Pressable>
                       </View>
                     </View>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginTop: 14, marginBottom: 8 }}>
+                      {t('fill.signToConfirm')}
+                    </Text>
+                    <SignaturePad onChange={setSignatureSvg} />
                     <SigningLocation onChange={handleLocation} />
                   </View>
                 ) : null}
 
-                <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
+                <Text
+                  onPress={leftCount > 0 ? showLeftOnly : undefined}
+                  style={{ fontSize: 12, color: leftCount > 0 ? c.indigo : c.textMuted, marginBottom: 10 }}
+                >
                   {unanswered.length > 0
                     ? t('fill.left', { count: unanswered.length })
                     : missingNotes.length > 0
@@ -729,6 +786,8 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                           ? t('fill.waitingLocation')
                           : needsProof && !selfie
                             ? t('fill.selfieToSubmit')
+                            : needsProof && !signatureSvg
+                              ? t('fill.signAbove')
                             : needsProof && !signedLocation
                               ? t('fill.waitingLocation')
                               : t('fill.ready')}

@@ -2015,6 +2015,11 @@ begin
       if (p_location ->> 'lat') is null or (p_location ->> 'lng') is null then
         raise exception 'your location is required to submit this checklist';
       end if;
+      -- Signed like an audit: the supervisor/manager signs their own checklist.
+      if coalesce(trim(p_signature_url), '') = '' then
+        raise exception 'a signature is required to submit this checklist';
+      end if;
+      v_signature_url := p_signature_url;
     end if;
     -- Enforced here, not just in the UI: a "لا" answer needs its note
     -- whenever the template requires one, and the check can't be skipped by
