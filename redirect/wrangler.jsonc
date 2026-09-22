@@ -1,0 +1,13 @@
+// Redirects the old address to the new one. Deploy from this folder:
+//   npx wrangler deploy --config redirect/wrangler.jsonc
+// Kept separate from ../wrangler.jsonc so the app itself stays an
+// assets-only deployment.
+{
+  "name": "rungs-redirect",
+  "main": "index.js",
+  "compatibility_date": "2026-08-09",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "rungs.hijazionline.com", "custom_domain": true }
+  ]
+}
