@@ -4,10 +4,13 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <!-- maximum-scale=1 stops iOS zooming into a text box on focus (it still allows pinch-zoom). -->
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no, viewport-fit=cover" />
     <!-- The icon a phone uses for "Add to Home Screen". -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="Rungs" />
+    <!-- Safari tints its status bar and toolbar from these; the app keeps them in sync with the in-app theme. -->
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)" />
     <title>Rungs</title>
     <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">
@@ -15,6 +18,13 @@
       html,
       body {
         height: 100%;
+        background-color: #FFFFFF;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background-color: #171717;
+        }
       }
       /* These styles disable body scrolling if you are using <ScrollView> */
       body {

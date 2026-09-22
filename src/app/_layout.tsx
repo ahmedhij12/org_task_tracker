@@ -3,12 +3,15 @@ import '@/lib/i18n';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { ThemePrefProvider, useThemePref } from '@/hooks/useThemePref';
 import { LanguagePrefProvider } from '@/hooks/useLanguagePref';
+import { Colors } from '@/theme';
 
 export default function RootLayout() {
   return (
@@ -29,6 +32,19 @@ export default function RootLayout() {
 function RootNavigator() {
   const { session, profile, loading } = useAuth();
   const { isDark } = useThemePref();
+
+  // Web: Safari paints its status bar and toolbar from the page behind the app,
+  // so follow the in-app theme (which can differ from the system one).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const bg = Colors[isDark ? 'dark' : 'light'].bg;
+    document.documentElement.style.backgroundColor = bg;
+    document.body.style.backgroundColor = bg;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+      m.setAttribute('content', bg);
+      m.removeAttribute('media');
+    });
+  }, [isDark]);
 
   if (loading) return null;
 
