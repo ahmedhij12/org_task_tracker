@@ -1,0 +1,10 @@
+// The oil-tester OCR service. Deploy from this folder:
+//   npx wrangler deploy --config ocr/wrangler.jsonc
+// The API key is a secret, set once with:
+//   npx wrangler secret put ANTHROPIC_API_KEY --config ocr/wrangler.jsonc
+{
+  "name": "bd-ocr",
+  "main": "index.js",
+  "compatibility_date": "2026-08-09",
+  "workers_dev": true
+}
