@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useOrgData } from '@/hooks/useOrgData';
+import { useAuth } from '@/hooks/useAuth';
 import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { Card, useThemeColors } from '@/components/ui';
@@ -23,20 +24,25 @@ export default function ChecklistsScreen() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { teams, allMembers, loading, refresh } = useOrgData();
+  const { profile } = useAuth();
+  const isOwner = profile?.role === 'owner';
   const submissions = useSupervisorChecklists();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<TaskCompletion | null>(null);
 
   const branches = useMemo(() => {
+    // A branch manager sees only their own branch(es), and their own
+    // checklist isn't theirs to verify, so it doesn't count as waiting.
     return teams
+      .filter((team) => isOwner || profile?.teamIds.includes(team.id))
       .map((team) => {
         const rows = submissions
           .filter((s) => s.teamId === team.id)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        return { team, rows, unverified: rows.filter((r) => !r.reviewedBy).length };
+        return { team, rows, unverified: rows.filter((r) => !r.reviewedBy && (isOwner || r.actorId !== profile?.id)).length };
       })
       .sort((a, b) => b.unverified - a.unverified || a.team.name.localeCompare(b.team.name));
-  }, [teams, submissions]);
+  }, [teams, submissions, isOwner, profile?.id, profile?.teamIds]);
 
   const nameOf = (id: string) => allMembers.find((m) => m.id === id)?.name ?? t('history.someone');
   const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
@@ -110,7 +116,14 @@ export default function ChecklistsScreen() {
                               </View>
                             )}
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{nameOf(r.actorId)}</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{nameOf(r.actorId)}</Text>
+                                {allMembers.find((m) => m.id === r.actorId)?.role === 'team_admin' ? (
+                                  <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: c.indigo }}>{t('checklists.manager')}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
                               <Text style={{ fontSize: 12, color: c.textMuted }}>
                                 {time(r.createdAt)}
                                 {r.noCount != null ? ` · ${t('checklists.yesNo', { yes: r.yesCount ?? 0, no: r.noCount })}` : ''}

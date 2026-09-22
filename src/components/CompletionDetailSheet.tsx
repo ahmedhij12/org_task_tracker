@@ -60,8 +60,10 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const task = tasks.find((t) => t.id === completion.taskId);
   const isManager = profile?.role === 'owner' || profile?.role === 'team_admin';
   const openViewer = (urls: string[], index: number) => setViewer({ urls, index });
+  // A branch manager never verifies their own checklist — the admin does.
   const canReview =
     isManager &&
+    !(profile?.role === 'team_admin' && completion.actorId === profile?.id) &&
     (needsReview(completion, task ?? { requiresReview: false }) ||
       (completion.action === 'completed' && !!completion.selfieUrl && !completion.reviewedBy));
   const reviewerName = members.find((m) => m.id === completion.reviewedBy)?.name ?? t('detail.admin');

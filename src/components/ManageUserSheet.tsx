@@ -164,6 +164,8 @@ export function ManageUserSheet({ member, onClose }: Props) {
                 {live.active ? '' : ' • inactive'}
               </Text>
 
+              {isOwner ? (
+                <>
               {error ? <ErrorBanner message={error} /> : null}
               {notice ? (
                 <View style={{ backgroundColor: c.indigoSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
@@ -403,6 +405,13 @@ export function ManageUserSheet({ member, onClose }: Props) {
                 </>
               ) : null}
 
+                </>
+              ) : (
+                // Branch managers only view their staff — only the admin changes accounts.
+                <Text style={{ fontSize: 13, color: c.textMuted }}>
+                  {memberTeams.map((tm) => tm.name).join(', ') || '—'}
+                </Text>
+              )}
               <View style={{ height: 10 }} />
               <SecondaryButton title="Close" onPress={onClose} />
             </ScrollView>

@@ -170,7 +170,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     })
   );
   // The supervisors' daily checklist carries proof they were really there.
-  const needsProof = !task.isAudit && !!template?.isSupervisorDaily;
+  const needsProof = !task.isAudit && !!template?.assignToRole;
   const canSubmit =
     unanswered.length === 0 &&
     missingNotes.length === 0 &&

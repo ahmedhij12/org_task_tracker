@@ -39,7 +39,8 @@ export default function HistoryScreen() {
   // Same ownership rule as adjust_completion_points itself: an owner can
   // adjust any audit, a team_admin only the ones they personally performed.
   const isAuditEntry = (h: TaskCompletion) => h.pointsAwarded != null && h.subjectProfileId !== h.actorId;
-  const canEditPoints = (h: TaskCompletion) => isAuditEntry(h) && (isOwner || (isLeader && h.actorId === profile?.id));
+  // Money is the admin's alone; everyone else can only look.
+  const canEditPoints = (h: TaskCompletion) => isAuditEntry(h) && isOwner;
   const canViewPoints = (h: TaskCompletion) => isAuditEntry(h) && !canEditPoints(h) && h.subjectProfileId === profile?.id;
 
   // Failed is derived, never stored: still open and past its deadline. Scoped

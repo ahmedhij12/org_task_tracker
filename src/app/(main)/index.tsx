@@ -20,6 +20,8 @@ import { ScorePill } from '@/components/ScoreRing';
 import { formatScore, gradeColors, gradeOf } from '@/lib/score';
 import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
 import { MyAuditScore } from '@/components/MyAuditScore';
+import { TodayChecklistCard } from '@/components/TodayChecklistCard';
+import { BranchAudits } from '@/components/BranchAudits';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
 export default function MainIndex() {
@@ -33,89 +35,67 @@ function TeamAdminDashboard() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { profile, organization } = useAuth();
-  const { tasks, teams, members, history, loading, refresh, setTaskCompletion, deleteTask } = useOrgData();
-  const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>(profile?.teamIds[0] ?? 'all');
-  const [proofTask, setProofTask] = useState<OrgTask | null>(null);
+  const { tasks, teams, members, history, loading, refresh, setTaskCompletion } = useOrgData();
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
+  const [proofTask, setProofTask] = useState<OrgTask | null>(null);
 
-  // An owner or team leader can also be the assignee of their own task (a
-  // checklist someone above them created), so their own rows need the same
-  // completable behavior as an employee's "My Tasks" list gets.
   const handlePressCheckbox = (task: OrgTask) => {
-    if (task.templateId) {
-      if (!task.completed) setChecklistTask(task);
-      return;
-    }
-    if (!task.completed && task.requiresProof) {
-      setProofTask(task);
-      return;
-    }
-    setTaskCompletion(task.id, !task.completed).catch((e) => console.warn(e));
+    if (task.completed) return;
+    if (task.templateId) setChecklistTask(task);
+    else if (task.requiresProof) setProofTask(task);
+    else setTaskCompletion(task.id, true).catch((e) => console.warn(e));
   };
 
-  // A checklist task's own `completed` flag never resets after the first
-  // submission — the DB doesn't know about cooldowns — so display state has
-  // to be derived per row instead of read straight off the task.
-  const scopedTasks = (selectedTeamId === 'all' ? tasks : tasks.filter((t) => t.teamId === selectedTeamId)).map((t) => ({
-    ...t,
-    completed: effectiveTaskCompleted(t, history),
-  }));
-  const pending = scopedTasks.filter((t) => !t.completed).length;
-  const overdueCount = scopedTasks.filter((t) => !t.completed && t.due && new Date(t.due) < new Date()).length;
-  const doneCount = scopedTasks.filter((t) => t.completed).length;
+  // A branch manager only does the work the admin gives them (their daily
+  // checklist, any one-off task) and watches their branch — they don't
+  // create, edit or delete anything.
+  const myTasks = tasks
+    .filter(
+      (tsk) =>
+        !tsk.isAudit &&
+        (tsk.assigneeId === profile?.id || (tsk.assigneeId === null && !!profile?.teamIds.includes(tsk.teamId)))
+    )
+    .map((tsk) => ({ ...tsk, completed: effectiveTaskCompleted(tsk, history) }))
+    .filter((tsk) => !tsk.completed);
+  const myBranches = teams.filter((tm) => profile?.teamIds.includes(tm.id)).map((tm) => tm.name).join(', ');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{t('dashboard.teamAdminBadge')}</Text>
-              </View>
-            </View>
+        <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{t('dashboard.teamAdminBadge')}</Text>
           </View>
+          {myBranches ? <Text style={{ fontSize: 12, color: c.textMuted }}>{myBranches}</Text> : null}
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          <StatChip label={t('dashboard.statPending')} value={pending} color={c.indigo} bg={c.indigoSoft} />
-          {overdueCount > 0 ? <StatChip label={t('dashboard.statOverdue')} value={overdueCount} color={c.rose} bg={c.roseSoft} /> : null}
-          <StatChip label={t('dashboard.statDone')} value={doneCount} color={c.emerald} bg={c.emeraldSoft} />
-        </View>
+        <TodayChecklistCard />
 
-        <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
-          {t('dashboard.taskFeed')}
-        </Text>
+        {myTasks.length > 0 ? (
+          <>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 20, marginBottom: 8 }}>
+              {t('dashboard.sectionToday')}
+            </Text>
+            {myTasks.map((tsk) => (
+              <TaskRow
+                key={tsk.id}
+                task={tsk}
+                members={members}
+                showAssignee={false}
+                canComplete
+                onPressCheckbox={() => handlePressCheckbox(tsk)}
+              />
+            ))}
+          </>
+        ) : null}
 
-        {(() => {
-          // Finished work belongs in History, not the live feed — otherwise
-          // the dashboard just accumulates every task ever created. A task
-          // that requires review isn't actually settled until reviewed, so
-          // it stays here even after the employee marks it done.
-          const openTasks = scopedTasks.filter((t) => {
-            if (!t.completed) return true;
-            if (!t.requiresReview) return false;
-            return !latestCompletionForTask(t.id, history)?.reviewedBy;
-          });
-          return openTasks.length === 0 ? (
-            <EmptyState text={t('dashboard.noOpenTasks')} />
-          ) : (
-            openTasks
-              .slice()
-              .sort((a, b) => Number(a.completed) - Number(b.completed))
-              .map((t) =>
-                t.assigneeId === profile?.id ? (
-                  <TaskRow key={t.id} task={t} members={members} showAssignee canComplete onPressCheckbox={() => handlePressCheckbox(t)} onDelete={() => deleteTask(t.id).catch((e) => console.warn(e))} />
-                ) : (
-                  <TaskRow key={t.id} task={t} members={members} showAssignee onDelete={() => deleteTask(t.id).catch((e) => console.warn(e))} />
-                )
-              )
-          );
-        })()}
+        <BranchAudits />
+
+        <MyAuditScore />
       </ScrollView>
 
       {proofTask ? (
@@ -138,30 +118,6 @@ function TeamAdminDashboard() {
           onClose={() => setChecklistTask(null)}
         />
       ) : null}
-
-      <Pressable
-        onPress={() => router.push('/(main)/create-task')}
-        accessibilityRole="button"
-        accessibilityLabel={t('dashboard.addTask')}
-        style={{
-          position: 'absolute',
-          right: 20,
-          bottom: 24,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: c.gold,
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: c.gold,
-          shadowOpacity: 0.4,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 6,
-        }}
-      >
-        <Ionicons name="add" size={28} color={GOLD_INK} />
-      </Pressable>
     </SafeAreaView>
   );
 }
@@ -241,7 +197,7 @@ function OwnerDashboard() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
       >
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -375,6 +331,30 @@ function OwnerDashboard() {
         editingTemplateId={editingTemplateId ?? undefined}
         onClose={() => setEditingTemplateId(null)}
       />
+
+      <Pressable
+        onPress={() => router.push('/(main)/create-task')}
+        accessibilityRole="button"
+        accessibilityLabel={t('dashboard.addTask')}
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: 24,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: c.gold,
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: c.gold,
+          shadowOpacity: 0.4,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }}
+      >
+        <Ionicons name="add" size={28} color={GOLD_INK} />
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -392,17 +372,6 @@ function EmployeeHome() {
     .map((t) => ({ ...t, completed: effectiveTaskCompleted(t, history) }));
   const { overdue, today, upcoming, completed } = bucketTasks(myTasks);
 
-  // Today's daily checklist (the one carrying a selfie) and whether an
-  // admin has checked it yet.
-  const todaysChecklist = history.find(
-    (h) =>
-      h.actorId === profile?.id &&
-      h.action === 'completed' &&
-      !!h.selfieUrl &&
-      new Date(h.createdAt).toDateString() === new Date().toDateString()
-  );
-  const reviewer = todaysChecklist?.reviewedBy ? members.find((m) => m.id === todaysChecklist.reviewedBy) : null;
-  const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
 
   const handlePressCheckbox = (task: OrgTask) => {
     if (task.templateId) {
@@ -430,38 +399,7 @@ function EmployeeHome() {
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginTop: 2 }}>{t('dashboard.myTasksTitle')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{organization?.name}</Text>
 
-        {todaysChecklist ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              marginTop: 16,
-              padding: 14,
-              borderRadius: 16,
-              backgroundColor: todaysChecklist.reviewedBy ? c.emeraldSoft : c.amberSoft,
-            }}
-          >
-            <Ionicons
-              name={todaysChecklist.reviewedBy ? 'checkmark-circle' : 'time'}
-              size={26}
-              color={todaysChecklist.reviewedBy ? c.emerald : c.amber}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: todaysChecklist.reviewedBy ? c.emerald : c.amber }}>
-                {todaysChecklist.reviewedBy
-                  ? t('checklists.verifiedBy', { name: reviewer?.name ?? 'Admin', time: timeOf(todaysChecklist.reviewedAt ?? todaysChecklist.createdAt) })
-                  : t('checklists.waiting')}
-              </Text>
-              <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>
-                {t('checklists.submittedAt', { time: timeOf(todaysChecklist.createdAt) })}
-              </Text>
-              {todaysChecklist.reviewNote ? (
-                <Text style={{ fontSize: 12, color: c.text, marginTop: 4 }}>"{todaysChecklist.reviewNote}"</Text>
-              ) : null}
-            </View>
-          </View>
-        ) : null}
+        <TodayChecklistCard />
 
         {myTasks.length === 0 ? null : (
           <View style={{ marginTop: 16 }}>

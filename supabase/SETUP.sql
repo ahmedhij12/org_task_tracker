@@ -86,6 +86,8 @@ drop function if exists public.set_task_completion(uuid, boolean, text, text[], 
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb, text, jsonb) cascade;
 drop function if exists public.set_task_completion(uuid, boolean, text, text[], jsonb, jsonb, uuid, text, numeric, uuid, jsonb, text, jsonb, text) cascade;
 drop function if exists public.ensure_supervisor_daily_task() cascade;
+drop function if exists public.ensure_role_checklist_tasks() cascade;
+drop function if exists public.set_template_audience(uuid, text) cascade;
 drop function if exists public.adjust_completion_points(uuid, numeric, text) cascade;
 drop function if exists public.generate_task_occurrences() cascade;
 drop function if exists public.create_checklist_template(text, int, boolean, jsonb) cascade;
@@ -226,12 +228,14 @@ create table public.checklist_templates (
   -- A note is required to explain a "لا" answer; never required on "نعم".
   -- Photos are always optional, whatever this is set to.
   requires_note_on_no boolean not null default true,
-  -- The one template every supervisor fills daily. Marking it does three
-  -- things: each supervisor added to a branch automatically gets their own
-  -- copy (see ensure_supervisor_daily_task), a submission must carry a live
-  -- selfie and the device's location (enforced in set_task_completion),
-  -- and it's what the admin's Checklists tab reviews.
-  is_supervisor_daily boolean not null default false,
+  -- Who fills this template every day: 'employee' (supervisors) or
+  -- 'team_admin' (branch managers); null for an audit or an ad-hoc
+  -- checklist. Setting it (set_template_audience) gives every current and
+  -- future member of that role their own copy in each of their branches
+  -- (see ensure_role_checklist_tasks), and a submission must carry a live
+  -- selfie and the device's location (enforced in set_task_completion).
+  -- It's also what the Checklists tab reviews.
+  assign_to_role text check (assign_to_role in ('employee', 'team_admin')),
   -- When set, this template's questions (sections, order, wording) are
   -- replaced with the source template's every time the source is edited,
   -- so the supervisors' daily checklist always asks exactly what the admin's
@@ -241,9 +245,6 @@ create table public.checklist_templates (
   created_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now()
 );
-
-create unique index checklist_templates_one_supervisor_daily_idx
-  on public.checklist_templates (org_id) where is_supervisor_daily;
 
 create table public.checklist_template_items (
   id uuid primary key default gen_random_uuid(),
@@ -433,7 +434,7 @@ create table public.task_completions (
   signed_address text,
   -- A supervisor-daily checklist's live front-camera selfie, uploaded to
   -- task-proofs before the call. Required for that template, see
-  -- checklist_templates.is_supervisor_daily.
+  -- checklist_templates.assign_to_role.
   selfie_url text,
   -- The auditor's signature, captured at submission — only meaningful on an
   -- is_audit completion. Uploaded to the same task-proofs bucket as photos.
@@ -769,15 +770,6 @@ create policy "team admin or owner can create tasks for their own team"
           or (is_audit and assignee_id = auth.uid())
         )
       )
-      or (
-        public.my_role() = 'team_admin'
-        and team_id = any(public.my_team_ids())
-        and (
-          assignee_id is null
-          or public.role_of(assignee_id) = 'employee'
-          or (is_audit and assignee_id = auth.uid())
-        )
-      )
     )
   );
 
@@ -788,8 +780,9 @@ create policy "team admin or owner can edit their team's tasks"
   using (
     org_id = public.my_org_id()
     and (
+      -- Only the admin creates, edits or deletes work; managers and
+      -- supervisors just do it.
       public.my_role() = 'owner'
-      or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()))
     )
   )
   with check (
@@ -831,7 +824,6 @@ create policy "team admin or owner can delete their team's tasks"
     org_id = public.my_org_id()
     and (
       public.my_role() = 'owner'
-      or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()))
     )
   );
 
@@ -881,7 +873,7 @@ create policy "checklist answers follow their completion's visibility"
         and tc.org_id = public.my_org_id()
         and (
           public.my_role() = 'owner'
-          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()) and tc.subject_profile_id = tc.actor_id)
           or tc.actor_id = auth.uid()
           or tc.subject_profile_id = auth.uid()
           or (
@@ -904,7 +896,7 @@ create policy "checklist photos follow their completion's visibility"
         and tc.org_id = public.my_org_id()
         and (
           public.my_role() = 'owner'
-          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()) and tc.subject_profile_id = tc.actor_id)
           or tc.actor_id = auth.uid()
           or tc.subject_profile_id = auth.uid()
           or (
@@ -929,7 +921,7 @@ create policy "form answers follow their completion's visibility"
         and tc.org_id = public.my_org_id()
         and (
           public.my_role() = 'owner'
-          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()) and tc.subject_profile_id = tc.actor_id)
           or tc.actor_id = auth.uid()
           or tc.subject_profile_id = auth.uid()
           or (
@@ -954,7 +946,10 @@ create policy "history is scoped to the reader's role"
     org_id = public.my_org_id()
     and (
       public.my_role() = 'owner'
-      or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()))
+      -- A branch's own work, but not audits: an audit's team_id is the
+      -- admin's audit task's branch, not the audited person's, so audits
+      -- reach a manager only through the subject clause below.
+      or (public.my_role() = 'team_admin' and team_id = any(public.my_team_ids()) and subject_profile_id = actor_id)
       or actor_id = auth.uid()
       or subject_profile_id = auth.uid()
       or (
@@ -978,7 +973,7 @@ create policy "points adjustments follow their completion's visibility"
         and tc.org_id = public.my_org_id()
         and (
           public.my_role() = 'owner'
-          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()))
+          or (public.my_role() = 'team_admin' and tc.team_id = any(public.my_team_ids()) and tc.subject_profile_id = tc.actor_id)
           or tc.actor_id = auth.uid()
           or tc.subject_profile_id = auth.uid()
           or (
@@ -2013,7 +2008,7 @@ begin
       raise exception 'answer every question with Yes or No';
     end if;
     -- Proof the supervisor was really there, enforced here not just in the UI.
-    if v_template.is_supervisor_daily and not v_task.is_audit then
+    if v_template.assign_to_role is not null and not v_task.is_audit then
       if coalesce(trim(p_selfie_url), '') = '' then
         raise exception 'a selfie is required to submit this checklist';
       end if;
@@ -2323,11 +2318,9 @@ begin
   if v_completion.subject_profile_id = v_completion.actor_id then
     raise exception 'this completion has no audit subject — nothing to adjust';
   end if;
-  if not (
-    v_caller_role = 'owner'
-    or (v_caller_role = 'team_admin' and v_completion.actor_id = auth.uid())
-  ) then
-    raise exception 'only the owner or the auditor who performed this visit can adjust its points';
+  -- Money is the admin's alone: branch managers and supervisors only view.
+  if v_caller_role is distinct from 'owner' then
+    raise exception 'only the admin can adjust audit points';
   end if;
 
   insert into public.points_adjustments (task_completion_id, previous_points, new_points, adjusted_by, reason)
@@ -2406,13 +2399,13 @@ begin
 end;
 $$;
 
--- Every supervisor (employee) added to a branch gets their own copy of the
--- org's supervisor-daily checklist in that branch, so a brand-new account
--- has something to fill on day one without anyone assigning it by hand.
--- A trigger (not code in admin_create_user) so every path that adds a
--- branch membership is covered. Cooldown 0: it's ready again the moment
--- it's submitted (the admin's call).
-create function public.ensure_supervisor_daily_task()
+-- Anyone added to a branch gets their own copy of every daily checklist
+-- meant for their role there (checklist_templates.assign_to_role), so a
+-- brand-new account has something to fill on day one without anyone
+-- assigning it by hand. A trigger (not code in admin_create_user) so every
+-- path that adds a branch membership is covered. Cooldown 0: ready again
+-- the moment it's submitted.
+create function public.ensure_role_checklist_tasks()
 returns trigger
 language plpgsql
 security definer
@@ -2423,30 +2416,73 @@ declare
   v_template public.checklist_templates;
 begin
   select * into v_profile from public.profiles where id = new.profile_id;
-  if v_profile.role is distinct from 'employee' then
-    return new;
-  end if;
-  select * into v_template from public.checklist_templates
-  where org_id = v_profile.org_id and is_supervisor_daily and not archived;
-  if v_template.id is null then
-    return new;
-  end if;
-  if exists (
-    select 1 from public.tasks
-    where assignee_id = new.profile_id and team_id = new.team_id and template_id = v_template.id
-  ) then
-    return new;
-  end if;
-  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, cooldown_hours, priority, requires_review)
-  values (v_profile.org_id, new.team_id, v_template.name, new.profile_id,
-          coalesce(new.added_by, v_template.created_by), v_template.id, 0, 'medium', true);
+  for v_template in
+    select * from public.checklist_templates
+    where org_id = v_profile.org_id and assign_to_role = v_profile.role and not archived
+  loop
+    if not exists (
+      select 1 from public.tasks
+      where assignee_id = new.profile_id and team_id = new.team_id and template_id = v_template.id
+    ) then
+      insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, cooldown_hours, priority, requires_review)
+      values (v_profile.org_id, new.team_id, v_template.name, new.profile_id,
+              coalesce(new.added_by, v_template.created_by), v_template.id, 0, 'medium', true);
+    end if;
+  end loop;
   return new;
 end;
 $$;
 
-create trigger profile_teams_supervisor_daily
+create trigger profile_teams_role_checklists
   after insert on public.profile_teams
-  for each row execute function public.ensure_supervisor_daily_task();
+  for each row execute function public.ensure_role_checklist_tasks();
+
+-- Owner-only: decides who fills a checklist template daily — 'employee'
+-- (supervisors), 'team_admin' (branch managers) or null (nobody). Everyone
+-- in that role gets their own copy in each of their branches right away;
+-- copies held by anyone no longer in the audience are removed (their past
+-- submissions stay: completions keep a snapshot and outlive their task).
+create function public.set_template_audience(p_template_id uuid, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_template public.checklist_templates;
+begin
+  if public.role_of(auth.uid()) is distinct from 'owner' then
+    raise exception 'only the org owner can choose who fills a checklist';
+  end if;
+  select * into v_template from public.checklist_templates where id = p_template_id;
+  if v_template.id is null or v_template.org_id is distinct from public.my_org_id() then
+    raise exception 'checklist template not found';
+  end if;
+  if p_role is not null and p_role not in ('employee', 'team_admin') then
+    raise exception 'a checklist can be for supervisors or branch managers';
+  end if;
+  if p_role is not null and exists (select 1 from public.tasks where template_id = p_template_id and is_audit) then
+    raise exception 'this is an audit checklist — it stays with the admin';
+  end if;
+
+  update public.checklist_templates set assign_to_role = p_role where id = p_template_id;
+
+  delete from public.tasks t
+  where t.template_id = p_template_id and not t.is_audit
+    and (p_role is null or not exists (select 1 from public.profiles p where p.id = t.assignee_id and p.role = p_role));
+
+  if p_role is not null then
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, cooldown_hours, priority, requires_review)
+    select p.org_id, pt.team_id, v_template.name, p.id, auth.uid(), p_template_id, 0, 'medium', true
+    from public.profile_teams pt
+    join public.profiles p on p.id = pt.profile_id
+    where p.org_id = v_template.org_id and p.role = p_role and p.deleted_at is null
+      and not exists (
+        select 1 from public.tasks t where t.assignee_id = p.id and t.team_id = pt.team_id and t.template_id = p_template_id
+      );
+  end if;
+end;
+$$;
 
 -- Stamps the org's current IQD-per-point rate onto every new completion,
 -- overwriting anything the caller passed, so an audit keeps the rate it
@@ -2605,6 +2641,9 @@ begin
     or (v_caller_role = 'team_admin' and v_completion.team_id = any(v_caller_teams))
   ) then
     raise exception 'only an admin or the team''s leader can review this';
+  end if;
+  if v_caller_role = 'team_admin' and v_completion.actor_id = auth.uid() then
+    raise exception 'your own checklist is verified by the admin';
   end if;
 
   update public.task_completions
@@ -2907,6 +2946,7 @@ grant execute on function public.admin_reset_password(uuid, text) to authenticat
 grant execute on function public.admin_set_user_active(uuid, boolean) to authenticated;
 grant execute on function public.admin_delete_user(uuid) to authenticated;
 grant execute on function public.update_my_profile(text, text, text) to authenticated;
+grant execute on function public.set_template_audience(uuid, text) to authenticated;
 grant execute on function public.add_profile_to_team(uuid, uuid, uuid) to authenticated;
 grant execute on function public.remove_profile_from_team(uuid, uuid) to authenticated;
 grant execute on function public.clear_must_change_password() to authenticated;

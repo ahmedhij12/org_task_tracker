@@ -13,7 +13,7 @@ function mapTemplate(row: any): ChecklistTemplate {
     orgId: row.org_id,
     name: row.name,
     requiresNoteOnNo: row.requires_note_on_no,
-    isSupervisorDaily: row.is_supervisor_daily ?? false,
+    assignToRole: row.assign_to_role ?? null,
     archived: row.archived,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -39,6 +39,8 @@ interface ChecklistDataContextValue {
   createTemplate: (name: string, requiresNoteOnNo: boolean, items: ChecklistItemDraft[]) => Promise<string>;
   /** Owner-only. Replaces a template's questions/weights in place — see update_checklist_template. */
   updateTemplate: (templateId: string, name: string, requiresNoteOnNo: boolean, items: ChecklistItemDraft[]) => Promise<void>;
+  /** Owner-only: who fills this template daily. Everyone in that role gets their own copy right away. */
+  setTemplateAudience: (templateId: string, role: 'employee' | 'team_admin' | null) => Promise<void>;
 }
 
 const ChecklistDataContext = createContext<ChecklistDataContextValue | null>(null);
@@ -113,9 +115,18 @@ export function ChecklistDataProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const setTemplateAudience = useCallback<ChecklistDataContextValue['setTemplateAudience']>(
+    async (templateId, role) => {
+      const { error } = await supabase.rpc('set_template_audience', { p_template_id: templateId, p_role: role });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
   const value = useMemo<ChecklistDataContextValue>(
-    () => ({ templates, templateItems, loading, refresh, createTemplate, updateTemplate }),
-    [templates, templateItems, loading, refresh, createTemplate, updateTemplate]
+    () => ({ templates, templateItems, loading, refresh, createTemplate, updateTemplate, setTemplateAudience }),
+    [templates, templateItems, loading, refresh, createTemplate, updateTemplate, setTemplateAudience]
   );
 
   return <ChecklistDataContext.Provider value={value}>{children}</ChecklistDataContext.Provider>;

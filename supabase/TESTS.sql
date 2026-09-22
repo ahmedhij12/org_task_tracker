@@ -277,10 +277,11 @@ begin
   v_auditor_id := public.admin_create_user('Hygiene Mgr', 'periodauditor', 'initial123', 'team_admin', v_hq_team_id);
   v_subject_id := public.admin_create_user('Zubair Supervisor', 'periodsubject', 'initial123', 'employee', v_branch_team_id);
 
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  -- Only the admin creates work (2026-09-22); the manager then performs it.
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, is_audit, priority, requires_review)
-  values (v_org_id, v_hq_team_id, 'Zubair Hygiene Audit', v_auditor_id, v_auditor_id, true, 'medium', false)
+  values (v_org_id, v_hq_team_id, 'Zubair Hygiene Audit', v_auditor_id, v_owner_id, true, 'medium', false)
   returning id into v_task_id;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
 
   v_completion_id := public.set_task_completion(
     v_task_id, true, 'good visit', '{}', null, '[]'::jsonb, v_subject_id, 'morning', -2
@@ -425,10 +426,10 @@ begin
   v_auditor_id := public.admin_create_user('Hygiene Mgr', 'summaryauditor', 'initial123', 'team_admin', v_hq_team_id);
   v_subject_id := public.admin_create_user('Olympic Supervisor', 'summarysubject', 'initial123', 'employee', v_branch_team_id);
 
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, is_audit, priority, requires_review)
-  values (v_org_id, v_hq_team_id, 'Olympic Hygiene Audit', v_auditor_id, v_auditor_id, true, 'medium', false)
+  values (v_org_id, v_hq_team_id, 'Olympic Hygiene Audit', v_auditor_id, v_owner_id, true, 'medium', false)
   returning id into v_task_id;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
 
   -- This month: must show up.
   v_current_completion_id := public.set_task_completion(
@@ -1146,11 +1147,25 @@ begin
   end if;
   raise notice 'PASS: a team leader cannot assign a task to themselves';
 
-  -- ── A team leader may assign down to an employee ──
+  -- ── Only the admin creates work (2026-09-22): a branch manager can't
+  -- assign even to their own supervisor ──
+  v_raised := false;
+  begin
+    insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
+    values (v_org_id, v_team_id, 'Leader to employee', v_emp_id, v_leader_id);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a branch manager must not be able to create tasks';
+  end if;
+  raise notice 'PASS: a branch manager cannot create tasks, only the admin can';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
-  values (v_org_id, v_team_id, 'Leader to employee', v_emp_id, v_leader_id)
+  values (v_org_id, v_team_id, 'Leader to employee', v_emp_id, v_owner_id)
   returning id into v_doomed_task;
-  raise notice 'PASS: a team leader can assign a task to an employee';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
 
   -- ── A team leader may not promote work sideways to another leader ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
@@ -1296,8 +1311,9 @@ begin
   -- goes through the exact same downward-only insert policy as any other
   -- task, already proven generically in the "Assignment only flows
   -- downward" block above — here we only prove the template/cooldown wiring ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, cooldown_hours, priority, requires_review)
-  values (v_org_id, v_team_id, 'Daily Hygiene', v_emp_id, v_leader_id, v_template_id, 7, 'high', true)
+  values (v_org_id, v_team_id, 'Daily Hygiene', v_emp_id, v_owner_id, v_template_id, 7, 'high', true)
   returning id into v_task_id;
   raise notice 'PASS: a checklist is created as an ordinary task with template_id and cooldown_hours set';
 
@@ -1703,17 +1719,16 @@ begin
   end;
   raise notice 'PASS: a team leader cannot add someone to a team they do not lead';
 
-  -- ── Each leader assigns a task to the shared supervisor on their own team ──
-  perform set_config('request.jwt.claims', json_build_object('sub', v_hygiene_leader)::text, true);
+  -- ── The admin assigns the shared supervisor work on each team (only the
+  -- admin creates work since 2026-09-22) ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
-  values (v_org_id, v_hygiene_team, 'Hygiene checklist', v_supervisor, v_hygiene_leader)
+  values (v_org_id, v_hygiene_team, 'Hygiene checklist', v_supervisor, v_owner_id)
   returning id into v_hygiene_task;
-
-  perform set_config('request.jwt.claims', json_build_object('sub', v_kitchen_leader)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by)
-  values (v_org_id, v_kitchen_team, 'Kitchen prep check', v_supervisor, v_kitchen_leader)
+  values (v_org_id, v_kitchen_team, 'Kitchen prep check', v_supervisor, v_owner_id)
   returning id into v_kitchen_task;
-  raise notice 'PASS: two independent leaders can each assign the shared supervisor work on their own team';
+  raise notice 'PASS: the admin can assign a shared supervisor work on each of their teams';
 
   -- ── The supervisor sees both, since they're both hers ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_supervisor)::text, true);
@@ -1852,10 +1867,13 @@ begin
     'Oil Test', true, '[{"section_title":"","question":"Oil changed on schedule?"}]'::jsonb
   );
 
-  -- The auditor's own recurring copy: assigned to himself, is_audit = true.
+  -- The auditor's recurring copy: assigned to him by the admin (only the
+  -- admin creates work), is_audit = true.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
-  values (v_org_id, v_team_id, 'Oil Test Audit', v_auditor_id, v_auditor_id, v_template_id, true, 'medium', false)
+  values (v_org_id, v_team_id, 'Oil Test Audit', v_auditor_id, v_owner_id, v_template_id, true, 'medium', false)
   returning id into v_task_id;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
 
   -- ── The owner (not just a branch manager) can also self-assign their own
   -- audit task — the RLS owner branch originally only allowed assignee_id
@@ -1884,11 +1902,9 @@ begin
   values (v_org_id, v_team_id, 'Teamless Owner Audit', v_owner_id, v_owner_id, v_template_id, true, 'medium', false);
   raise notice 'PASS: an admin with zero team memberships can still self-assign their own audit task';
 
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
-
   -- ── An employee cannot submit an audit, even one assigned to them ──
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
-  values (v_org_id, v_team_id, 'Misassigned audit', v_subject_id, v_auditor_id, v_template_id, true, 'medium', false)
+  values (v_org_id, v_team_id, 'Misassigned audit', v_subject_id, v_owner_id, v_template_id, true, 'medium', false)
   returning id into v_completion_id; -- reusing the var; this is a task id, not a completion id here
   perform set_config('request.jwt.claims', json_build_object('sub', v_subject_id)::text, true);
   v_raised := false;
@@ -1948,9 +1964,22 @@ begin
   end if;
   raise notice 'PASS: an unrelated employee cannot see this audit result';
 
-  -- ── Adjusting points: the auditor who performed it can revise it later,
-  -- and both the old and new value stay visible in the trail ──
+  -- ── Money is the admin's alone (2026-09-22): even the manager who
+  -- performed the audit can't change its points ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.adjust_completion_points(v_completion_id, -0.125, 'trying');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a branch manager must not adjust audit points, even on their own audit';
+  end if;
+  raise notice 'PASS: only the admin can adjust audit points';
+
+  -- ── The admin revises it, and both the old and new value stay in the trail ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   perform public.adjust_completion_points(v_completion_id, -0.125, 'clean visit next time, halving the penalty');
   select * into v_row from public.task_completions where id = v_completion_id;
   if v_row.points_awarded is distinct from -0.125::numeric then
@@ -1960,7 +1989,7 @@ begin
   if v_adj.previous_points is distinct from -0.25::numeric or v_adj.new_points is distinct from -0.125::numeric then
     raise exception 'FAIL: the adjustment trail should record both the old and new value';
   end if;
-  raise notice 'PASS: the auditor can adjust their own audit''s points, and the old value stays in the trail';
+  raise notice 'PASS: an adjustment keeps the old value in the trail';
 
   -- ── A different, unrelated team_admin cannot adjust someone else's audit ──
   perform set_config('request.jwt.claims', json_build_object('sub', v_other_admin_id)::text, true);
@@ -1986,9 +2015,8 @@ begin
 
   -- ── Adjusting an ordinary (non-audit) completion is refused: there is no
   -- subject distinct from the actor, so there is nothing to adjust ──
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, priority, requires_review)
-  values (v_org_id, v_team_id, 'An ordinary task', v_subject_id, v_auditor_id, 'medium', false)
+  values (v_org_id, v_team_id, 'An ordinary task', v_subject_id, v_owner_id, 'medium', false)
   returning id into v_task_id;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_subject_id)::text, true);
@@ -2108,9 +2136,11 @@ begin
   -- ── N/A answers: a null answer (e.g. a kitchen question at a brand with
   -- no kitchen) must be excluded from both the penalty and the yes/no
   -- counts, not silently fall through to the "No" penalty branch ──
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
   insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
   values (v_org_id, v_team_id, 'Scoring Audit with N/A', v_auditor_id, v_owner_id, v_template_id, true, 'medium', false)
   returning id into v_task_id;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auditor_id)::text, true);
 
   -- Q1 yes (0), Q2 N/A (0, not -1), Q3 no (-0.25) = -0.25.
   v_completion_id := public.set_task_completion(
@@ -3055,7 +3085,7 @@ begin
   select org_id, team_id into v_org_id, v_team_id
   from public.create_organization('Daily Org', 'Daily Owner', 'dailyowner');
   v_template_id := public.create_checklist_template('Daily Hygiene', false, '[{"section_title":"","question":"Q1"}]'::jsonb);
-  update public.checklist_templates set is_supervisor_daily = true where id = v_template_id;
+  update public.checklist_templates set assign_to_role = 'employee' where id = v_template_id;
 
   v_emp_id := public.admin_create_user('Supervisor', 'dailyemp', 'initial123', 'employee', v_team_id);
   select id into v_task_id from public.tasks where assignee_id = v_emp_id and template_id = v_template_id and team_id = v_team_id;
@@ -3131,7 +3161,7 @@ begin
   from public.create_organization('SupRole Org', 'SupRole Owner', 'suproleowner');
   v_audit_tpl := public.create_checklist_template('Audit', false, '[{"section_title":"A","question":"Q1"}]'::jsonb);
   v_sup_tpl := public.create_checklist_template('Daily', true, '[{"section_title":"A","question":"Old"}]'::jsonb);
-  update public.checklist_templates set is_supervisor_daily = true, mirrors_template_id = v_audit_tpl where id = v_sup_tpl;
+  update public.checklist_templates set assign_to_role = 'employee', mirrors_template_id = v_audit_tpl where id = v_sup_tpl;
 
   perform public.update_checklist_template(v_audit_tpl, 'Audit', false,
     '[{"section_title":"A","question":"Q1","point_weight":1},{"section_title":"B","question":"Q2","point_weight":0.5}]'::jsonb);
@@ -3168,6 +3198,113 @@ begin
     raise exception 'FAIL: a user should be able to update their own name, code and photo';
   end if;
   raise notice 'PASS: a supervisor can edit their own name, company code and photo';
+end $$;
+
+-- ── Branch manager: sees only their branch's audits, own checklist, no audit-task edits ──
+do $$
+declare
+  v_owner_id uuid := gen_random_uuid();
+  v_org_id uuid;
+  v_team_a uuid;
+  v_team_b uuid;
+  v_mgr_a uuid;
+  v_sup_a uuid;
+  v_sup_b uuid;
+  v_audit_task uuid;
+  v_mgr_tpl uuid;
+  v_audit_tpl uuid;
+  v_mgr_task uuid;
+  v_audit_a uuid;
+  v_audit_b uuid;
+  v_mgr_completion uuid;
+  v_seen int;
+  v_deleted int;
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at,
+    confirmation_token, recovery_token,
+    email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_owner_id, 'authenticated', 'authenticated',
+    'mgr-owner.test@example.com', 'x',
+    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(),
+    '', '', '', '', '', '', '', ''
+  );
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  select org_id, team_id into v_org_id, v_team_a from public.create_organization('Mgr Org', 'Mgr Owner', 'mgrowner');
+  v_team_b := public.create_team('Branch B');
+  v_mgr_a := public.admin_create_user('Manager A', 'mgra', 'initial123', 'team_admin', v_team_a);
+  v_sup_a := public.admin_create_user('Sup A', 'supa', 'initial123', 'employee', v_team_a);
+  v_sup_b := public.admin_create_user('Sup B', 'supb', 'initial123', 'employee', v_team_b);
+
+  -- manager checklist: assigned to current managers, and to future ones
+  v_mgr_tpl := public.create_checklist_template('Manager Daily', true, '[{"section_title":"","question":"M1"}]'::jsonb);
+  perform public.set_template_audience(v_mgr_tpl, 'team_admin');
+  select id into v_mgr_task from public.tasks where template_id = v_mgr_tpl and assignee_id = v_mgr_a;
+  if v_mgr_task is null or exists (select 1 from public.tasks where template_id = v_mgr_tpl and assignee_id in (v_sup_a, v_sup_b)) then
+    raise exception 'FAIL: a manager checklist should reach managers only';
+  end if;
+  perform public.admin_create_user('Manager B', 'mgrb', 'initial123', 'team_admin', v_team_b);
+  if not exists (select 1 from public.tasks t join public.profiles p on p.id = t.assignee_id where t.template_id = v_mgr_tpl and p.username = 'mgrb') then
+    raise exception 'FAIL: a new branch manager should get the manager checklist automatically';
+  end if;
+  raise notice 'PASS: a manager checklist reaches current and future branch managers only';
+
+  -- the admin's audit task lives in branch A; audits of supervisors in A and B
+  v_audit_tpl := public.create_checklist_template('Audit', false, '[{"section_title":"","question":"Q1"}]'::jsonb);
+  insert into public.tasks (org_id, team_id, title, assignee_id, created_by, template_id, is_audit, priority, requires_review)
+  values (v_org_id, v_team_a, 'Audit', v_owner_id, v_owner_id, v_audit_tpl, true, 'medium', false)
+  returning id into v_audit_task;
+  insert into public.task_completions (task_id, org_id, team_id, task_title, actor_id, action, subject_profile_id, points_awarded)
+  values (v_audit_task, v_org_id, v_team_a, 'Audit', v_owner_id, 'completed', v_sup_a, -1) returning id into v_audit_a;
+  insert into public.task_completions (task_id, org_id, team_id, task_title, actor_id, action, subject_profile_id, points_awarded)
+  values (v_audit_task, v_org_id, v_team_a, 'Audit', v_owner_id, 'completed', v_sup_b, -1) returning id into v_audit_b;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_mgr_a)::text, true);
+  set role authenticated;
+  select count(*) into v_seen from public.task_completions where id = v_audit_a;
+  if v_seen <> 1 then
+    reset role;
+    raise exception 'FAIL: a manager should see audits of their own branch''s supervisors';
+  end if;
+  select count(*) into v_seen from public.task_completions where id = v_audit_b;
+  if v_seen <> 0 then
+    reset role;
+    raise exception 'FAIL: a manager must not see another branch''s audits just because the audit task sits in their branch';
+  end if;
+  with d as (delete from public.tasks where id = v_audit_task returning 1) select count(*) into v_deleted from d;
+  reset role;
+  if v_deleted <> 0 then
+    raise exception 'FAIL: a manager must not be able to delete the admin''s audit task';
+  end if;
+  raise notice 'PASS: a manager sees only their branch''s audits and cannot touch the audit task';
+
+  -- a manager can't verify their own checklist
+  v_mgr_completion := public.set_task_completion(v_mgr_task, true, null, '{}',
+    '[{"section_title":"","question":"M1","sort_order":0,"answer":true}]'::jsonb, '[]'::jsonb,
+    p_location => '{"lat":1,"lng":1}'::jsonb, p_selfie_url => 'https://x/m.jpg');
+  begin
+    perform public.review_task_completion(v_mgr_completion, null);
+    raise exception 'FAIL: a manager should not verify their own checklist';
+  exception when others then
+    if sqlerrm !~ 'verified by the admin' then raise; end if;
+  end;
+  raise notice 'PASS: a manager''s own checklist can only be verified by the admin';
+
+  -- removing the audience removes the copies
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  perform public.set_template_audience(v_mgr_tpl, null);
+  if exists (select 1 from public.tasks where template_id = v_mgr_tpl) then
+    raise exception 'FAIL: clearing a checklist''s audience should remove everyone''s copy';
+  end if;
+  if not exists (select 1 from public.task_completions where id = v_mgr_completion) then
+    raise exception 'FAIL: removing the copies must keep past submissions';
+  end if;
+  raise notice 'PASS: changing who a checklist is for keeps past submissions';
 end $$;
 
 rollback;

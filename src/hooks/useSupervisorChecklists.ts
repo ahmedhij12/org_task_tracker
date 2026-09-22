@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useChecklists } from '@/hooks/useChecklists';
+import { useAuth } from '@/hooks/useAuth';
 import type { TaskCompletion } from '@/types';
 
 /**
@@ -12,7 +13,7 @@ export function useSupervisorChecklists(): TaskCompletion[] {
   const { history, tasks } = useOrgData();
   const { templates } = useChecklists();
   return useMemo(() => {
-    const dailyTemplateIds = new Set(templates.filter((t) => t.isSupervisorDaily).map((t) => t.id));
+    const dailyTemplateIds = new Set(templates.filter((t) => t.assignToRole).map((t) => t.id));
     const dailyTaskIds = new Set(tasks.filter((t) => t.templateId && dailyTemplateIds.has(t.templateId)).map((t) => t.id));
     return history.filter(
       (h) => h.action === 'completed' && ((h.taskId && dailyTaskIds.has(h.taskId)) || !!h.selfieUrl)
@@ -21,8 +22,17 @@ export function useSupervisorChecklists(): TaskCompletion[] {
 }
 
 
-/** How many supervisor checklists are still waiting for a manager's ✓. */
+/**
+ * How many daily checklists are still waiting for this reader's ✓. A branch
+ * manager counts only their own branch, never their own checklist (the
+ * admin verifies that one).
+ */
 export function useUnverifiedChecklistCount(): number {
   const rows = useSupervisorChecklists();
-  return rows.filter((r) => !r.reviewedBy).length;
+  const { profile } = useAuth();
+  return rows.filter(
+    (r) =>
+      !r.reviewedBy &&
+      (profile?.role === 'owner' || (r.actorId !== profile?.id && !!profile?.teamIds.includes(r.teamId)))
+  ).length;
 }

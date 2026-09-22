@@ -65,8 +65,8 @@ function MainTabs() {
           name="checklists"
           options={{
             title: t('mainTabs.checklists'),
-            href: isOwner ? undefined : null,
-            tabBarBadge: isOwner && unverified > 0 ? unverified : undefined,
+            href: isEmployee ? null : undefined,
+            tabBarBadge: !isEmployee && unverified > 0 ? unverified : undefined,
             tabBarIcon: ({ color, size }) => <Ionicons name="clipboard" size={size} color={color} />,
           }}
         />

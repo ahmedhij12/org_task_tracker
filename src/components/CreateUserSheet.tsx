@@ -181,12 +181,6 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                 {error ? <ErrorBanner message={error} /> : null}
 
                 <FieldInput label="Their name" placeholder="e.g. Ali" value={name} onChangeText={setName} />
-                <FieldInput
-                  label="Job title (optional)"
-                  placeholder="e.g. IT, Accountant, Cashier"
-                  value={title}
-                  onChangeText={setTitle}
-                />
                 <UsernameInput value={username} onChangeText={setUsername} />
 
                 <FieldLabel>Temporary password</FieldLabel>

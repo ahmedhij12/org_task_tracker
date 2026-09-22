@@ -15,8 +15,11 @@ export default function CreateTaskScreen() {
   const c = useThemeColors();
   const { profile } = useAuth();
   const { teams, members, createTask } = useOrgData();
-  const { templates } = useChecklists();
+  const { templates, setTemplateAudience } = useChecklists();
   const isOwner = profile?.role === 'owner';
+  // The admin's + offers three kinds of work. Only the admin creates work.
+  const [mode, setMode] = useState<'audit' | 'daily' | 'task'>('audit');
+  const [audience, setAudience] = useState<'employee' | 'team_admin' | null>(null);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -34,14 +37,11 @@ export default function CreateTaskScreen() {
   const [checklistAssigneeIds, setChecklistAssigneeIds] = useState<string[]>([]);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  // Owner-only, and not a choice: this screen's only real use for an owner
-  // has been auditing — a branch manager's own "Add task" flow (their own
-  // Dashboard) is the place for ordinary staff task assignment, so there's
-  // no ordinary-task path here for them to switch away from. An audit's
-  // subject/branch is chosen when the auditor starts it (FillChecklistSheet),
-  // not here — this just creates the admin's own reusable "go audit
-  // someone" task, self-assigned.
-  const isAudit = isOwner;
+  // An audit is the admin's own reusable "go audit someone" task,
+  // self-assigned; the branch, subject and shift are chosen when the audit
+  // starts (FillChecklistSheet), not here.
+  const isAudit = isOwner && mode === 'audit';
+  const isDaily = isOwner && mode === 'daily';
 
   // Priority drives whether a completion needs a leader's sign-off before
   // it's settled: never on low, always on high, a free choice on medium.
@@ -67,6 +67,7 @@ export default function CreateTaskScreen() {
   const auditTemplates = templates.filter((t) => t.name.endsWith(' — Audit'));
   const plainTemplates = templates.filter((t) => !t.name.endsWith(' — Audit'));
   const visibleTemplates = isAudit ? auditTemplates : plainTemplates;
+  const showTemplatePicker = isAudit || isDaily;
 
   const selectedTemplate = templates.find((t) => t.id === templateId);
   const cooldownNum = parseInt(cooldownHours, 10);
@@ -78,13 +79,16 @@ export default function CreateTaskScreen() {
   const pickTemplate = (id: string | null) => {
     setTemplateId(id);
     setChecklistAssigneeIds([]);
+    if (id && isDaily) setAudience(templates.find((tt) => tt.id === id)?.assignToRole ?? null);
     if (id) {
       const t = templates.find((tt) => tt.id === id);
       if (t && !title.trim()) setTitle(t.name.replace(/ — Audit$/, ''));
     }
   };
 
-  const canSubmit = isAudit
+  const canSubmit = isDaily
+    ? !!templateId && !!audience
+    : isAudit
     ? title.trim() && !!templateId
     : templateId
       ? title.trim() && effectiveTeamId && checklistAssigneeIds.length > 0 && cooldownNum > 0
@@ -95,7 +99,11 @@ export default function CreateTaskScreen() {
     setLoading(true);
     setError(null);
     try {
-      if (isAudit) {
+      if (isDaily) {
+        // Everyone in that role gets their own copy in each of their branches,
+        // now and whenever someone new joins (see set_template_audience).
+        await setTemplateAudience(templateId!, audience);
+      } else if (isAudit) {
         await createTask({
           title: title.trim(),
           notes: notes.trim() || undefined,
@@ -155,17 +163,58 @@ export default function CreateTaskScreen() {
           <Pressable onPress={() => router.back()} hitSlop={8}>
             <Ionicons name="close" size={26} color={c.text} />
           </Pressable>
-          <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>{isAudit ? 'New Audit' : 'New Task'}</Text>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>
+            {isAudit ? 'New Audit' : isDaily ? 'Daily Checklist' : 'New Task'}
+          </Text>
           <View style={{ width: 26 }} />
         </View>
 
+        {isOwner ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
+            {(
+              [
+                { key: 'audit', label: 'Audit type', icon: 'shield-checkmark' },
+                { key: 'daily', label: 'Daily checklist', icon: 'clipboard' },
+                { key: 'task', label: 'One-off task', icon: 'checkbox' },
+              ] as const
+            ).map((m) => {
+              const active = mode === m.key;
+              return (
+                <Pressable
+                  key={m.key}
+                  onPress={() => {
+                    setMode(m.key);
+                    setTemplateId(null);
+                    setAudience(null);
+                    setError(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: active ? c.indigo : c.bgSubtle,
+                    borderWidth: 1,
+                    borderColor: active ? c.indigo : c.border,
+                  }}
+                >
+                  <Ionicons name={m.icon} size={18} color={active ? '#fff' : c.textMuted} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#fff' : c.text }}>{m.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         {error ? <ErrorBanner message={error} /> : null}
 
+        {showTemplatePicker ? (
         <View style={{ marginBottom: 14 }}>
-          <FieldLabel>{isAudit ? 'Audit checklist' : 'Use a checklist template'}</FieldLabel>
+          <FieldLabel>{isAudit ? 'Audit checklist' : 'Checklist'}</FieldLabel>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {isAudit ? null : (
+              {isAudit || isDaily ? null : (
                 <Pressable
                   onPress={() => pickTemplate(null)}
                   style={{
@@ -228,9 +277,55 @@ export default function CreateTaskScreen() {
             </View>
           </ScrollView>
         </View>
+        ) : null}
 
-        <FieldInput label="Title" placeholder="e.g. Restock shelves" value={title} onChangeText={setTitle} />
-        <FieldInput label="Notes (optional)" placeholder="Any details" value={notes} onChangeText={setNotes} multiline style={{ minHeight: 70, textAlignVertical: 'top' }} />
+        {isDaily ? (
+          <View style={{ marginBottom: 14 }}>
+            <FieldLabel>Who fills it every day?</FieldLabel>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(
+                [
+                  { key: 'employee', label: 'Supervisors' },
+                  { key: 'team_admin', label: 'Branch managers' },
+                ] as const
+              ).map((a) => {
+                const active = audience === a.key;
+                return (
+                  <Pressable
+                    key={a.key}
+                    onPress={() => setAudience(a.key)}
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      paddingVertical: 11,
+                      borderRadius: 12,
+                      backgroundColor: active ? c.indigo : c.bgSubtle,
+                      borderWidth: 1,
+                      borderColor: active ? c.indigo : c.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#fff' : c.text }}>{a.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 10, lineHeight: 18 }}>
+              Everyone in that role gets their own copy in their branch — right away, and automatically for anyone you add
+              later. They answer Yes or No (a No needs a reason) and must take a selfie and share their location to submit.
+              The other role never sees it.
+            </Text>
+            {selectedTemplate?.assignToRole && selectedTemplate.assignToRole !== audience ? (
+              <Text style={{ fontSize: 12, color: c.amber, marginTop: 8 }}>
+                This moves the checklist: the other role's copies are removed (their past submissions stay).
+              </Text>
+            ) : null}
+          </View>
+        ) : (
+          <>
+            <FieldInput label="Title" placeholder="e.g. Restock shelves" value={title} onChangeText={setTitle} />
+            <FieldInput label="Notes (optional)" placeholder="Any details" value={notes} onChangeText={setNotes} multiline style={{ minHeight: 70, textAlignVertical: 'top' }} />
+          </>
+        )}
 
         {isAudit ? (
           <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>
@@ -239,7 +334,7 @@ export default function CreateTaskScreen() {
           </Text>
         ) : null}
 
-        {!isAudit && isOwner && teams.length > 1 ? (
+        {!isAudit && !isDaily && isOwner && teams.length > 1 ? (
           <View style={{ marginBottom: 14 }}>
             <FieldLabel>Branch</FieldLabel>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -267,7 +362,7 @@ export default function CreateTaskScreen() {
           </View>
         ) : null}
 
-        {isAudit ? null : templateId ? (
+        {isAudit || isDaily ? null : templateId ? (
           <>
             <View style={{ marginBottom: 14 }}>
               <FieldLabel>Assign to (each person gets their own copy)</FieldLabel>
@@ -347,7 +442,7 @@ export default function CreateTaskScreen() {
           </View>
         )}
 
-        {isAudit ? null : (
+        {isAudit || isDaily ? null : (
           <>
             <View style={{ marginBottom: 14 }}>
               <FieldLabel>Priority</FieldLabel>
@@ -407,7 +502,7 @@ export default function CreateTaskScreen() {
           </>
         )}
 
-        <PrimaryButton title={isAudit ? 'Create audit task' : 'Create task'} onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+        <PrimaryButton title={isAudit ? 'Create audit task' : isDaily ? 'Save daily checklist' : 'Create task'} onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
         <View style={{ height: 10 }} />
         <SecondaryButton title="Cancel" onPress={() => router.back()} />
       </ScrollView>

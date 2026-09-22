@@ -73,6 +73,8 @@ export default function PeopleScreen() {
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('people.title')}</Text>
+          {/* Only the admin adds staff; branch managers just see their team. */}
+          {isOwner ? (
           <Pressable
             onPress={() => setCreating(true)}
             style={{
@@ -88,6 +90,7 @@ export default function PeopleScreen() {
             <Ionicons name="add" size={16} color={GOLD_INK} />
             <Text style={{ color: GOLD_INK, fontSize: 13, fontWeight: '700' }}>{t('people.addStaff')}</Text>
           </Pressable>
+          ) : null}
         </View>
 
         {visible.length === 0 ? (

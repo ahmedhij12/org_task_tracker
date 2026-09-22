@@ -207,8 +207,8 @@ export interface ChecklistTemplate {
   name: string;
   /** A note is required to explain a "No" answer; never required on "Yes". Photos are always optional. */
   requiresNoteOnNo: boolean;
-  /** The one checklist every supervisor fills daily — needs a live selfie + location at submit. */
-  isSupervisorDaily: boolean;
+  /** Who fills this daily: 'employee' (supervisors) or 'team_admin' (branch managers); null for audits/ad-hoc. A daily checklist needs a live selfie + location at submit. */
+  assignToRole: 'employee' | 'team_admin' | null;
   archived: boolean;
   createdBy: string;
   createdAt: string;
