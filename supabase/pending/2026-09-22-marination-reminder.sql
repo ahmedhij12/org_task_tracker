@@ -105,10 +105,10 @@ begin
         headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || v_token),
         body := jsonb_build_object(
           'subscriptions', v_subs,
-          'title', 'Remove the vinegar',
-          'body', r.branch || ' · marinated ' ||
+          'title', 'حان وقت رفع الخل',
+          'body', r.branch || ' · تم التخليل ' ||
                   to_char(r.marinated_at at time zone r.timezone, 'HH12:MI AM') ||
-                  ' · ' || public.marination_hours() || ' hours are up',
+                  ' · مرت ' || public.marination_hours() || ' ساعات',
           'url', 'https://bdaudit.hijazionline.com/',
           'tag', 'marination-' || r.id
         )

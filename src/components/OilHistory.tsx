@@ -125,6 +125,13 @@ export function OilHistory() {
                       {timeOf(x.testedAt, i18n.language, tzOf(x.teamId))}
                       {x.actorName ? ` · ${x.actorName}` : ''}{x.isAudit ? ` · ${t('oil.byAuditor')}` : ''}
                     </Text>
+                    {x.minutesLate != null ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                        <Ionicons name="alert-circle" size={13} color={c.rose} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: c.rose }}>{t('oil.lateTag', { count: x.minutesLate })}</Text>
+                      </View>
+                    ) : null}
+                    {x.lateReason ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>“{x.lateReason}”</Text> : null}
                     {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}
                   </View>
                 </View>

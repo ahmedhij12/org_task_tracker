@@ -28,6 +28,9 @@ function mapTest(row: any): OilTest {
     tempC: row.temp_c == null ? null : Number(row.temp_c),
     filtered: row.filtered,
     grade: row.grade,
+    slotTime: row.slot_time ?? null,
+    minutesLate: row.minutes_late ?? null,
+    lateReason: row.late_reason ?? null,
     photoUrl: row.photo_url,
     signatureUrl: row.signature_url,
     note: row.note,
@@ -44,6 +47,8 @@ export interface SubmitOilTestInput {
   signatureUrl?: string | null;
   note?: string | null;
   isAudit?: boolean;
+  /** Required by the server when the test is past the grace window. */
+  lateReason?: string | null;
 }
 
 interface OilTestsContextValue {
@@ -103,6 +108,7 @@ export function OilTestsProvider({ children }: { children: ReactNode }) {
         p_signature_url: input.signatureUrl ?? null,
         p_note: input.note ?? null,
         p_is_audit: input.isAudit ?? false,
+        p_late_reason: input.lateReason ?? null,
       });
       if (error) throw error;
       await refresh();

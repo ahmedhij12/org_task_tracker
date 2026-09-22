@@ -344,6 +344,11 @@ export interface OilTest {
   signatureUrl: string | null;
   note: string | null;
   testedAt: string;
+  /** The scheduled slot this test belongs to (2 PM / 7 PM / 1 AM), if any. */
+  slotTime?: string | null;
+  /** Minutes past the grace window; null when on time. */
+  minutesLate?: number | null;
+  lateReason?: string | null;
 }
 
 /** One chicken marination record. Supervisor/manager records it; auditor views. */

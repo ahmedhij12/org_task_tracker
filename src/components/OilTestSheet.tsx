@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, Image, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,16 +31,35 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const [filtered, setFiltered] = useState<boolean | null>(null);
   const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [lateReason, setLateReason] = useState('');
+  const [minutesLate, setMinutesLate] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const now = useMemo(() => new Date(), [visible]);
+
+  // Ask the server which scheduled slot this moment belongs to, so the person
+  // is told they're late before they fill anything in — not after.
+  useEffect(() => {
+    if (!visible || !fryerId || isAudit) { setMinutesLate(null); return; }
+    const fryer = fryers.find((f) => f.id === fryerId);
+    if (!fryer) return;
+    let cancelled = false;
+    supabase
+      .rpc('oil_slot_for', { p_team_id: fryer.teamId, p_at: new Date().toISOString() })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const row = Array.isArray(data) ? data[0] : data;
+        setMinutesLate(row?.minutes_late ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [visible, fryerId, isAudit, fryers]);
   const tpmNum = tpm.trim() === '' ? null : Number(tpm);
   const grade: OilGrade | null = tpmNum != null && isFinite(tpmNum) ? gradeForTpm(tpmNum) : null;
 
   const reset = () => {
     setFryerId(null); setPhoto(null); setTpm(''); setTemp(''); setFiltered(null);
-    setSignatureSvg(null); setNote(''); setError(null); setReading(false);
+    setSignatureSvg(null); setNote(''); setError(null); setReading(false); setLateReason(''); setMinutesLate(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
@@ -68,7 +87,8 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   };
 
   const canSubmit =
-    !!fryerId && !!photo && tpmNum != null && isFinite(tpmNum) && filtered != null && !submitting;
+    !!fryerId && !!photo && tpmNum != null && isFinite(tpmNum) && filtered != null && !submitting &&
+    (minutesLate == null || lateReason.trim().length > 0);
 
   const handleSubmit = async () => {
     if (!canSubmit || !photo || !fryerId || tpmNum == null) return;
@@ -92,6 +112,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
       await submitTest({
         fryerId, tpm: tpmNum, tempC: temp.trim() === '' ? null : Number(temp),
         filtered: filtered === true, photoUrl: pub.publicUrl, signatureUrl, note: note.trim() || null,
+        lateReason: lateReason.trim() || null,
         isAudit: !!isAudit,
       });
       reset();
@@ -181,6 +202,20 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
                   );
                 })}
               </View>
+
+              {minutesLate != null ? (
+                <View style={{ backgroundColor: '#E8141A18', borderWidth: 1, borderColor: '#E8141A55', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <Ionicons name="alert-circle" size={18} color="#E8141A" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#E8141A', flex: 1 }}>
+                      {t('oil.lateBy', { count: minutesLate })}
+                    </Text>
+                  </View>
+                  <TextInput value={lateReason} onChangeText={setLateReason} multiline
+                    placeholder={t('oil.lateWhy')} placeholderTextColor={c.textFaint}
+                    style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, padding: 10, fontSize: 14, color: c.text, minHeight: 44, backgroundColor: c.bg, textAlign: textAlignFor(lateReason) }} />
+                </View>
+              ) : null}
 
               {/* Optional note */}
               <TextInput value={note} onChangeText={setNote} placeholder={t('oil.notePlaceholder')} placeholderTextColor={c.textFaint} multiline
