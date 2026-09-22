@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BranchLocationPicker, type PinnedLocation } from '@/components/BranchLocationPicker';
+import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useOrgData } from '@/hooks/useOrgData';
@@ -12,6 +14,8 @@ export default function TeamsScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { teams, members, tasks, createTeam, brands, branchBrandIds, createBrand, setBranchBrands } = useOrgData();
+  const [pinningTeam, setPinningTeam] = useState<{ id: string; loc: PinnedLocation | null } | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,6 +77,21 @@ export default function TeamsScreen() {
                 <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
                   {admin ? t('teams.adminLabel', { name: admin.name }) : t('teams.noAdminAssigned')}
                 </Text>
+                <Pressable
+                  onPress={() => {
+                    setPinError(null);
+                    setPinningTeam({
+                      id: team.id,
+                      loc: team.lat != null && team.lng != null ? { lat: team.lat, lng: team.lng, radiusM: team.radiusM ?? 40 } : null,
+                    });
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}
+                >
+                  <Ionicons name={team.lat != null ? 'location' : 'location-outline'} size={14} color={team.lat != null ? c.emerald : c.amber} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: team.lat != null ? c.emerald : c.amber }}>
+                    {team.lat != null ? t('branchLoc.pinned', { m: team.radiusM ?? 40 }) : t('branchLoc.notPinned')}
+                  </Text>
+                </Pressable>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                   {teamMembers.map((m) => (
                     <View
@@ -208,6 +227,20 @@ export default function TeamsScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+      {pinningTeam ? (
+        <BranchLocationPicker
+          visible
+          initial={pinningTeam.loc}
+          onClose={() => setPinningTeam(null)}
+          onSave={async (loc) => {
+            const { error } = await supabase.rpc('set_team_location', {
+              p_team_id: pinningTeam.id, p_lat: loc.lat, p_lng: loc.lng, p_radius_m: loc.radiusM,
+            });
+            if (error) setPinError(error.message);
+            setPinningTeam(null);
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

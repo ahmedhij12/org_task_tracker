@@ -377,6 +377,15 @@ export default {
     today: "Today {{time}}",
     tomorrow: "Tomorrow {{time}}",
   },
+  branchLoc: {
+    title: "Branch location",
+    hint: "Move the map so the pin sits on the branch, then save. You can do this from anywhere — you don't need to be at the branch.",
+    radius: "Allowed distance: {{m}} m",
+    save: "Save location",
+    cancel: "Cancel",
+    pinned: "Location set · {{m}} m allowed",
+    notPinned: "No location set — tap to pin on the map",
+  },
   chicken: {
     title: "Chicken marination",
     cardTitle: "Chicken marination",
@@ -403,6 +412,9 @@ export default {
     byAuditor: "auditor",
   },
   push: {
+    sendTest: "Send a test notification",
+    testSent: "Sent — it should arrive in a moment.",
+    testNoSub: "This device isn't registered yet. Turn notifications on again.",
     pushTitle: "Notifications",
     pushOnHint: "You'll get alerts for oil that must be changed, and reminders.",
     pushEnable: "Turn on notifications",

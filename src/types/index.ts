@@ -53,6 +53,11 @@ export interface Team {
   createdAt: string;
   /** IANA zone of this branch; times display in it, not the viewer's. */
   timezone: string;
+  /** Where the branch is, pinned by the admin on a map. Null until pinned. */
+  lat?: number | null;
+  lng?: number | null;
+  /** How far from the pin still counts as being at the branch. */
+  radiusM?: number;
 }
 
 export interface Brand {

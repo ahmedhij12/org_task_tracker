@@ -128,8 +128,8 @@ function mapOrg(row: { id: string; org_code: string; name: string; owner_id: str
   };
 }
 
-function mapTeam(row: { id: string; org_id: string; name: string; created_at: string; timezone?: string }): Team {
-  return { id: row.id, orgId: row.org_id, name: row.name, timezone: row.timezone ?? 'Asia/Baghdad', createdAt: row.created_at };
+function mapTeam(row: { id: string; org_id: string; name: string; created_at: string; timezone?: string; lat?: number | null; lng?: number | null; radius_m?: number }): Team {
+  return { id: row.id, orgId: row.org_id, name: row.name, timezone: row.timezone ?? 'Asia/Baghdad', lat: row.lat ?? null, lng: row.lng ?? null, radiusM: row.radius_m ?? 40, createdAt: row.created_at };
 }
 
 /** Supabase will not admit that an email is already registered: signUp on a

@@ -71,7 +71,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
   };
 
   const field = (label: string, value: string, setter: (v: string) => void, kind: 'time' | 'num') => (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, minWidth: 0 }}>
       <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 6 }}>{label}</Text>
       <TextInput value={value} onChangeText={setter} keyboardType={kind === 'num' ? 'decimal-pad' : 'numbers-and-punctuation'}
         placeholder={kind === 'time' ? 'HH:MM' : '0'} placeholderTextColor={c.textFaint}

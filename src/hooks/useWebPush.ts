@@ -30,6 +30,7 @@ function isStandalone(): boolean {
 export function useWebPush() {
   const [state, setState] = useState<PushState>('unsupported');
   const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState<string | null>(null);
 
   const compute = useCallback((): PushState => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return 'unsupported';
@@ -49,9 +50,13 @@ export function useWebPush() {
 
   const enable = useCallback(async () => {
     setBusy(true);
+    setDetail(null);
     try {
       const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { setState(perm as PushState); return; }
+      if (perm !== 'granted') { setState(perm as PushState); setDetail(`permission: ${perm}`); return; }
+      // Make sure our worker is registered before asking for a subscription;
+      // on a fresh install `ready` can hang if registration never happened.
+      await navigator.serviceWorker.register('/sw.js').catch(() => {});
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -64,12 +69,14 @@ export function useWebPush() {
         p_auth: json.keys?.auth,
       });
       setState('granted');
-    } catch {
+    } catch (e: any) {
+      // Surface it: a silent failure here is why nothing ever arrived.
+      setDetail(e?.message ? String(e.message).slice(0, 140) : 'subscribe failed');
       setState(compute());
     } finally {
       setBusy(false);
     }
   }, [compute]);
 
-  return { state, busy, enable };
+  return { state, busy, enable, detail };
 }

@@ -21,7 +21,7 @@ export function TimeField({ label, value, onChange }: { label: string; value: st
     input.type = 'time';
     input.value = value;
     input.style.cssText = [
-      'width:100%', 'box-sizing:border-box', 'border:1px solid ' + c.border, 'border-radius:12px',
+      'width:100%', 'max-width:100%', 'box-sizing:border-box', 'border:1px solid ' + c.border, 'border-radius:12px',
       'padding:12px', 'font-size:17px', 'font-weight:700', 'color:' + c.text,
       'background:transparent', 'font-family:inherit', 'outline:none',
     ].join(';');
@@ -37,9 +37,9 @@ export function TimeField({ label, value, onChange }: { label: string; value: st
   }, [value]);
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, minWidth: 0 }}>
       <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 6 }}>{label}</Text>
-      <View ref={holderRef} style={{ width: '100%' }} />
+      <View ref={holderRef} style={{ width: '100%', overflow: 'hidden' }} />
     </View>
   );
 }
