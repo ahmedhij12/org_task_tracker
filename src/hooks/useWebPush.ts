@@ -41,12 +41,35 @@ export function useWebPush() {
     return Notification.permission as PushState;
   }, []);
 
+  // Subscribe this browser and store it. Safe to call repeatedly.
+  const subscribeAndSave = useCallback(async () => {
+    await navigator.serviceWorker.register('/sw.js').catch(() => {});
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing ?? (await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) as BufferSource,
+    }));
+    const json = sub.toJSON();
+    const { error } = await supabase.rpc('save_web_push_subscription', {
+      p_endpoint: sub.endpoint,
+      p_p256dh: json.keys?.p256dh,
+      p_auth: json.keys?.auth,
+    });
+    if (error) throw new Error(error.message);
+  }, []);
+
   useEffect(() => {
-    setState(compute());
-    if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    const next = compute();
+    setState(next);
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    navigator.serviceWorker?.register('/sw.js').catch(() => {});
+    // Permission can already be granted while this browser was never actually
+    // registered (it failed silently before). Repair that on load.
+    if (next === 'granted') {
+      subscribeAndSave().catch((e) => setDetail(String(e?.message ?? e).slice(0, 140)));
     }
-  }, [compute]);
+  }, [compute, subscribeAndSave]);
 
   const enable = useCallback(async () => {
     setBusy(true);
@@ -54,20 +77,7 @@ export function useWebPush() {
     try {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { setState(perm as PushState); setDetail(`permission: ${perm}`); return; }
-      // Make sure our worker is registered before asking for a subscription;
-      // on a fresh install `ready` can hang if registration never happened.
-      await navigator.serviceWorker.register('/sw.js').catch(() => {});
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) as BufferSource,
-      });
-      const json = sub.toJSON();
-      await supabase.rpc('save_web_push_subscription', {
-        p_endpoint: sub.endpoint,
-        p_p256dh: json.keys?.p256dh,
-        p_auth: json.keys?.auth,
-      });
+      await subscribeAndSave();
       setState('granted');
     } catch (e: any) {
       // Surface it: a silent failure here is why nothing ever arrived.
@@ -76,7 +86,7 @@ export function useWebPush() {
     } finally {
       setBusy(false);
     }
-  }, [compute]);
+  }, [compute, subscribeAndSave]);
 
-  return { state, busy, enable, detail };
+  return { state, busy, enable, detail, retry: subscribeAndSave };
 }

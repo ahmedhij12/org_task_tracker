@@ -412,6 +412,8 @@ export default {
     byAuditor: "auditor",
   },
   push: {
+    registered: "Device registered — try the test now.",
+    register: "Register this device again",
     sendTest: "Send a test notification",
     testSent: "Sent — it should arrive in a moment.",
     testNoSub: "This device isn't registered yet. Turn notifications on again.",

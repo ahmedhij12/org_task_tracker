@@ -12,7 +12,7 @@ import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 export function PushCard() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { state, busy, enable, detail } = useWebPush();
+  const { state, busy, enable, detail, retry } = useWebPush();
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -42,6 +42,12 @@ export function PushCard() {
             </Pressable>
           )}
           {testMsg ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8 }}>{testMsg}</Text> : null}
+          <Pressable
+            onPress={async () => { setTestMsg(null); setTesting(true); try { await retry(); setTestMsg(t('push.registered')); } catch (e: any) { setTestMsg(String(e?.message ?? e)); } setTesting(false); }}
+            style={{ alignSelf: 'flex-start', marginTop: 10 }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>{t('push.register')}</Text>
+          </Pressable>
         </>
       ) : state === 'needs-install' ? (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
