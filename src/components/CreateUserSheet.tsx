@@ -94,7 +94,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const handleCopy = async () => {
     if (!created) return;
     await Clipboard.setStringAsync(
-      `Rungs sign-in\nOrganization ID: ${organization?.orgCode ?? ''}\nUsername: ${created.username}\nPassword: ${created.password}`
+      `BD Audit sign-in\nOrganization ID: ${organization?.orgCode ?? ''}\nUsername: ${created.username}\nPassword: ${created.password}`
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);

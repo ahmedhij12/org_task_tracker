@@ -20,6 +20,9 @@ export default function LandingScreen() {
               borderRadius: 22,
               overflow: 'hidden',
               marginBottom: 18,
+              // The icon is white: a hairline keeps it from vanishing on the light theme.
+              borderWidth: 1,
+              borderColor: c.border,
             }}
           >
             <Image
@@ -28,7 +31,7 @@ export default function LandingScreen() {
               resizeMode="cover"
             />
           </View>
-          <Text style={{ fontSize: 26, fontWeight: '800', color: c.text }}>Rungs</Text>
+          <Text style={{ fontSize: 26, fontWeight: '800', color: c.text }}>BD Audit</Text>
           <Text style={{ fontSize: 14, color: c.textMuted, textAlign: 'center', marginTop: 8, maxWidth: 260, lineHeight: 20 }}>
             {t('auth.landing.tagline')}
           </Text>

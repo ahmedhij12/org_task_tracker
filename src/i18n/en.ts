@@ -214,7 +214,7 @@ export default {
     openReport: 'Open the audit report and photos',
   },
   fill: {
-    cameraNeeded: "Camera access is needed to take photos. Enable it for Rungs in your device settings.",
+    cameraNeeded: "Camera access is needed to take photos. Enable it for BD Audit in your device settings.",
     cameraFailed: "Could not open the camera on this device.",
     selfieCameraNeeded: "Camera permission is needed to take your selfie.",
     submitFailed: "Could not submit this checklist. Please try again.",
@@ -258,7 +258,7 @@ export default {
     getting: "Getting your location…",
     permission: "Location permission needed",
     failed: "Could not get your location",
-    permissionHint: "Allow location for Rungs in Settings, then retry. Required to submit.",
+    permissionHint: "Allow location for BD Audit in Settings, then retry. Required to submit.",
     failedHint: "Move near a window or outside, then retry.",
     hint: "Required to submit — confirms where this was done.",
   },

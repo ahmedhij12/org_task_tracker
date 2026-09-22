@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Rungs",
+    "name": "BD Audit",
     "//slug": "Stuck as the old name on purpose. Expo project slugs are immutable — the API exposes only displayName (already set to Rungs on expo.dev), and this must match EAS project 530bebab... or every EAS command fails. Changing it costs a brand-new Expo project and a new OTA update URL. Cosmetic only: it never appears in the built app.",
     "slug": "org_task_tracker",
     "version": "1.0.0",
@@ -16,7 +16,7 @@
     "android": {
       "package": "com.hijazionline.rungs",
       "adaptiveIcon": {
-        "backgroundColor": "#4F46E5",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -36,8 +36,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Rungs lets you attach a photo as proof when completing a task.",
-          "cameraPermission": "Rungs lets you take a photo as proof when completing a task."
+          "photosPermission": "BD Audit lets you attach a photo as proof when completing a task.",
+          "cameraPermission": "BD Audit lets you take a photo as proof when completing a task."
         }
       ],
       "@react-native-community/datetimepicker",
@@ -48,7 +48,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Rungs records where an audit is signed, to confirm the auditor was at the branch."
+          "locationWhenInUsePermission": "BD Audit records where an audit is signed, to confirm the auditor was at the branch."
         }
       ]
     ],

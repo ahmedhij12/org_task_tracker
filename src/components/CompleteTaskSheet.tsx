@@ -51,7 +51,7 @@ export function CompleteTaskSheet({ task, orgId, visible, onCancel, onSubmit }: 
     }
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      setError('Camera access is needed to take proof photos. Enable it for Rungs in your device settings.');
+      setError('Camera access is needed to take proof photos. Enable it for BD Audit in your device settings.');
       return;
     }
     try {
