@@ -106,7 +106,7 @@ export function MyAuditScore() {
                 <View>
                   <Text style={{ fontSize: 11, color: c.textMuted }}>{t('myScore.deducted')}</Text>
                   <Text style={{ fontSize: 16, fontWeight: '800', color: thisMonth.iqd > 0 ? c.rose : c.text }}>
-                    {thisMonth.iqd.toLocaleString(i18n.language)} IQD
+                    {thisMonth.iqd.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
                   </Text>
                 </View>
               </View>
@@ -193,7 +193,7 @@ export function MyAuditScore() {
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>{dateOf(a.createdAt)}</Text>
                 <Text style={{ fontSize: 12, color: (a.pointsAwarded ?? 0) < 0 ? c.rose : c.textMuted, marginTop: 2 }}>
-                  {a.pointsAwarded} pts · {Math.abs((a.pointsAwarded ?? 0) * a.iqdPerPoint).toLocaleString(i18n.language)} IQD
+                  {a.pointsAwarded} {t('dashboard.pointsSuffix')} · {Math.abs((a.pointsAwarded ?? 0) * a.iqdPerPoint).toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
                 </Text>
               </View>
               {a.score != null ? <ScorePill score={a.score} /> : null}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReports } from '@/hooks/useReports';
 import { useAuth } from '@/hooks/useAuth';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
@@ -22,6 +23,7 @@ function fmtPoints(points: number, iqd: number): string {
 
 export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Props) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const { loadPeriodAdjustments, adjustPeriodPoints } = useReports();
   // A new override is always converted at today's rate; get_period_report
   // then shows it back at that same stored rate, so the typed IQD sticks.
@@ -82,7 +84,7 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
               borderTopRightRadius: 24,
               paddingHorizontal: 20,
               paddingTop: 20,
-              paddingBottom: 32,
+              paddingBottom: Math.max(32, insets.bottom + 16),
             }}
           >
             <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 2 }}>Adjust month total</Text>
@@ -112,12 +114,15 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
                 {adjustments.length > 0 ? (
                   <View style={{ marginBottom: 16 }}>
                     <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>History</Text>
+                    {/* Capped so a long correction trail can't push Save/Close off-screen. */}
+                    <ScrollView style={{ maxHeight: 120 }} nestedScrollEnabled>
                     {adjustments.map((a) => (
                       <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
                         {when(a.createdAt)} — {a.previousIqd != null ? Math.round(a.previousIqd).toLocaleString() : '—'} →{' '}
                         {Math.round(a.newPoints * a.iqdPerPoint).toLocaleString()} IQD
                       </Text>
                     ))}
+                    </ScrollView>
                   </View>
                 ) : null}
 

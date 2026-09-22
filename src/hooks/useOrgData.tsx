@@ -294,6 +294,13 @@ export function OrgDataProvider({ children }: { children: ReactNode }) {
         { event: '*', schema: 'public', table: 'tasks', filter: `org_id=eq.${organization.id}` },
         () => refresh()
       )
+      // A verification or off-duty review only touches task_completions, so the
+      // supervisor's screen needs this to flip to "Verified" without a refresh.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'task_completions', filter: `org_id=eq.${organization.id}` },
+        () => refresh()
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);

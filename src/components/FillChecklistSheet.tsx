@@ -14,6 +14,7 @@ import { SignaturePad } from '@/components/SignaturePad';
 import { SigningLocation, type SignedLocation } from '@/components/SigningLocation';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { OrgTask } from '@/types';
 
 interface Props {
@@ -56,6 +57,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   // the moment it's answered No, before its note can be typed.
   const [leftOnly, setLeftOnly] = useState<Set<string> | null>(null);
   const listRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
 
   // Audit-only: the branch, subject and shift are chosen fresh each time,
   // right here — never fixed when the audit task itself was created.
@@ -114,6 +116,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   };
 
   const handleClose = () => {
+    // Closing mid-submit would unmount the sheet while the upload keeps going,
+    // and a reopen-and-resubmit would save the checklist twice.
+    if (submitting) return;
     reset();
     onClose();
   };
@@ -323,7 +328,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
               borderTopRightRadius: 24,
               paddingHorizontal: 20,
               paddingTop: 20,
-              paddingBottom: 32,
+              paddingBottom: Math.max(32, insets.bottom + 16),
               flexShrink: 1,
               minHeight: 0,
             }}
@@ -679,98 +684,100 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                     </View>
                     );
                   })}
+                  {/* The proof (signature, selfie, location) scrolls with the questions:
+                      pinned below the list it outgrew the sheet and pushed Submit off-screen. */}
+                  {task.isAudit && unanswered.length === 0 ? (
+                    <View style={{ marginBottom: 14 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 16,
+                          backgroundColor: c.bgSubtle,
+                          borderRadius: 16,
+                          padding: 14,
+                          marginBottom: 12,
+                        }}
+                      >
+                        {previewScore != null ? <ScoreRing score={previewScore} size={84} /> : null}
+                        <View style={{ flex: 1, gap: 8 }}>
+                          <View>
+                            <Text style={{ fontSize: 11, color: c.textMuted }}>{t('fill.penalty')}</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
+                              {totalPoints} pts
+                            </Text>
+                          </View>
+                          <View>
+                            <Text style={{ fontSize: 11, color: c.textMuted }}>{t('fill.amount')}</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
+                              {totalIqd.toLocaleString()} IQD
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('fill.signToConfirm')}</Text>
+                      <SignaturePad onChange={setSignatureSvg} />
+                      <SigningLocation onChange={handleLocation} />
+                    </View>
+                  ) : null}
+
+                  {needsProof && unanswered.length === 0 ? (
+                    <View style={{ marginBottom: 14 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('fill.confirmHere')}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
+                        {selfie ? (
+                          <Image source={{ uri: selfie.uri }} style={{ width: 72, height: 72, borderRadius: 36 }} />
+                        ) : (
+                          <View
+                            style={{
+                              width: 72,
+                              height: 72,
+                              borderRadius: 36,
+                              borderWidth: 2,
+                              borderStyle: 'dashed',
+                              borderColor: c.border,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Ionicons name="person" size={30} color={c.textFaint} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <Text style={{ fontSize: 12, color: c.textMuted }}>
+                            {selfie ? t('fill.selfieTaken') : t('fill.selfieHint')}
+                          </Text>
+                          <Pressable
+                            onPress={takeSelfie}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              alignSelf: 'flex-start',
+                              backgroundColor: selfie ? c.card : c.indigo,
+                              borderWidth: 1,
+                              borderColor: selfie ? c.border : c.indigo,
+                              borderRadius: 999,
+                              paddingHorizontal: 14,
+                              paddingVertical: 8,
+                            }}
+                          >
+                            <Ionicons name="camera" size={15} color={selfie ? c.text : '#fff'} />
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: selfie ? c.text : '#fff' }}>
+                              {selfie ? t('fill.retake') : t('fill.takeSelfie')}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginTop: 14, marginBottom: 8 }}>
+                        {t('fill.signToConfirm')}
+                      </Text>
+                      <SignaturePad onChange={setSignatureSvg} />
+                      <SigningLocation onChange={handleLocation} />
+                    </View>
+                  ) : null}
                 </ScrollView>
 
-                {task.isAudit && unanswered.length === 0 && missingNotes.length === 0 ? (
-                  <View style={{ marginBottom: 14 }}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 16,
-                        backgroundColor: c.bgSubtle,
-                        borderRadius: 16,
-                        padding: 14,
-                        marginBottom: 12,
-                      }}
-                    >
-                      {previewScore != null ? <ScoreRing score={previewScore} size={84} /> : null}
-                      <View style={{ flex: 1, gap: 8 }}>
-                        <View>
-                          <Text style={{ fontSize: 11, color: c.textMuted }}>{t('fill.penalty')}</Text>
-                          <Text style={{ fontSize: 15, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
-                            {totalPoints} pts
-                          </Text>
-                        </View>
-                        <View>
-                          <Text style={{ fontSize: 11, color: c.textMuted }}>{t('fill.amount')}</Text>
-                          <Text style={{ fontSize: 15, fontWeight: '700', color: totalPoints < 0 ? c.rose : c.text }}>
-                            {totalIqd.toLocaleString()} IQD
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('fill.signToConfirm')}</Text>
-                    <SignaturePad onChange={setSignatureSvg} />
-                    <SigningLocation onChange={handleLocation} />
-                  </View>
-                ) : null}
-
-                {needsProof && unanswered.length === 0 && missingNotes.length === 0 ? (
-                  <View style={{ marginBottom: 14 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('fill.confirmHere')}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.bgSubtle, borderRadius: 14, padding: 12 }}>
-                      {selfie ? (
-                        <Image source={{ uri: selfie.uri }} style={{ width: 72, height: 72, borderRadius: 36 }} />
-                      ) : (
-                        <View
-                          style={{
-                            width: 72,
-                            height: 72,
-                            borderRadius: 36,
-                            borderWidth: 2,
-                            borderStyle: 'dashed',
-                            borderColor: c.border,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Ionicons name="person" size={30} color={c.textFaint} />
-                        </View>
-                      )}
-                      <View style={{ flex: 1, gap: 6 }}>
-                        <Text style={{ fontSize: 12, color: c.textMuted }}>
-                          {selfie ? t('fill.selfieTaken') : t('fill.selfieHint')}
-                        </Text>
-                        <Pressable
-                          onPress={takeSelfie}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 6,
-                            alignSelf: 'flex-start',
-                            backgroundColor: selfie ? c.card : c.indigo,
-                            borderWidth: 1,
-                            borderColor: selfie ? c.border : c.indigo,
-                            borderRadius: 999,
-                            paddingHorizontal: 14,
-                            paddingVertical: 8,
-                          }}
-                        >
-                          <Ionicons name="camera" size={15} color={selfie ? c.text : '#fff'} />
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: selfie ? c.text : '#fff' }}>
-                            {selfie ? t('fill.retake') : t('fill.takeSelfie')}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginTop: 14, marginBottom: 8 }}>
-                      {t('fill.signToConfirm')}
-                    </Text>
-                    <SignaturePad onChange={setSignatureSvg} />
-                    <SigningLocation onChange={handleLocation} />
-                  </View>
-                ) : null}
 
                 <Text
                   onPress={leftCount > 0 ? showLeftOnly : undefined}

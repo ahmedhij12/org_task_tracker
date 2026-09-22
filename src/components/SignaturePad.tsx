@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { View, PanResponder, Text, Pressable, type GestureResponderEvent } from 'react-native';
+import { View, PanResponder, Text, Pressable, Platform, type GestureResponderEvent, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/components/ui';
@@ -35,6 +35,8 @@ export function SignaturePad({ onChange }: Props) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      // The pad sits inside a ScrollView: don't let the scroll take the finger mid-stroke.
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e: GestureResponderEvent) => {
         const { locationX, locationY } = e.nativeEvent;
         setLiveDraw(`M${locationX.toFixed(1)},${locationY.toFixed(1)}`);
@@ -75,6 +77,8 @@ export function SignaturePad({ onChange }: Props) {
           borderRadius: 12,
           backgroundColor: '#ffffff',
           overflow: 'hidden',
+          // Web: stop the browser scrolling the page under the finger while drawing.
+          ...(Platform.OS === 'web' ? ({ touchAction: 'none' } as ViewStyle) : null),
         }}
       >
         <Svg width={WIDTH} height={HEIGHT}>

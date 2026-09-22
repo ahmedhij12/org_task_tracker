@@ -1243,6 +1243,7 @@ declare
   v_caller_org uuid;
   v_caller_teams uuid[];
   v_target_org uuid;
+  v_target_role text;
   v_target_teams uuid[];
 begin
   if auth.uid() is null then
@@ -1253,7 +1254,7 @@ begin
   from public.profiles p where p.id = auth.uid();
   v_caller_teams := public.my_team_ids();
 
-  select p.org_id into v_target_org
+  select p.org_id, p.role into v_target_org, v_target_role
   from public.profiles p where p.id = p_target_profile_id;
   select coalesce(array_agg(team_id), '{}') into v_target_teams
   from public.profile_teams where profile_id = p_target_profile_id;
@@ -1268,7 +1269,8 @@ begin
     return;
   end if;
   -- A multi-team employee is manageable by any leader she shares a team with.
-  if v_caller_role = 'team_admin' and v_caller_teams && v_target_teams then
+  -- A branch manager manages the supervisors on their branch, never a peer manager or the owner.
+  if v_caller_role = 'team_admin' and v_target_role = 'employee' and v_caller_teams && v_target_teams then
     return;
   end if;
   raise exception 'only an admin or the user''s team leader can manage this account';
@@ -2275,6 +2277,9 @@ begin
   ) then
     raise exception 'only an admin or the team''s leader can review this';
   end if;
+  if v_caller_role = 'team_admin' and v_completion.actor_id = auth.uid() then
+    raise exception 'your own checklist is verified by the admin';
+  end if;
 
   update public.task_completions
   set status = case when p_approve then 'off_duty_approved' else 'off_duty_rejected' end,
@@ -2685,8 +2690,8 @@ begin
   select p.role, p.org_id into v_caller_role, v_caller_org
   from public.profiles p where p.id = auth.uid();
 
-  if v_caller_role not in ('owner', 'team_admin') then
-    raise exception 'only an admin or team leader can create a checklist template';
+  if v_caller_role <> 'owner' then
+    raise exception 'only the admin can create a checklist template';
   end if;
   if coalesce(trim(p_name), '') = '' then
     raise exception 'a checklist name is required';
@@ -2904,8 +2909,8 @@ begin
   select p.role, p.org_id into v_caller_role, v_caller_org
   from public.profiles p where p.id = auth.uid();
 
-  if v_caller_role not in ('owner', 'team_admin') then
-    raise exception 'only an admin or team leader can create a form template';
+  if v_caller_role <> 'owner' then
+    raise exception 'only the admin can create a form template';
   end if;
   if coalesce(trim(p_name), '') = '' then
     raise exception 'a form name is required';
@@ -3026,6 +3031,16 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'task_occurrences'
   ) then
     alter publication supabase_realtime add table public.task_occurrences;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'task_completions'
+  ) then
+    alter publication supabase_realtime add table public.task_completions;
   end if;
 end $$;
 alter table public.task_occurrences replica identity full;

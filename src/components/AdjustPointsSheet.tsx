@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOrgData } from '@/hooks/useOrgData';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import type { PointsAdjustment, TaskCompletion } from '@/types';
@@ -22,6 +23,7 @@ function fmtPoints(points: number, rate: number): string {
 
 export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { loadPointsAdjustments, adjustCompletionPoints } = useOrgData();
 
@@ -80,7 +82,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
               borderTopRightRadius: 24,
               paddingHorizontal: 20,
               paddingTop: 20,
-              paddingBottom: 32,
+              paddingBottom: Math.max(32, insets.bottom + 16),
             }}
           >
             <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 2 }}>
@@ -112,12 +114,15 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
                 {adjustments.length > 0 ? (
                   <View style={{ marginBottom: 16 }}>
                     <Text style={{ fontSize: 11, fontWeight: '600', color: c.textMuted, marginBottom: 6 }}>{t('pointsSheet.history')}</Text>
+                    {/* Capped so a long correction trail can't push Save/Close off-screen. */}
+                    <ScrollView style={{ maxHeight: 120 }} nestedScrollEnabled>
                     {adjustments.map((a) => (
                       <Text key={a.id} style={{ fontSize: 12, color: c.textMuted, marginBottom: 3 }}>
                         {when(a.createdAt)} — {a.previousPoints != null ? Math.round(a.previousPoints * completion.iqdPerPoint).toLocaleString() : '—'} →{' '}
                         {Math.round(a.newPoints * completion.iqdPerPoint).toLocaleString()} IQD
                       </Text>
                     ))}
+                    </ScrollView>
                   </View>
                 ) : null}
 

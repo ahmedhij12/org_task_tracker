@@ -22,16 +22,21 @@ export function isTodayTask(task: OrgTask): boolean {
   return task.due ? isSameDay(new Date(task.due), new Date()) : true;
 }
 
-export function formatDue(iso: string | null): string {
+/** "Today 3:00 PM" / "Tomorrow 9:00 AM" / "Sep 24 3:00 PM", in the app's language. */
+export function formatDue(
+  iso: string | null,
+  locale: string,
+  labels: { today: (time: string) => string; tomorrow: (time: string) => string }
+): string {
   if (!iso) return '';
   const d = new Date(iso);
   const now = new Date();
   const tomorrow = new Date();
   tomorrow.setDate(now.getDate() + 1);
-  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  if (isSameDay(d, now)) return `Today ${time}`;
-  if (isSameDay(d, tomorrow)) return `Tomorrow ${time}`;
-  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`;
+  const time = d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+  if (isSameDay(d, now)) return labels.today(time);
+  if (isSameDay(d, tomorrow)) return labels.tomorrow(time);
+  return `${d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })} ${time}`;
 }
 
 export function bucketTasks(tasks: OrgTask[]) {

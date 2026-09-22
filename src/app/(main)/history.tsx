@@ -277,7 +277,7 @@ function HistoryRow({
                 {t('history.auditPoints', {
                   points: entry.pointsAwarded,
                   iqd: Math.abs(entry.pointsAwarded * entry.iqdPerPoint).toLocaleString(i18n.language),
-                  shift: entry.shift === 'morning' ? 'AM' : entry.shift === 'evening' ? 'PM' : '',
+                  shift: entry.shift === 'morning' ? t('history.shiftMorning') : entry.shift === 'evening' ? t('history.shiftEvening') : '',
                 })}
               </Text>
             ) : null}

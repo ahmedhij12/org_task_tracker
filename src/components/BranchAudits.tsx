@@ -95,7 +95,7 @@ export function BranchAudits() {
                 <Text style={{ fontSize: 12, color: s.points < 0 ? c.rose : c.textMuted }}>
                   {s.count === 0
                     ? t('branchAudits.noAuditThisMonth')
-                    : `${t('branchAudits.audits', { count: s.count })} · ${s.points} pts · ${s.iqd.toLocaleString(i18n.language)} IQD`}
+                    : `${t('branchAudits.audits', { count: s.count })} · ${s.points} ${t('dashboard.pointsSuffix')} · ${s.iqd.toLocaleString(i18n.language)} ${t('dashboard.iqdSuffix')}`}
                 </Text>
               </View>
               {s.avg != null ? <ScorePill score={s.avg} showGrade={false} /> : null}
@@ -130,7 +130,7 @@ export function BranchAudits() {
                   {nameOf(a.subjectProfileId)} · {dateOf(a.createdAt)}
                 </Text>
                 <Text style={{ fontSize: 12, color: (a.pointsAwarded ?? 0) < 0 ? c.rose : c.textMuted, marginTop: 2 }}>
-                  {a.pointsAwarded} pts · {Math.abs((a.pointsAwarded ?? 0) * a.iqdPerPoint).toLocaleString(i18n.language)} IQD
+                  {a.pointsAwarded} {t('dashboard.pointsSuffix')} · {Math.abs((a.pointsAwarded ?? 0) * a.iqdPerPoint).toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
                 </Text>
               </View>
               {a.score != null ? <ScorePill score={a.score} /> : null}
