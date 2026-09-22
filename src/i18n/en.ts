@@ -377,6 +377,14 @@ export default {
     today: "Today {{time}}",
     tomorrow: "Tomorrow {{time}}",
   },
+  push: {
+    pushTitle: "Notifications",
+    pushOnHint: "You'll get alerts for oil that must be changed, and reminders.",
+    pushEnable: "Turn on notifications",
+    pushOn: "Notifications are on",
+    pushDenied: "Blocked. Turn them on in your browser settings.",
+    pushNeedsInstall: "First add this site to your Home Screen (Share → Add to Home Screen), open it from there, then turn notifications on.",
+  },
   oil: {
     manageFryers: "Manage fryers",
     done: "Done",

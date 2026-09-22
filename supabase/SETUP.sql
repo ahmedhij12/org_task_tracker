@@ -3201,3 +3201,102 @@ do $$ begin
     alter publication supabase_realtime add table public.oil_tests;
   end if;
 end $$;
+
+-- Web-push subscriptions (applied 2026-09-22).
+create table if not exists public.web_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists web_push_profile_idx on public.web_push_subscriptions(profile_id);
+
+alter table public.web_push_subscriptions enable row level security;
+
+drop policy if exists "own web push" on public.web_push_subscriptions;
+create policy "own web push" on public.web_push_subscriptions for all
+  using (profile_id = auth.uid()) with check (profile_id = auth.uid());
+
+-- Upsert the current browser's subscription for the signed-in user.
+create or replace function public.save_web_push_subscription(
+  p_endpoint text, p_p256dh text, p_auth text
+) returns void language plpgsql security definer set search_path = public as $$
+declare v_org uuid;
+begin
+  select org_id into v_org from public.profiles where id = auth.uid();
+  if v_org is null then raise exception 'not signed in'; end if;
+  insert into public.web_push_subscriptions (profile_id, org_id, endpoint, p256dh, auth)
+  values (auth.uid(), v_org, p_endpoint, p_p256dh, p_auth)
+  on conflict (endpoint) do update set profile_id = excluded.profile_id, org_id = excluded.org_id,
+    p256dh = excluded.p256dh, auth = excluded.auth;
+end; $$;
+
+create or replace function public.delete_web_push_subscription(p_endpoint text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.web_push_subscriptions where endpoint = p_endpoint and profile_id = auth.uid();
+end; $$;
+
+grant execute on function public.save_web_push_subscription(text, text, text) to authenticated;
+grant execute on function public.delete_web_push_subscription(text) to authenticated;
+
+-- Red-oil push trigger (applied 2026-09-22; push_token row inserted out of band).
+create extension if not exists pg_net;
+
+-- Private key/value store. RLS on with no policy = unreachable except from the
+-- SECURITY DEFINER trigger below.
+create table if not exists public.app_secrets (
+  key text primary key,
+  value text not null
+);
+alter table public.app_secrets enable row level security;
+
+create or replace function public.notify_red_oil()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_token text;
+  v_fryer text;
+  v_branch text;
+  v_subs jsonb;
+begin
+  if new.grade <> 'change' then return new; end if;
+  select value into v_token from public.app_secrets where key = 'push_token';
+  if v_token is null then return new; end if;
+
+  select name into v_fryer from public.oil_fryers where id = new.fryer_id;
+  select name into v_branch from public.teams where id = new.team_id;
+
+  -- The org owner, plus the managers of this branch.
+  select coalesce(jsonb_agg(jsonb_build_object('endpoint', s.endpoint, 'p256dh', s.p256dh, 'auth', s.auth)), '[]'::jsonb)
+    into v_subs
+  from public.web_push_subscriptions s
+  join public.profiles p on p.id = s.profile_id
+  where s.org_id = new.org_id
+    and (
+      p.role = 'owner'
+      or (p.role = 'team_admin' and exists (
+        select 1 from public.profile_teams pt where pt.profile_id = p.id and pt.team_id = new.team_id))
+    );
+
+  if jsonb_array_length(v_subs) = 0 then return new; end if;
+
+  perform net.http_post(
+    url := 'https://bd-push.ahmedhijazi09.workers.dev',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || v_token),
+    body := jsonb_build_object(
+      'subscriptions', v_subs,
+      'title', 'BD Audit — oil needs changing',
+      'body', coalesce(v_branch, '') || ' · ' || coalesce(v_fryer, '') || ' · ' || new.tpm || '% TPM',
+      'url', 'https://bdaudit.hijazionline.com/history',
+      'tag', 'oil-' || new.fryer_id
+    )
+  );
+  return new;
+end; $$;
+
+drop trigger if exists red_oil_push on public.oil_tests;
+create trigger red_oil_push after insert on public.oil_tests
+  for each row execute function public.notify_red_oil();

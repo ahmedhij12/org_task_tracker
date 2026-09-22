@@ -4,6 +4,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FryersSheet } from '@/components/FryersSheet';
+import { PushCard } from '@/components/PushCard';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import * as Clipboard from 'expo-clipboard';
@@ -255,6 +256,8 @@ export default function SettingsScreen() {
             <PrimaryButton title={t('oil.manageFryers')} onPress={() => setManagingFryers(true)} />
           </Card>
         ) : null}
+
+        <PushCard />
 
         <Card style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
