@@ -8,7 +8,7 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { CreateUserSheet } from '@/components/CreateUserSheet';
 import { ManageUserSheet } from '@/components/ManageUserSheet';
 import { Card, useThemeColors } from '@/components/ui';
-import { GOLD_INK } from '@/theme';
+import { ON_ACCENT } from '@/theme';
 import { initials } from '@/lib/taskUtils';
 import type { Profile } from '@/types';
 
@@ -81,14 +81,14 @@ export default function PeopleScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 4,
-              backgroundColor: c.gold,
+              backgroundColor: c.accent,
               borderRadius: 999,
               paddingHorizontal: 12,
               paddingVertical: 8,
             }}
           >
-            <Ionicons name="add" size={16} color={GOLD_INK} />
-            <Text style={{ color: GOLD_INK, fontSize: 13, fontWeight: '700' }}>{t('people.addStaff')}</Text>
+            <Ionicons name="add" size={16} color={ON_ACCENT} />
+            <Text style={{ color: ON_ACCENT, fontSize: 13, fontWeight: '700' }}>{t('people.addStaff')}</Text>
           </Pressable>
           ) : null}
         </View>
@@ -106,7 +106,7 @@ export default function PeopleScreen() {
               <Pressable onPress={() => toggle(group.id)}>
                 <Card>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Ionicons name={group.id === ADMIN_GROUP_ID ? 'shield-outline' : 'business-outline'} size={18} color={c.indigo} />
+                    <Ionicons name={group.id === ADMIN_GROUP_ID ? 'shield-outline' : 'business-outline'} size={18} color={c.brand} />
                     <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: c.text }}>{group.name}</Text>
                     <Text style={{ fontSize: 12, color: c.textMuted }}>{group.members.length}</Text>
                     <Ionicons name={isOpen ? 'chevron-down' : 'chevron-forward'} size={16} color={c.textFaint} />
@@ -130,7 +130,7 @@ export default function PeopleScreen() {
                                   width: 40,
                                   height: 40,
                                   borderRadius: 20,
-                                  backgroundColor: m.active ? c.indigo : c.textFaint,
+                                  backgroundColor: m.active ? c.brand : c.textFaint,
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                 }}

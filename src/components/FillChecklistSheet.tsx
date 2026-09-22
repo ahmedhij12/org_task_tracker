@@ -369,7 +369,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                 ) : auditStep === 'brand' ? (
                   <>
                     <Pressable onPress={() => setAuditStep('branch')} style={{ marginBottom: 10 }}>
-                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back to branch'}</Text>
+                      <Text style={{ fontSize: 12, color: c.brand, fontWeight: '600' }}>{'< Back to branch'}</Text>
                     </Pressable>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Which brand?</Text>
                     {(branchBrandIds[auditBranchId ?? ''] ?? []).map((bid) => {
@@ -419,7 +419,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                       onPress={() => setAuditStep((branchBrandIds[auditBranchId ?? ''] ?? []).length > 0 ? 'brand' : 'branch')}
                       style={{ marginBottom: 10 }}
                     >
-                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back'}</Text>
+                      <Text style={{ fontSize: 12, color: c.brand, fontWeight: '600' }}>{'< Back'}</Text>
                     </Pressable>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Who are you auditing?</Text>
                     {branchMembers.length === 0 ? (
@@ -448,7 +448,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                 ) : (
                   <>
                     <Pressable onPress={() => setAuditStep('subject')} style={{ marginBottom: 10 }}>
-                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{'< Back to who'}</Text>
+                      <Text style={{ fontSize: 12, color: c.brand, fontWeight: '600' }}>{'< Back to who'}</Text>
                     </Pressable>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>Which shift?</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -489,12 +489,12 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                       {auditBrand ? ` • ${auditBrand.name}` : ''} • {auditSubject?.name} • {auditShift === 'morning' ? 'AM' : 'PM'}
                     </Text>
                     <Pressable onPress={() => setAuditStep('branch')}>
-                      <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>Change</Text>
+                      <Text style={{ fontSize: 12, color: c.brand, fontWeight: '600' }}>Change</Text>
                     </Pressable>
                   </View>
                 ) : (
                   <Pressable onPress={() => setMode('off_duty')} style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 12, color: c.indigo, fontWeight: '600' }}>{t('fill.notOnDuty')}</Text>
+                    <Text style={{ fontSize: 12, color: c.brand, fontWeight: '600' }}>{t('fill.notOnDuty')}</Text>
                   </Pressable>
                 )}
 
@@ -512,9 +512,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                         paddingHorizontal: 12,
                         paddingVertical: 7,
                         borderRadius: 999,
-                        backgroundColor: opt.active ? c.indigo : c.bgSubtle,
+                        backgroundColor: opt.active ? c.brand : c.bgSubtle,
                         borderWidth: 1,
-                        borderColor: opt.active ? c.indigo : c.border,
+                        borderColor: opt.active ? c.brand : c.border,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: '600', color: opt.active ? '#fff' : c.text }}>{opt.label}</Text>
@@ -538,7 +538,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                           style={{
                             fontSize: 14,
                             fontWeight: '700',
-                            color: c.indigo,
+                            color: c.brand,
                             marginBottom: 8,
                             textAlign: textAlignFor(sectionTitle),
                           }}
@@ -754,9 +754,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                               alignItems: 'center',
                               gap: 6,
                               alignSelf: 'flex-start',
-                              backgroundColor: selfie ? c.card : c.indigo,
+                              backgroundColor: selfie ? c.card : c.brand,
                               borderWidth: 1,
-                              borderColor: selfie ? c.border : c.indigo,
+                              borderColor: selfie ? c.border : c.brand,
                               borderRadius: 999,
                               paddingHorizontal: 14,
                               paddingVertical: 8,
@@ -781,7 +781,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
 
                 <Text
                   onPress={leftCount > 0 ? showLeftOnly : undefined}
-                  style={{ fontSize: 12, color: leftCount > 0 ? c.indigo : c.textMuted, marginBottom: 10 }}
+                  style={{ fontSize: 12, color: leftCount > 0 ? c.brand : c.textMuted, marginBottom: 10 }}
                 >
                   {unanswered.length > 0
                     ? t('fill.left', { count: unanswered.length })
@@ -802,7 +802,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
 
                 {submitting ? (
                   <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-                    <ActivityIndicator color={c.indigo} />
+                    <ActivityIndicator color={c.brand} />
                   </View>
                 ) : (
                   <>
@@ -841,7 +841,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
 
                 {submitting ? (
                   <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-                    <ActivityIndicator color={c.indigo} />
+                    <ActivityIndicator color={c.brand} />
                   </View>
                 ) : (
                   <>

@@ -6,8 +6,9 @@ export interface ThemeColors {
   text: string;
   textMuted: string;
   textFaint: string;
-  indigo: string;
-  indigoSoft: string;
+  /** Basra Delight navy (the smile in the logo): links, selected chips, active icons. Lighter in dark mode so it stays readable on the dark background. */
+  brand: string;
+  brandSoft: string;
   emerald: string;
   emeraldSoft: string;
   amber: string;
@@ -15,13 +16,13 @@ export interface ThemeColors {
   rose: string;
   roseSoft: string;
   sky: string;
-  /** The brand's second color alongside indigo — used for primary CTAs (PrimaryButton, "+Add" pills, the dashboard FAB) and the active tab, never for body text or icons, which stay indigo/neutral. */
-  gold: string;
-  goldSoft: string;
+  /** Basra Delight red (the red in the logo): primary CTAs (PrimaryButton, "+Add" pills, the dashboard FAB) and the active tab — never body text; icons stay brand/neutral. */
+  accent: string;
+  accentSoft: string;
 }
 
-/** Fixed dark ink for text/icons sitting on a gold background — a light color fails contrast on gold in both themes, so this never comes from ThemeColors. */
-export const GOLD_INK = '#1C1300';
+/** Text and icons sitting on the accent (red) background — white in both themes. */
+export const ON_ACCENT = '#FFFFFF';
 
 export const Colors: { light: ThemeColors; dark: ThemeColors } = {
   light: {
@@ -32,8 +33,8 @@ export const Colors: { light: ThemeColors; dark: ThemeColors } = {
     text: '#111827',
     textMuted: '#6B7280',
     textFaint: '#9CA3AF',
-    indigo: '#4F46E5',
-    indigoSoft: '#EEF2FF',
+    brand: '#00304E',
+    brandSoft: '#E6EEF3',
     emerald: '#10B981',
     emeraldSoft: '#ECFDF5',
     amber: '#F59E0B',
@@ -41,8 +42,8 @@ export const Colors: { light: ThemeColors; dark: ThemeColors } = {
     rose: '#F43F5E',
     roseSoft: '#FFF1F2',
     sky: '#0EA5E9',
-    gold: '#EAB308',
-    goldSoft: '#FEF9C3',
+    accent: '#E8141A',
+    accentSoft: '#FDE8E9',
   },
   dark: {
     bg: '#171717',
@@ -52,8 +53,8 @@ export const Colors: { light: ThemeColors; dark: ThemeColors } = {
     text: '#F5F5F5',
     textMuted: '#A3A3A3',
     textFaint: '#737373',
-    indigo: '#818CF8',
-    indigoSoft: 'rgba(99,102,241,0.15)',
+    brand: '#4180AE',
+    brandSoft: 'rgba(65,128,174,0.18)',
     emerald: '#34D399',
     emeraldSoft: 'rgba(16,185,129,0.12)',
     amber: '#FBBF24',
@@ -61,8 +62,8 @@ export const Colors: { light: ThemeColors; dark: ThemeColors } = {
     rose: '#FB7185',
     roseSoft: 'rgba(244,63,94,0.12)',
     sky: '#38BDF8',
-    gold: '#FACC15',
-    goldSoft: 'rgba(234,179,8,0.15)',
+    accent: '#EE2B31',
+    accentSoft: 'rgba(232,20,26,0.16)',
   },
 };
 

@@ -77,8 +77,8 @@ function Slot({
         { scale: interpolate(collapse.value, [0, 1], [1 + focus.value * 0.06, 0.4]) },
       ],
       opacity: 1 - collapse.value,
-      borderColor: errored ? c.rose : focus.value > 0.5 ? c.indigo : c.border,
-      backgroundColor: focus.value > 0.5 ? c.indigoSoft : c.bgSubtle,
+      borderColor: errored ? c.rose : focus.value > 0.5 ? c.brand : c.border,
+      backgroundColor: focus.value > 0.5 ? c.brandSoft : c.bgSubtle,
     };
   });
 
@@ -194,7 +194,7 @@ export function OtpDial({
               cx={CENTER}
               cy={CENTER}
               r={RADIUS}
-              stroke={errored ? c.rose : c.indigo}
+              stroke={errored ? c.rose : c.brand}
               strokeWidth={2.5}
               strokeLinecap="round"
               strokeDasharray={`${ARC} ${CIRC - ARC}`}

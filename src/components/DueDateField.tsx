@@ -92,7 +92,7 @@ export function DueDateField({ value, onChange }: Props) {
           />
           {Platform.OS === 'ios' ? (
             <Pressable onPress={() => setShowPicker(false)} style={{ alignSelf: 'flex-end', marginTop: 4 }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: c.indigo }}>Done</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: c.brand }}>Done</Text>
             </Pressable>
           ) : null}
         </>

@@ -15,7 +15,7 @@ export function gradeColors(grade: ScoreGrade, c: ThemeColors): { fg: string; bg
     case 'excellent':
       return { fg: c.emerald, bg: c.emeraldSoft };
     case 'good':
-      return { fg: c.sky, bg: c.indigoSoft };
+      return { fg: c.sky, bg: c.brandSoft };
     case 'needsWork':
       return { fg: c.amber, bg: c.amberSoft };
     case 'critical':

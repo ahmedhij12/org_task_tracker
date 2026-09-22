@@ -239,7 +239,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                       }}
                     />
                     {reviewing ? (
-                      <ActivityIndicator color={c.indigo} />
+                      <ActivityIndicator color={c.brand} />
                     ) : (
                       <View style={{ flexDirection: 'row', gap: 8 }}>
                         <Pressable
@@ -262,7 +262,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
             ) : (
               <>
                 {loading ? (
-                  <ActivityIndicator color={c.indigo} style={{ marginVertical: 20 }} />
+                  <ActivityIndicator color={c.brand} style={{ marginVertical: 20 }} />
                 ) : isChecklistCompletion ? (
                   <ScrollView style={{ flexShrink: 1, minHeight: 0 }}>
                     {completion.score != null ? (
@@ -318,7 +318,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                       return (
                         <View key={a.id}>
                           {showHeader ? (
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: c.indigo, marginTop: 10, marginBottom: 6, textAlign: textAlignFor(a.sectionTitle) }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: c.brand, marginTop: 10, marginBottom: 6, textAlign: textAlignFor(a.sectionTitle) }}>
                               {a.sectionTitle}
                             </Text>
                           ) : null}
@@ -404,7 +404,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                       }}
                     />
                     {reviewing ? (
-                      <ActivityIndicator color={c.indigo} />
+                      <ActivityIndicator color={c.brand} />
                     ) : (
                       <PrimaryButton title={isSupervisorProof ? t('detail.verify') : t('detail.markReviewed')} onPress={handleAcknowledge} />
                     )}
@@ -418,7 +418,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                 <View style={{ height: 10 }} />
                 {exporting ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 }}>
-                    <ActivityIndicator color={c.indigo} />
+                    <ActivityIndicator color={c.brand} />
                     <Text style={{ color: c.textMuted, fontSize: 13 }}>{t('detail.preparingPdf')}</Text>
                   </View>
                 ) : webPdf ? (

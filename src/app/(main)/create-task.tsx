@@ -194,9 +194,9 @@ export default function CreateTaskScreen() {
                     gap: 4,
                     paddingVertical: 10,
                     borderRadius: 12,
-                    backgroundColor: active ? c.indigo : c.bgSubtle,
+                    backgroundColor: active ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: active ? c.indigo : c.border,
+                    borderColor: active ? c.brand : c.border,
                   }}
                 >
                   <Ionicons name={m.icon} size={18} color={active ? '#fff' : c.textMuted} />
@@ -221,9 +221,9 @@ export default function CreateTaskScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: templateId === null ? c.indigo : c.bgSubtle,
+                    backgroundColor: templateId === null ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: templateId === null ? c.indigo : c.border,
+                    borderColor: templateId === null ? c.brand : c.border,
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '600', color: templateId === null ? '#fff' : c.text }}>
@@ -238,9 +238,9 @@ export default function CreateTaskScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     borderRadius: 999,
-                    backgroundColor: templateId === t.id ? c.indigo : c.bgSubtle,
+                    backgroundColor: templateId === t.id ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: templateId === t.id ? c.indigo : c.border,
+                    borderColor: templateId === t.id ? c.brand : c.border,
                   }}
                 >
                   <Pressable onPress={() => pickTemplate(t.id)} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
@@ -299,9 +299,9 @@ export default function CreateTaskScreen() {
                       alignItems: 'center',
                       paddingVertical: 11,
                       borderRadius: 12,
-                      backgroundColor: active ? c.indigo : c.bgSubtle,
+                      backgroundColor: active ? c.brand : c.bgSubtle,
                       borderWidth: 1,
-                      borderColor: active ? c.indigo : c.border,
+                      borderColor: active ? c.brand : c.border,
                     }}
                   >
                     <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#fff' : c.text }}>{a.label}</Text>
@@ -350,9 +350,9 @@ export default function CreateTaskScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: effectiveTeamId === t.id ? c.indigo : c.bgSubtle,
+                    backgroundColor: effectiveTeamId === t.id ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: effectiveTeamId === t.id ? c.indigo : c.border,
+                    borderColor: effectiveTeamId === t.id ? c.brand : c.border,
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '600', color: effectiveTeamId === t.id ? '#fff' : c.text }}>{t.name}</Text>
@@ -380,9 +380,9 @@ export default function CreateTaskScreen() {
                         paddingHorizontal: 12,
                         paddingVertical: 8,
                         borderRadius: 999,
-                        backgroundColor: active ? c.indigo : c.bgSubtle,
+                        backgroundColor: active ? c.brand : c.bgSubtle,
                         borderWidth: 1,
-                        borderColor: active ? c.indigo : c.border,
+                        borderColor: active ? c.brand : c.border,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{m.name}</Text>
@@ -415,9 +415,9 @@ export default function CreateTaskScreen() {
                   paddingHorizontal: 12,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: assigneeId === null ? c.indigo : c.bgSubtle,
+                  backgroundColor: assigneeId === null ? c.brand : c.bgSubtle,
                   borderWidth: 1,
-                  borderColor: assigneeId === null ? c.indigo : c.border,
+                  borderColor: assigneeId === null ? c.brand : c.border,
                 }}
               >
                 <Text style={{ fontSize: 13, fontWeight: '600', color: assigneeId === null ? '#fff' : c.text }}>Everyone</Text>
@@ -430,9 +430,9 @@ export default function CreateTaskScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 8,
                     borderRadius: 999,
-                    backgroundColor: assigneeId === m.id ? c.indigo : c.bgSubtle,
+                    backgroundColor: assigneeId === m.id ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: assigneeId === m.id ? c.indigo : c.border,
+                    borderColor: assigneeId === m.id ? c.brand : c.border,
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '600', color: assigneeId === m.id ? '#fff' : c.text }}>{m.name}</Text>
@@ -456,9 +456,9 @@ export default function CreateTaskScreen() {
                       paddingVertical: 10,
                       borderRadius: 12,
                       alignItems: 'center',
-                      backgroundColor: priority === p ? c.indigo : c.bgSubtle,
+                      backgroundColor: priority === p ? c.brand : c.bgSubtle,
                       borderWidth: 1,
-                      borderColor: priority === p ? c.indigo : c.border,
+                      borderColor: priority === p ? c.brand : c.border,
                     }}
                   >
                     <Text style={{ fontSize: 13, fontWeight: '600', color: priority === p ? '#fff' : c.text, textTransform: 'capitalize' }}>{p}</Text>
@@ -482,7 +482,7 @@ export default function CreateTaskScreen() {
                 value={requiresReview}
                 onValueChange={setManualRequiresReview}
                 disabled={priority !== 'medium'}
-                trackColor={{ true: c.indigo }}
+                trackColor={{ true: c.brand }}
               />
             </View>
 
@@ -496,7 +496,7 @@ export default function CreateTaskScreen() {
                     At least one photo, taken with the camera at the time, before this can be marked done.
                   </Text>
                 </View>
-                <Switch value={requiresProof} onValueChange={setRequiresProof} trackColor={{ true: c.indigo }} />
+                <Switch value={requiresProof} onValueChange={setRequiresProof} trackColor={{ true: c.brand }} />
               </View>
             ) : null}
           </>

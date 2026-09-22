@@ -86,8 +86,8 @@ export function BranchAudits() {
               {s.member.avatarUrl ? (
                 <Image source={{ uri: s.member.avatarUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} />
               ) : (
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.indigoSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.indigo }}>{s.member.name[0]?.toUpperCase()}</Text>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.brand }}>{s.member.name[0]?.toUpperCase()}</Text>
                 </View>
               )}
               <View style={{ flex: 1 }}>

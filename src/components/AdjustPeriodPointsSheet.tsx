@@ -93,7 +93,7 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
             {error ? <ErrorBanner message={error} /> : null}
 
             {loading ? (
-              <ActivityIndicator color={c.indigo} style={{ marginVertical: 20 }} />
+              <ActivityIndicator color={c.brand} style={{ marginVertical: 20 }} />
             ) : (
               <>
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
@@ -143,7 +143,7 @@ export function AdjustPeriodPointsSheet({ periodId, row, onClose, onSaved }: Pro
                   }}
                 />
                 {saving ? (
-                  <ActivityIndicator color={c.indigo} />
+                  <ActivityIndicator color={c.brand} />
                 ) : (
                   <PrimaryButton title="Save" onPress={handleSave} />
                 )}

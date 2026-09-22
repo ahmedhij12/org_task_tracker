@@ -232,7 +232,7 @@ export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplate
                 <Ionicons
                   name={requiresNoteOnNo ? 'checkbox' : 'square-outline'}
                   size={20}
-                  color={requiresNoteOnNo ? c.indigo : c.textMuted}
+                  color={requiresNoteOnNo ? c.brand : c.textMuted}
                 />
                 <Text style={{ fontSize: 13, color: c.text, flex: 1 }}>
                   Require a note when someone answers "No"
@@ -249,7 +249,7 @@ export function CreateChecklistTemplateSheet({ visible, onClose, editingTemplate
                 <View key={gi} style={{ marginBottom: 10 }}>
                   {g.sectionTitle ? (
                     <Text
-                      style={{ fontSize: 12, fontWeight: '700', color: c.indigo, marginBottom: 4, textAlign: textAlignFor(g.sectionTitle) }}
+                      style={{ fontSize: 12, fontWeight: '700', color: c.brand, marginBottom: 4, textAlign: textAlignFor(g.sectionTitle) }}
                     >
                       {g.sectionTitle}
                     </Text>

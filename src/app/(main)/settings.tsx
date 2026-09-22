@@ -134,7 +134,7 @@ export default function SettingsScreen() {
               {profile?.avatarUrl ? (
                 <Image source={{ uri: profile.avatarUrl }} style={{ width: 64, height: 64, borderRadius: 32 }} />
               ) : (
-                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.indigo, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.brand, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ color: '#fff', fontWeight: '800', fontSize: 22 }}>{profile?.name?.[0]?.toUpperCase()}</Text>
                 </View>
               )}
@@ -153,7 +153,7 @@ export default function SettingsScreen() {
                   justifyContent: 'center',
                 }}
               >
-                {uploadingPhoto ? <ActivityIndicator size="small" color={c.indigo} /> : <Ionicons name="camera" size={13} color={c.text} />}
+                {uploadingPhoto ? <ActivityIndicator size="small" color={c.brand} /> : <Ionicons name="camera" size={13} color={c.text} />}
               </View>
             </Pressable>
             <View style={{ flex: 1 }}>
@@ -222,8 +222,8 @@ export default function SettingsScreen() {
             </Text>
             {rateError ? <ErrorBanner message={rateError} /> : null}
             {rateNotice ? (
-              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
-                <Text style={{ color: c.indigo, fontSize: 13 }}>{rateNotice}</Text>
+              <View style={{ backgroundColor: c.brandSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+                <Text style={{ color: c.brand, fontSize: 13 }}>{rateNotice}</Text>
               </View>
             ) : null}
             <FieldInput
@@ -253,8 +253,8 @@ export default function SettingsScreen() {
           </Text>
           {emailError ? <ErrorBanner message={emailError} /> : null}
           {emailNotice ? (
-            <View style={{ backgroundColor: c.indigoSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
-              <Text style={{ color: c.indigo, fontSize: 13 }}>{emailNotice}</Text>
+            <View style={{ backgroundColor: c.brandSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+              <Text style={{ color: c.brand, fontSize: 13 }}>{emailNotice}</Text>
             </View>
           ) : null}
           <FieldInput
@@ -292,9 +292,9 @@ export default function SettingsScreen() {
                     alignItems: 'center',
                     paddingVertical: 12,
                     borderRadius: 12,
-                    backgroundColor: active ? c.indigo : c.bgSubtle,
+                    backgroundColor: active ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: active ? c.indigo : c.border,
+                    borderColor: active ? c.brand : c.border,
                   }}
                 >
                   <Ionicons name={opt.icon} size={18} color={active ? '#fff' : c.textMuted} />
@@ -325,9 +325,9 @@ export default function SettingsScreen() {
                     alignItems: 'center',
                     paddingVertical: 12,
                     borderRadius: 12,
-                    backgroundColor: active ? c.indigo : c.bgSubtle,
+                    backgroundColor: active ? c.brand : c.bgSubtle,
                     borderWidth: 1,
-                    borderColor: active ? c.indigo : c.border,
+                    borderColor: active ? c.brand : c.border,
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{opt.label}</Text>

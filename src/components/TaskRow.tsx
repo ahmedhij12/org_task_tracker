@@ -54,8 +54,8 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
               height: 24,
               borderRadius: 12,
               borderWidth: 2,
-              borderColor: task.completed ? c.indigo : c.border,
-              backgroundColor: task.completed ? c.indigo : 'transparent',
+              borderColor: task.completed ? c.brand : c.border,
+              backgroundColor: task.completed ? c.brand : 'transparent',
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -70,8 +70,8 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
               height: 24,
               borderRadius: 12,
               borderWidth: 2,
-              borderColor: task.completed ? c.indigo : c.border,
-              backgroundColor: task.completed ? c.indigo : 'transparent',
+              borderColor: task.completed ? c.brand : c.border,
+              backgroundColor: task.completed ? c.brand : 'transparent',
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -95,12 +95,12 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
               {task.title}
             </Text>
             {task.templateId ? (
-              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', color: c.indigo }}>{t('taskRow.checklist')}</Text>
+              <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: c.brand }}>{t('taskRow.checklist')}</Text>
               </View>
             ) : task.requiresProof ? (
-              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 9, fontWeight: '700', color: c.indigo }}>{t('taskRow.proof')}</Text>
+              <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: c.brand }}>{t('taskRow.proof')}</Text>
               </View>
             ) : null}
             {task.requiresReview ? (

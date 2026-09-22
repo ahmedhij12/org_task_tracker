@@ -235,9 +235,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                               alignItems: 'center',
                               paddingVertical: 12,
                               borderRadius: 12,
-                              backgroundColor: active ? c.indigo : c.bgSubtle,
+                              backgroundColor: active ? c.brand : c.bgSubtle,
                               borderWidth: 1,
-                              borderColor: active ? c.indigo : c.border,
+                              borderColor: active ? c.brand : c.border,
                             }}
                           >
                             <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
@@ -258,9 +258,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                               paddingHorizontal: 12,
                               paddingVertical: 8,
                               borderRadius: 999,
-                              backgroundColor: teamId === null ? c.indigo : c.bgSubtle,
+                              backgroundColor: teamId === null ? c.brand : c.bgSubtle,
                               borderWidth: 1,
-                              borderColor: teamId === null ? c.indigo : c.border,
+                              borderColor: teamId === null ? c.brand : c.border,
                             }}
                           >
                             <Text style={{ fontSize: 13, fontWeight: '600', color: teamId === null ? '#fff' : c.text }}>
@@ -277,9 +277,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                                   paddingHorizontal: 12,
                                   paddingVertical: 8,
                                   borderRadius: 999,
-                                  backgroundColor: active ? c.indigo : c.bgSubtle,
+                                  backgroundColor: active ? c.brand : c.bgSubtle,
                                   borderWidth: 1,
-                                  borderColor: active ? c.indigo : c.border,
+                                  borderColor: active ? c.brand : c.border,
                                 }}
                               >
                                 <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
@@ -309,9 +309,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                                         paddingHorizontal: 12,
                                         paddingVertical: 8,
                                         borderRadius: 999,
-                                        backgroundColor: active ? c.indigo : c.bgSubtle,
+                                        backgroundColor: active ? c.brand : c.bgSubtle,
                                         borderWidth: 1,
-                                        borderColor: active ? c.indigo : c.border,
+                                        borderColor: active ? c.brand : c.border,
                                       }}
                                     >
                                       <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
@@ -354,9 +354,9 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                                 paddingHorizontal: 12,
                                 paddingVertical: 8,
                                 borderRadius: 999,
-                                backgroundColor: active ? c.indigo : c.bgSubtle,
+                                backgroundColor: active ? c.brand : c.bgSubtle,
                                 borderWidth: 1,
-                                borderColor: active ? c.indigo : c.border,
+                                borderColor: active ? c.brand : c.border,
                               }}
                             >
                               <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { Card, FieldInput, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
-import { GOLD_INK } from '@/theme';
+import { ON_ACCENT } from '@/theme';
 import { initials } from '@/lib/taskUtils';
 
 export default function TeamsScreen() {
@@ -45,10 +45,10 @@ export default function TeamsScreen() {
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('teams.title')}</Text>
           <Pressable
             onPress={() => setCreating(true)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.gold, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}
           >
-            <Ionicons name="add" size={16} color={GOLD_INK} />
-            <Text style={{ color: GOLD_INK, fontSize: 13, fontWeight: '700' }}>{t('teams.addTeam')}</Text>
+            <Ionicons name="add" size={16} color={ON_ACCENT} />
+            <Text style={{ color: ON_ACCENT, fontSize: 13, fontWeight: '700' }}>{t('teams.addTeam')}</Text>
           </Pressable>
         </View>
 
@@ -88,11 +88,11 @@ export default function TeamsScreen() {
                         paddingVertical: 4,
                       }}
                     >
-                      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: c.indigo, alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: c.brand, alignItems: 'center', justifyContent: 'center' }}>
                         <Text style={{ fontSize: 8, fontWeight: '700', color: '#fff' }}>{initials(m.name)}</Text>
                       </View>
                       <Text style={{ fontSize: 11, color: c.text }}>{m.name}</Text>
-                      {m.role === 'team_admin' ? <Text style={{ fontSize: 9, color: c.indigo, fontWeight: '700' }}>{t('teams.memberBadgeAdmin')}</Text> : null}
+                      {m.role === 'team_admin' ? <Text style={{ fontSize: 9, color: c.brand, fontWeight: '700' }}>{t('teams.memberBadgeAdmin')}</Text> : null}
                     </View>
                   ))}
                   {teamMembers.length === 0 ? <Text style={{ fontSize: 12, color: c.textFaint }}>{t('teams.noMembersYet')}</Text> : null}
@@ -146,9 +146,9 @@ export default function TeamsScreen() {
                         paddingHorizontal: 12,
                         paddingVertical: 8,
                         borderRadius: 999,
-                        backgroundColor: active ? c.indigo : c.bgSubtle,
+                        backgroundColor: active ? c.brand : c.bgSubtle,
                         borderWidth: 1,
-                        borderColor: active ? c.indigo : c.border,
+                        borderColor: active ? c.brand : c.border,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{b.name}</Text>

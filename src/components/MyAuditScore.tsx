@@ -141,7 +141,7 @@ export function MyAuditScore() {
               {latest ? <Text style={{ fontSize: 11, color: c.textMuted }}>{t('myScore.fromAudit', { date: dateOf(latest.createdAt) })}</Text> : null}
             </View>
             {fixThese == null ? (
-              <ActivityIndicator color={c.indigo} />
+              <ActivityIndicator color={c.brand} />
             ) : fixThese.length === 0 ? (
               <Text style={{ fontSize: 13, color: c.emerald, fontWeight: '600' }}>{t('myScore.nothingToFix')}</Text>
             ) : (
@@ -167,8 +167,8 @@ export function MyAuditScore() {
                   borderColor: c.border,
                 }}
               >
-                <Ionicons name="images-outline" size={16} color={c.indigo} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: c.indigo }}>{t('myScore.openReport')}</Text>
+                <Ionicons name="images-outline" size={16} color={c.brand} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: c.brand }}>{t('myScore.openReport')}</Text>
               </Pressable>
             ) : null}
           </Card>

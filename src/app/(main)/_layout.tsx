@@ -33,7 +33,7 @@ function MainTabs() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: c.gold,
+          tabBarActiveTintColor: c.accent,
           tabBarInactiveTintColor: c.textFaint,
           tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.border },
         }}

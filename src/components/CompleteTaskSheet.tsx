@@ -215,7 +215,7 @@ export function CompleteTaskSheet({ task, orgId, visible, onCancel, onSubmit }: 
 
               {uploading ? (
                 <View style={{ paddingVertical: 14, alignItems: 'center' }}>
-                  <ActivityIndicator color={c.indigo} />
+                  <ActivityIndicator color={c.brand} />
                   <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 6 }}>Uploading photos…</Text>
                 </View>
               ) : (

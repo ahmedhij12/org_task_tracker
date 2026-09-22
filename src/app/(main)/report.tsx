@@ -98,9 +98,9 @@ export default function ReportScreen() {
                       paddingHorizontal: 14,
                       paddingVertical: 8,
                       borderRadius: 999,
-                      backgroundColor: active ? c.indigo : c.bgSubtle,
+                      backgroundColor: active ? c.brand : c.bgSubtle,
                       borderWidth: 1,
-                      borderColor: active ? c.indigo : c.border,
+                      borderColor: active ? c.brand : c.border,
                     }}
                   >
                     <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>
@@ -116,8 +116,8 @@ export default function ReportScreen() {
                 {t('report.tableHeading')}
               </Text>
               <Pressable onPress={handleExport} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="share-outline" size={16} color={c.indigo} />
-                <Text style={{ fontSize: 13, color: c.indigo, fontWeight: '700' }}>{t('report.export')}</Text>
+                <Ionicons name="share-outline" size={16} color={c.brand} />
+                <Text style={{ fontSize: 13, color: c.brand, fontWeight: '700' }}>{t('report.export')}</Text>
               </Pressable>
             </View>
 

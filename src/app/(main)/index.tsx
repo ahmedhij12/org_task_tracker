@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useReports } from '@/hooks/useReports';
 import { Card, useThemeColors } from '@/components/ui';
-import { GOLD_INK } from '@/theme';
+import { ON_ACCENT } from '@/theme';
 import { TaskRow } from '@/components/TaskRow';
 import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
@@ -63,12 +63,12 @@ function TeamAdminDashboard() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
       >
         <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-          <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{t('dashboard.teamAdminBadge')}</Text>
+          <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: c.brand }}>{t('dashboard.teamAdminBadge')}</Text>
           </View>
           {myBranches ? <Text style={{ fontSize: 12, color: c.textMuted }}>{myBranches}</Text> : null}
         </View>
@@ -198,14 +198,14 @@ function OwnerDashboard() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
       >
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-              <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: c.indigo }}>{t('dashboard.ownerBadge')}</Text>
+              <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: c.brand }}>{t('dashboard.ownerBadge')}</Text>
               </View>
               <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={{ fontSize: 12, color: c.textMuted }}>{organization?.orgCode}</Text>
@@ -270,8 +270,8 @@ function OwnerDashboard() {
                       {branch.totalPoints} {t('dashboard.pointsSuffix')}
                     </Text>
                   </View>
-                  <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.indigo }}>
+                  <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.brand }}>
                       {branch.iqdAmount.toLocaleString(i18n.language)} {t('dashboard.iqdSuffix')}
                     </Text>
                   </View>
@@ -343,17 +343,17 @@ function OwnerDashboard() {
           width: 56,
           height: 56,
           borderRadius: 28,
-          backgroundColor: c.gold,
+          backgroundColor: c.accent,
           alignItems: 'center',
           justifyContent: 'center',
-          shadowColor: c.gold,
+          shadowColor: c.accent,
           shadowOpacity: 0.4,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 6 },
           elevation: 6,
         }}
       >
-        <Ionicons name="add" size={28} color={GOLD_INK} />
+        <Ionicons name="add" size={28} color={ON_ACCENT} />
       </Pressable>
     </SafeAreaView>
   );
@@ -391,7 +391,7 @@ function EmployeeHome() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
       >
         <Text style={{ fontSize: 13, color: c.textFaint }}>
           {new Date().toLocaleDateString(i18n.language, { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -408,7 +408,7 @@ function EmployeeHome() {
                 <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
             </Section>
-            <Section title={t('dashboard.sectionToday')} count={today.length} iconColor={c.indigo}>
+            <Section title={t('dashboard.sectionToday')} count={today.length} iconColor={c.brand}>
               {today.map((task) => (
                 <TaskRow key={task.id} task={task} members={members} showAssignee={task.assigneeId === null} canComplete onPressCheckbox={() => handlePressCheckbox(task)} />
               ))}
@@ -462,9 +462,9 @@ function TeamChip({ label, active, onPress }: { label: string; active: boolean; 
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 999,
-        backgroundColor: active ? c.indigo : c.bgSubtle,
+        backgroundColor: active ? c.brand : c.bgSubtle,
         borderWidth: 1,
-        borderColor: active ? c.indigo : c.border,
+        borderColor: active ? c.brand : c.border,
       }}
     >
       <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{label}</Text>
@@ -514,7 +514,7 @@ function BranchScoreboard({ branches }: { branches: BranchGroup[] }) {
           return (
             <View key={b.branchId}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
-                <Text style={{ width: 22, fontSize: 13, fontWeight: '800', color: i === 0 ? c.gold : c.textFaint }}>{i + 1}</Text>
+                <Text style={{ width: 22, fontSize: 13, fontWeight: '800', color: i === 0 ? c.accent : c.textFaint }}>{i + 1}</Text>
                 <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: c.text }} numberOfLines={1}>
                   {b.branchName}
                 </Text>
@@ -541,7 +541,7 @@ function EmptyState({ text }: { text: string }) {
   return (
     <View style={{ alignItems: 'center', paddingVertical: 60, paddingHorizontal: 30 }}>
       <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.bgSubtle, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-        <Ionicons name="checkbox-outline" size={28} color={c.indigo} />
+        <Ionicons name="checkbox-outline" size={28} color={c.brand} />
       </View>
       <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', lineHeight: 19 }}>{text}</Text>
     </View>

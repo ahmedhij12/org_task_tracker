@@ -168,8 +168,8 @@ export function ManageUserSheet({ member, onClose }: Props) {
                 <>
               {error ? <ErrorBanner message={error} /> : null}
               {notice ? (
-                <View style={{ backgroundColor: c.indigoSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
-                  <Text style={{ color: c.indigo, fontSize: 13 }}>{notice}</Text>
+                <View style={{ backgroundColor: c.brandSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+                  <Text style={{ color: c.brand, fontSize: 13 }}>{notice}</Text>
                 </View>
               ) : null}
 
@@ -184,16 +184,16 @@ export function ManageUserSheet({ member, onClose }: Props) {
                           flexDirection: 'row',
                           alignItems: 'center',
                           gap: 6,
-                          backgroundColor: c.indigoSoft,
+                          backgroundColor: c.brandSoft,
                           borderRadius: 999,
                           paddingLeft: 12,
                           paddingRight: 8,
                           paddingVertical: 6,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: c.indigo }}>{t.name}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: c.brand }}>{t.name}</Text>
                         <Pressable onPress={() => handleRemoveTeam(t.id)} disabled={teamBusy === t.id} hitSlop={6}>
-                          <Ionicons name="close" size={13} color={c.indigo} />
+                          <Ionicons name="close" size={13} color={c.brand} />
                         </Pressable>
                       </View>
                     ))}
@@ -234,9 +234,9 @@ export function ManageUserSheet({ member, onClose }: Props) {
                                       paddingHorizontal: 10,
                                       paddingVertical: 5,
                                       borderRadius: 999,
-                                      backgroundColor: active ? c.indigo : c.bgSubtle,
+                                      backgroundColor: active ? c.brand : c.bgSubtle,
                                       borderWidth: 1,
-                                      borderColor: active ? c.indigo : c.border,
+                                      borderColor: active ? c.brand : c.border,
                                       opacity: brandBusyTeamId === t.id ? 0.5 : 1,
                                     }}
                                   >

@@ -93,7 +93,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
             {error ? <ErrorBanner message={error} /> : null}
 
             {loading ? (
-              <ActivityIndicator color={c.indigo} style={{ marginVertical: 20 }} />
+              <ActivityIndicator color={c.brand} style={{ marginVertical: 20 }} />
             ) : (
               <>
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
@@ -145,7 +145,7 @@ export function AdjustPointsSheet({ completion, canEdit, onClose }: Props) {
                       }}
                     />
                     {saving ? (
-                      <ActivityIndicator color={c.indigo} />
+                      <ActivityIndicator color={c.brand} />
                     ) : (
                       <PrimaryButton title={t('pointsSheet.save')} onPress={handleSave} />
                     )}

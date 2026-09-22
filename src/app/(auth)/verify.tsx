@@ -123,7 +123,7 @@ export default function VerifyCodeScreen() {
           ) : null}
 
           <Pressable onPress={handleResend} disabled={cooldown > 0} style={{ marginTop: 24, alignItems: 'center' }}>
-            <Text style={{ fontSize: 14, color: cooldown > 0 ? c.textFaint : c.indigo, fontWeight: '700' }}>
+            <Text style={{ fontSize: 14, color: cooldown > 0 ? c.textFaint : c.brand, fontWeight: '700' }}>
               {cooldown > 0 ? t('auth.verify.resendCooldown', { seconds: cooldown }) : t('auth.verify.resendNow')}
             </Text>
           </Pressable>

@@ -51,7 +51,7 @@ export default function ChecklistsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.indigo} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
       >
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('checklists.title')}</Text>
         <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 4, marginBottom: 18 }}>{t('checklists.subtitle')}</Text>
@@ -65,7 +65,7 @@ export default function ChecklistsScreen() {
                 onPress={() => setExpanded(open ? null : team.id)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
               >
-                <Ionicons name="business-outline" size={20} color={c.indigo} />
+                <Ionicons name="business-outline" size={20} color={c.brand} />
                 <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: c.text }}>{team.name}</Text>
                 {unverified > 0 ? (
                   <View style={{ minWidth: 24, height: 24, borderRadius: 12, backgroundColor: c.rose, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
@@ -119,8 +119,8 @@ export default function ChecklistsScreen() {
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                 <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{nameOf(r.actorId)}</Text>
                                 {allMembers.find((m) => m.id === r.actorId)?.role === 'team_admin' ? (
-                                  <View style={{ backgroundColor: c.indigoSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
-                                    <Text style={{ fontSize: 9, fontWeight: '800', color: c.indigo }}>{t('checklists.manager')}</Text>
+                                  <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: c.brand }}>{t('checklists.manager')}</Text>
                                   </View>
                                 ) : null}
                               </View>
