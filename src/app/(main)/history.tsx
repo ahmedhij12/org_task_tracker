@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { OilHistory } from '@/components/OilHistory';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -99,6 +100,8 @@ export default function HistoryScreen() {
       >
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>
+
+        <OilHistory />
 
         {filterTeams.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 16 }}>

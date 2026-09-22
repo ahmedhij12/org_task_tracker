@@ -10,7 +10,7 @@ const GRADE_HEX = { good: '#10B981', watch: '#F59E0B', change: '#E8141A' } as co
 
 /** Dashboard card for supervisors/managers: today's oil-test count and a way
  * to run another one (they test several times a day). */
-export function OilTestCard() {
+export function OilTestCard({ isAudit }: { isAudit?: boolean } = {}) {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { tests } = useOilTests();
@@ -37,7 +37,7 @@ export function OilTestCard() {
         </View>
         <Ionicons name="add-circle" size={28} color={c.brand} />
       </Pressable>
-      <OilTestSheet visible={open} onClose={() => setOpen(false)} />
+      <OilTestSheet visible={open} isAudit={isAudit} onClose={() => setOpen(false)} />
     </>
   );
 }

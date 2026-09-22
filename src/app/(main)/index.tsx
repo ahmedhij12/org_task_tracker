@@ -22,6 +22,7 @@ import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTempla
 import { MyAuditScore } from '@/components/MyAuditScore';
 import { TodayChecklistCard } from '@/components/TodayChecklistCard';
 import { OilTestCard } from '@/components/OilTestCard';
+import { OilAlert } from '@/components/OilAlert';
 import { BranchAudits } from '@/components/BranchAudits';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
@@ -74,6 +75,7 @@ function TeamAdminDashboard() {
           {myBranches ? <Text style={{ fontSize: 12, color: c.textMuted }}>{myBranches}</Text> : null}
         </View>
 
+        <OilAlert />
         <TodayChecklistCard />
         <OilTestCard />
 
@@ -216,6 +218,9 @@ function OwnerDashboard() {
             </View>
           </View>
         </View>
+
+        <OilAlert />
+        <OilTestCard isAudit />
 
         {myTasks.length > 0 ? (
           <>

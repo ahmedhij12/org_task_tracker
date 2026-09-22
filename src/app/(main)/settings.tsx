@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FryersSheet } from '@/components/FryersSheet';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import * as Clipboard from 'expo-clipboard';
@@ -31,6 +32,7 @@ export default function SettingsScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [rateText, setRateText] = useState(String(organization?.iqdPerPoint ?? ''));
+  const [managingFryers, setManagingFryers] = useState(false);
   const [savingRate, setSavingRate] = useState(false);
   const [rateNotice, setRateNotice] = useState<string | null>(null);
   const [rateError, setRateError] = useState<string | null>(null);
@@ -244,6 +246,16 @@ export default function SettingsScreen() {
           </Card>
         ) : null}
 
+        {profile?.role === 'owner' ? (
+          <Card style={{ marginBottom: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
+              {t('oil.fryersCardTitle')}
+            </Text>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 12 }}>{t('oil.fryersCardHint')}</Text>
+            <PrimaryButton title={t('oil.manageFryers')} onPress={() => setManagingFryers(true)} />
+          </Card>
+        ) : null}
+
         <Card style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
             {t('settings.recoveryEmail')}
@@ -380,6 +392,7 @@ export default function SettingsScreen() {
 
         <Text style={{ fontSize: 11, color: c.textFaint, textAlign: 'center', marginTop: 24 }}>BD Audit • v1.0.0</Text>
       </ScrollView>
+      <FryersSheet visible={managingFryers} onClose={() => setManagingFryers(false)} />
     </SafeAreaView>
   );
 }
