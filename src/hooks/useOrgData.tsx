@@ -64,7 +64,7 @@ function mapCompletion(row: any): TaskCompletion {
 }
 
 function mapTeam(row: any): Team {
-  return { id: row.id, orgId: row.org_id, name: row.name, timezone: row.timezone ?? 'Asia/Baghdad', lat: row.lat ?? null, lng: row.lng ?? null, radiusM: row.radius_m ?? 40, createdAt: row.created_at };
+  return { id: row.id, orgId: row.org_id, name: row.name, timezone: row.timezone ?? 'Asia/Baghdad', lat: row.lat ?? null, lng: row.lng ?? null, radiusM: row.radius_m ?? 15, createdAt: row.created_at };
 }
 
 function mapBrand(row: any): Brand {

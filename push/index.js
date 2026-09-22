@@ -84,7 +84,16 @@ async function sendOne(sub, payloadObj) {
   const auth = await vapidAuth(sub.endpoint);
   const res = await fetch(sub.endpoint, {
     method: 'POST',
-    headers: { ...auth, 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400' },
+    headers: {
+      ...auth,
+      'Content-Encoding': 'aes128gcm',
+      'Content-Type': 'application/octet-stream',
+      TTL: '86400',
+      // Without this, Apple is free to batch the notification and hand it over
+      // only when the app next runs — which looked like "notifications don't
+      // work unless I open the app". High urgency = deliver now, even locked.
+      Urgency: 'high',
+    },
     body,
   });
   return { endpoint: sub.endpoint, status: res.status };

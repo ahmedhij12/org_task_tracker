@@ -42,13 +42,15 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
 }) {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const start = initial ?? { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, radiusM: 40 };
+  const start = initial ?? { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, radiusM: 15 };
   const holderRef = useRef<View>(null);
   const mapRef = useRef<any>(null);
   const circleRef = useRef<any>(null);
+  const layersRef = useRef<{ satellite: any; street: any } | null>(null);
   const centerRef = useRef({ lat: start.lat, lng: start.lng });
   const [radius, setRadius] = useState(start.radiusM);
   const [ready, setReady] = useState(false);
+  const [satellite, setSatellite] = useState(true);
 
   useEffect(() => {
     if (!visible) return;
@@ -61,10 +63,18 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
       const div = document.createElement('div');
       div.style.cssText = 'width:100%;height:100%;';
       holder.replaceChildren(div);
-      const map = L.map(div, { zoomControl: true, attributionControl: true }).setView([start.lat, start.lng], 17);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      const map = L.map(div, { zoomControl: true, attributionControl: true }).setView([start.lat, start.lng], 18);
+      // Satellite by default: you can see the actual building, which makes
+      // pinning a branch far more accurate than a sparse street map.
+      const satellite = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 19, attribution: 'Esri' }
+      );
+      const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '© OpenStreetMap',
-      }).addTo(map);
+      });
+      satellite.addTo(map);
+      layersRef.current = { satellite, street };
       const circle = L.circle([start.lat, start.lng], { radius: start.radiusM, color: '#00304E', fillColor: '#00304E', fillOpacity: 0.15 }).addTo(map);
       mapRef.current = map; circleRef.current = circle;
       map.on('move', () => {
@@ -84,6 +94,16 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
 
   useEffect(() => { circleRef.current?.setRadius(radius); }, [radius]);
 
+  // Swap the base layer without rebuilding the map.
+  useEffect(() => {
+    const map = mapRef.current; const layers = layersRef.current;
+    if (!map || !layers) return;
+    const show = satellite ? layers.satellite : layers.street;
+    const hide = satellite ? layers.street : layers.satellite;
+    if (map.hasLayer(hide)) map.removeLayer(hide);
+    if (!map.hasLayer(show)) show.addTo(map);
+  }, [satellite, ready]);
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -99,12 +119,21 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
           <View pointerEvents="none" style={{ position: 'absolute', top: '50%', left: '50%', marginLeft: -17, marginTop: -34 }}>
             <Ionicons name="location" size={34} color="#E8141A" />
           </View>
+          <Pressable
+            onPress={() => setSatellite((v) => !v)}
+            style={{ position: 'absolute', top: 12, right: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.bg, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: c.border }}
+          >
+            <Ionicons name={satellite ? 'map' : 'globe'} size={15} color={c.brand} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: c.brand }}>
+              {satellite ? t('branchLoc.showStreet') : t('branchLoc.showSatellite')}
+            </Text>
+          </Pressable>
         </View>
 
         <View style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Text style={{ fontSize: 13, color: c.textMuted, flex: 1 }}>{t('branchLoc.radius', { m: radius })}</Text>
-            {[30, 40, 60, 100].map((m) => (
+            {[15, 25, 40, 60].map((m) => (
               <Pressable key={m} onPress={() => setRadius(m)}
                 style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: radius === m ? c.brand : c.bgSubtle, borderWidth: 1, borderColor: radius === m ? c.brand : c.border }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: radius === m ? '#fff' : c.text }}>{m}m</Text>

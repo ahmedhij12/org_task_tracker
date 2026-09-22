@@ -378,6 +378,8 @@ export default {
     tomorrow: "Tomorrow {{time}}",
   },
   branchLoc: {
+    showStreet: "Street map",
+    showSatellite: "Satellite",
     title: "Branch location",
     hint: "Move the map so the pin sits on the branch, then save. You can do this from anywhere — you don't need to be at the branch.",
     radius: "Allowed distance: {{m}} m",

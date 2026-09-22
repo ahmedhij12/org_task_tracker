@@ -22,7 +22,7 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
 }) {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const start = initial ?? { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, radiusM: 40 };
+  const start = initial ?? { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, radiusM: 15 };
   const [center, setCenter] = useState({ lat: start.lat, lng: start.lng });
   const [radius, setRadius] = useState(start.radiusM);
 
@@ -53,7 +53,7 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
         <View style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Text style={{ fontSize: 13, color: c.textMuted, flex: 1 }}>{t('branchLoc.radius', { m: radius })}</Text>
-            {[30, 40, 60, 100].map((m) => (
+            {[15, 25, 40, 60].map((m) => (
               <Pressable key={m} onPress={() => setRadius(m)}
                 style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: radius === m ? c.brand : c.bgSubtle, borderWidth: 1, borderColor: radius === m ? c.brand : c.border }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: radius === m ? '#fff' : c.text }}>{m}m</Text>

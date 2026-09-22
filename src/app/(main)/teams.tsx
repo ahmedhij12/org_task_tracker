@@ -82,14 +82,14 @@ export default function TeamsScreen() {
                     setPinError(null);
                     setPinningTeam({
                       id: team.id,
-                      loc: team.lat != null && team.lng != null ? { lat: team.lat, lng: team.lng, radiusM: team.radiusM ?? 40 } : null,
+                      loc: team.lat != null && team.lng != null ? { lat: team.lat, lng: team.lng, radiusM: team.radiusM ?? 15 } : null,
                     });
                   }}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}
                 >
                   <Ionicons name={team.lat != null ? 'location' : 'location-outline'} size={14} color={team.lat != null ? c.emerald : c.amber} />
                   <Text style={{ fontSize: 12, fontWeight: '600', color: team.lat != null ? c.emerald : c.amber }}>
-                    {team.lat != null ? t('branchLoc.pinned', { m: team.radiusM ?? 40 }) : t('branchLoc.notPinned')}
+                    {team.lat != null ? t('branchLoc.pinned', { m: team.radiusM ?? 15 }) : t('branchLoc.notPinned')}
                   </Text>
                 </Pressable>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
