@@ -6,7 +6,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { SecondaryButton, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
-import { exportAuditReport } from '@/lib/exportAuditReport';
+import { buildWebReportFile, exportAuditReport } from '@/lib/exportAuditReport';
+import { shareOrDownloadFile } from '@/lib/webPdf';
 import { needsReview } from '@/types';
 import { ScoreRing } from '@/components/ScoreRing';
 import { LocationMap } from '@/components/LocationMap';
@@ -37,10 +38,13 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const [reviewing, setReviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Web: the finished PDF, waiting for a second tap to open the share sheet.
+  const [webPdf, setWebPdf] = useState<globalThis.File | null>(null);
 
   const isChecklistCompletion = completion?.action === 'completed' && completion.yesCount != null;
 
   useEffect(() => {
+    setWebPdf(null);
     if (!completion || !isChecklistCompletion) {
       setAnswers([]);
       setPhotos([]);
@@ -95,7 +99,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
     setExporting(true);
     setError(null);
     try {
-      await exportAuditReport({
+      const report = {
         kind: isAudit ? 'audit' : 'checklist',
         completion,
         // A checklist is about the person who filled it, at their own branch.
@@ -106,11 +110,23 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
         answers,
         photos,
         locale: i18n.language,
-      });
+      } as const;
+      if (Platform.OS === 'web') setWebPdf(await buildWebReportFile(report));
+      else await exportAuditReport(report);
     } catch (e: any) {
       setError(e?.message ?? t('detail.exportFailed'));
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleSendWebPdf = async () => {
+    if (!webPdf) return;
+    setError(null);
+    try {
+      await shareOrDownloadFile(webPdf);
+    } catch (e: any) {
+      setError(e?.message ?? t('detail.exportFailed'));
     }
   };
 
@@ -401,7 +417,26 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
               <>
                 <View style={{ height: 10 }} />
                 {exporting ? (
-                  <ActivityIndicator color={c.indigo} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 }}>
+                    <ActivityIndicator color={c.indigo} />
+                    <Text style={{ color: c.textMuted, fontSize: 13 }}>{t('detail.preparingPdf')}</Text>
+                  </View>
+                ) : webPdf ? (
+                  <Pressable
+                    onPress={handleSendWebPdf}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      backgroundColor: c.emerald,
+                      borderRadius: 14,
+                      paddingVertical: 14,
+                    }}
+                  >
+                    <Ionicons name="share-outline" size={18} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{t('detail.sendPdf')}</Text>
+                  </Pressable>
                 ) : (
                   <Pressable
                     onPress={handleExport}

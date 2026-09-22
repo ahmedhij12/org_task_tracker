@@ -4,6 +4,7 @@ import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { tileGrid } from '@/lib/maps';
+import { htmlToPdfFile } from '@/lib/webPdf';
 import { GRADE_HEX, formatScore, gradeOf, type ScoreGrade } from '@/lib/score';
 
 const GRADE_LABEL: Record<ScoreGrade, string> = { excellent: 'Excellent', good: 'Good', needsWork: 'Needs work', critical: 'Critical' };
@@ -212,16 +213,26 @@ function signatureAndLocationHtml(completion: TaskCompletion): string {
   return `<div style="margin-top:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;page-break-inside:avoid;">${sig}${loc}</div>`;
 }
 
+function reportFilename(data: AuditReportData): string {
+  const dateForFilename = new Date(data.completion.createdAt).toISOString().slice(0, 10);
+  return `${safeFilenamePart(data.branchName)}-${dateForFilename}.pdf`;
+}
+
+/**
+ * Web only: builds the PDF file. Sharing is a separate tap (shareOrDownloadFile)
+ * because iPhone browsers only open the share sheet straight from a tap, and
+ * building the file takes a few seconds — too long after the first tap.
+ */
+export async function buildWebReportFile(data: AuditReportData): Promise<globalThis.File> {
+  const logo = await getLogoDataUri();
+  return htmlToPdfFile(buildHtml(data, logo), reportFilename(data));
+}
+
+/** Phones: build the PDF and open the share sheet in one go. */
 export async function exportAuditReport(data: AuditReportData): Promise<void> {
   const logo = await getLogoDataUri();
   const html = buildHtml(data, logo);
-  const dateForFilename = new Date(data.completion.createdAt).toISOString().slice(0, 10);
-  const filename = `${safeFilenamePart(data.branchName)}-${dateForFilename}.pdf`;
-
-  if (Platform.OS === 'web') {
-    printHtmlInBrowser(html, filename.replace(/\.pdf$/, ''));
-    return;
-  }
+  const filename = reportFilename(data);
 
   const { uri } = await Print.printToFileAsync({ html });
 
@@ -240,58 +251,4 @@ export async function exportAuditReport(data: AuditReportData): Promise<void> {
       UTI: 'com.adobe.pdf',
     });
   }
-}
-
-/**
- * expo-print can't produce a file in a browser, so on web the report is
- * printed from a hidden iframe instead — the browser's own dialog offers
- * "Save as PDF", and the document title becomes the suggested filename.
- * An iframe (not window.open) so no popup blocker gets in the way after
- * the awaits above.
- */
-function printHtmlInBrowser(html: string, title: string): void {
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-  const doc = iframe.contentWindow!.document;
-  doc.open();
-  doc.write(html);
-  doc.close();
-  doc.title = title;
-  const originalTitle = document.title;
-  const print = () => {
-    // Some browsers take the suggested filename from the top page's title.
-    document.title = title;
-    iframe.contentWindow!.focus();
-    iframe.contentWindow!.print();
-    setTimeout(() => {
-      document.title = originalTitle;
-      iframe.remove();
-    }, 1000);
-  };
-  // Wait for the logo, signature and any photos to load before printing.
-  const images = Array.from(doc.images);
-  const pending = images.filter((img) => !img.complete);
-  if (pending.length === 0) {
-    print();
-    return;
-  }
-  let left = pending.length;
-  const done = () => {
-    left -= 1;
-    if (left === 0) print();
-  };
-  pending.forEach((img) => {
-    img.addEventListener('load', done);
-    img.addEventListener('error', done);
-  });
-  setTimeout(() => {
-    if (left > 0) {
-      left = 0;
-      print();
-    }
-  }, 5000);
 }

@@ -274,6 +274,8 @@ export default {
     hrNote: "Note (optional) — e.g. what HR confirmed",
     confirmOffDuty: "Confirm off-duty",
     signature: "Signature",
+    preparingPdf: "Preparing the PDF…",
+    sendPdf: "PDF ready — tap to share",
     submittedHere: "Submitted here",
     signedHere: "Signed here",
     tapMap: "Tap the map to open it",

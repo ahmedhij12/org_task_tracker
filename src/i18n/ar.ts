@@ -276,6 +276,8 @@ export default {
     hrNote: "ملاحظة (اختيارية) — مثل ما أكدته الموارد البشرية",
     confirmOffDuty: "تأكيد عدم الدوام",
     signature: "التوقيع",
+    preparingPdf: "جارٍ تجهيز ملف PDF…",
+    sendPdf: "الملف جاهز — اضغط للمشاركة",
     submittedHere: "أُرسلت من هنا",
     signedHere: "وُقّعت هنا",
     tapMap: "اضغط على الخريطة لفتحها",
