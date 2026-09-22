@@ -6,6 +6,7 @@ import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { OrgDataProvider } from '@/hooks/useOrgData';
 import { ChecklistDataProvider } from '@/hooks/useChecklists';
 import { OilTestsProvider } from '@/hooks/useOilTests';
+import { ChickenProvider } from '@/hooks/useChicken';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useThemeColors } from '@/components/ui';
 
@@ -16,7 +17,9 @@ export default function MainLayout() {
     <OrgDataProvider>
       <ChecklistDataProvider>
         <OilTestsProvider>
-          <MainTabs />
+          <ChickenProvider>
+            <MainTabs />
+          </ChickenProvider>
         </OilTestsProvider>
       </ChecklistDataProvider>
     </OrgDataProvider>

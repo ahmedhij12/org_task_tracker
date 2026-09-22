@@ -23,6 +23,7 @@ import { MyAuditScore } from '@/components/MyAuditScore';
 import { TodayChecklistCard } from '@/components/TodayChecklistCard';
 import { OilTestCard } from '@/components/OilTestCard';
 import { OilAlert } from '@/components/OilAlert';
+import { ChickenCard } from '@/components/ChickenCard';
 import { BranchAudits } from '@/components/BranchAudits';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
@@ -78,6 +79,7 @@ function TeamAdminDashboard() {
         <OilAlert />
         <TodayChecklistCard />
         <OilTestCard />
+        <ChickenCard />
 
         {myTasks.length > 0 ? (
           <>
@@ -221,6 +223,7 @@ function OwnerDashboard() {
 
         <OilAlert />
         <OilTestCard isAudit />
+        <ChickenCard isAudit />
 
         {myTasks.length > 0 ? (
           <>
@@ -408,6 +411,7 @@ function EmployeeHome() {
 
         <TodayChecklistCard />
         <OilTestCard />
+        <ChickenCard />
 
         {myTasks.length === 0 ? null : (
           <View style={{ marginTop: 16 }}>

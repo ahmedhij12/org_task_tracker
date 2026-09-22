@@ -338,3 +338,19 @@ export interface OilTest {
   note: string | null;
   testedAt: string;
 }
+
+/** One chicken marination record. Supervisor/manager records it; auditor views. */
+export interface ChickenMarination {
+  id: string;
+  orgId: string;
+  teamId: string;
+  actorId: string;
+  actorName?: string;
+  isAudit: boolean;
+  marinatedAt: string;
+  countIn: number | null;
+  unloadedAt: string | null;
+  countOut: number | null;
+  note: string | null;
+  signatureUrl: string | null;
+}
