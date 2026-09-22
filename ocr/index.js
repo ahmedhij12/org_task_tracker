@@ -19,6 +19,7 @@ export default {
     const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors(origin) });
     if (request.method !== 'POST') return new Response('Not found', { status: 404, headers: cors(origin) });
+    if (origin && origin !== ALLOWED_ORIGIN) return json({ error: 'forbidden_origin' }, 403, origin);
 
     let body;
     try { body = await request.json(); } catch { return json({ error: 'bad_request' }, 400, origin); }
