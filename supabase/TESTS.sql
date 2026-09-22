@@ -740,6 +740,7 @@ declare
   v_other_team_id uuid;
   v_other_emp_id uuid;
   v_leader_id uuid;
+  v_other_leader_id uuid;
   v_raised boolean;
 begin
   insert into auth.users (
@@ -855,6 +856,36 @@ begin
     raise exception 'FAIL: an employee must not be able to reset anyone''s password';
   end if;
   raise notice 'PASS: an employee cannot reset passwords';
+
+  -- Sharing a branch is not enough: a manager manages supervisors only,
+  -- never the owner or a peer manager.
+  insert into public.profile_teams (profile_id, team_id, added_by)
+  values (v_owner_id, v_team_id, v_owner_id) on conflict do nothing;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.admin_reset_password(v_owner_id, 'hacked123');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team leader must not reset the owner''s password, even on a shared team';
+  end if;
+  raise notice 'PASS: a team leader cannot reset the owner''s password';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_owner_id)::text, true);
+  v_other_leader_id := public.admin_create_user('Lead Two', 'lead2', 'initial123', 'team_admin', v_team_id);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_leader_id)::text, true);
+  v_raised := false;
+  begin
+    perform public.admin_reset_password(v_other_leader_id, 'hacked123');
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'FAIL: a team leader must not reset a peer leader''s password';
+  end if;
+  raise notice 'PASS: a team leader cannot reset a peer leader''s password';
 end;
 $$;
 
