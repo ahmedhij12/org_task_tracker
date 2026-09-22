@@ -393,7 +393,7 @@ export default function SettingsScreen() {
           </Pressable>
         )}
 
-        <Text style={{ fontSize: 11, color: c.textFaint, textAlign: 'center', marginTop: 24 }}>BD Audit • v1.0.0</Text>
+        <Text style={{ fontSize: 11, color: c.textFaint, textAlign: 'center', marginTop: 24 }}>BD Audit • v2.0.0</Text>
       </ScrollView>
       <FryersSheet visible={managingFryers} onClose={() => setManagingFryers(false)} />
     </SafeAreaView>

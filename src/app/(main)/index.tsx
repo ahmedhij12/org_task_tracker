@@ -24,6 +24,7 @@ import { MyAuditScore } from '@/components/MyAuditScore';
 import { TodayChecklistCard } from '@/components/TodayChecklistCard';
 import { OilTestCard } from '@/components/OilTestCard';
 import { OilAlert } from '@/components/OilAlert';
+import { ReinstallNotice } from '@/components/ReinstallNotice';
 import { ChickenCard } from '@/components/ChickenCard';
 import { BranchAudits } from '@/components/BranchAudits';
 import type { BranchSummaryRow, OrgTask } from '@/types';
@@ -78,6 +79,7 @@ function TeamAdminDashboard() {
           {myBranches ? <Text style={{ fontSize: 12, color: c.textMuted }}>{myBranches}</Text> : null}
         </View>
 
+        <ReinstallNotice />
         <OilAlert />
         <TodayChecklistCard />
         <OilTestCard />
@@ -224,6 +226,7 @@ function OwnerDashboard() {
           </View>
         </View>
 
+        <ReinstallNotice />
         <OilAlert />
         <OilTestCard isAudit />
         <ChickenCard isAudit />

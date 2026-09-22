@@ -449,6 +449,10 @@ export default {
     done: "Done",
     pushNeedsInstall: "To get notifications on iPhone, add this site to your Home Screen (Share → Add to Home Screen), open it from there, then turn notifications on in Settings.",
   },
+  reinstall: {
+    title: "Add the app again to get notifications",
+    body: "Your icon was added before notifications were available. Delete the old BD Audit icon from your Home Screen, open bdaudit.hijazionline.com in Safari, then Share → Add to Home Screen. Open it from the new icon and allow notifications.",
+  },
   push: {
     registered: "Device registered — try the test now.",
     register: "Register this device again",
