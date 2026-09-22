@@ -1,4 +1,4 @@
-import { View, Text, Pressable, TextInput, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import type { ReactNode } from 'react';
 import { Colors, ON_ACCENT, type ThemeColors } from '@/theme';
 import { sanitizeUsername } from '@/lib/username';
@@ -169,7 +169,3 @@ export function Card({ children, style }: { children: ReactNode; style?: any }) 
     </View>
   );
 }
-
-export const sharedStyles = StyleSheet.create({
-  flex1: { flex: 1 },
-});

@@ -3,7 +3,6 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useOilTests } from '@/hooks/useOilTests';
-import { useThemeColors } from '@/components/ui';
 import type { OilTest } from '@/types';
 
 const CHANGE = '#E8141A';
@@ -12,7 +11,6 @@ const CHANGE = '#E8141A';
  * shows when at least one does — routine good/watch tests stay quiet in History. */
 export function OilAlert() {
   const { t } = useTranslation();
-  const c = useThemeColors();
   const { tests } = useOilTests();
 
   const needChange = useMemo(() => {

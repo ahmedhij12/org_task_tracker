@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabase';
 import { useOilTests } from '@/hooks/useOilTests';
 import { useOrgData } from '@/hooks/useOrgData';
-import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
+import { SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 
 /** Owner-only: add/rename/remove the fryers a branch tests. */

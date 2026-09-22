@@ -17,11 +17,6 @@ export function isUpcoming(task: OrgTask): boolean {
   return d.getTime() >= Date.now() && !isSameDay(d, new Date());
 }
 
-export function isTodayTask(task: OrgTask): boolean {
-  if (task.completed) return false;
-  return task.due ? isSameDay(new Date(task.due), new Date()) : true;
-}
-
 /** "Today 3:00 PM" / "Tomorrow 9:00 AM" / "Sep 24 3:00 PM", in the app's language. */
 export function formatDue(
   iso: string | null,

@@ -380,7 +380,7 @@ function EmployeeHome() {
   const myTasks = tasks
     .filter((t) => t.assigneeId === profile?.id || t.assigneeId === null)
     .map((t) => ({ ...t, completed: effectiveTaskCompleted(t, history) }));
-  const { overdue, today, upcoming, completed } = bucketTasks(myTasks);
+  const { overdue, today } = bucketTasks(myTasks);
 
 
   const handlePressCheckbox = (task: OrgTask) => {
@@ -456,33 +456,7 @@ function EmployeeHome() {
   );
 }
 
-function StatChip({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
-  return (
-    <View style={{ backgroundColor: bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', gap: 4 }}>
-      <Text style={{ fontSize: 12, fontWeight: '700', color }}>{value}</Text>
-      <Text style={{ fontSize: 12, color }}>{label}</Text>
-    </View>
-  );
-}
 
-function TeamChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const c = useThemeColors();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 999,
-        backgroundColor: active ? c.brand : c.bgSubtle,
-        borderWidth: 1,
-        borderColor: active ? c.brand : c.border,
-      }}
-    >
-      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : c.text }}>{label}</Text>
-    </Pressable>
-  );
-}
 
 function SupervisorSummaryRow({ row, locale, streak }: { row: BranchSummaryRow; locale: string; streak: number }) {
   const c = useThemeColors();

@@ -1,7 +1,6 @@
-import { View, Text, Pressable, ScrollView, Image } from 'react-native';
+import { View, Text, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { PrimaryButton, useThemeColors } from '@/components/ui';
 

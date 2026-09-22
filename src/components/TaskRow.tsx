@@ -221,7 +221,3 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
     </Swipeable>
   );
 }
-
-export function initialsBadge(name: string) {
-  return initials(name);
-}
