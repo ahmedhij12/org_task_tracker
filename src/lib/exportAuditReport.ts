@@ -141,12 +141,12 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   ${sectionsHtml}
 
 
-  ${signatureAndLocationHtml(completion)}
+  ${proofHtml(completion)}
 </body>
 </html>`;
 }
 
-/** The header for a daily checklist: who filled it, where, the tally, the selfie. */
+/** The header for a daily checklist: who filled it, where, the tally. The selfie sits with the other proof at the end. */
 function checklistInfoHtml(completion: TaskCompletion, branchName: string, byName: string, verifiedByName: string | null): string {
   const row = (label: string, value: string, color = '#111827') =>
     `<tr><td style="padding:4px 8px 4px 0;color:#6b7280;">${label}</td><td style="font-weight:700;color:${color};">${value}</td></tr>`;
@@ -157,10 +157,7 @@ function checklistInfoHtml(completion: TaskCompletion, branchName: string, byNam
     ${row('No', String(completion.noCount ?? 0), (completion.noCount ?? 0) > 0 ? '#dc2626' : '#111827')}
     ${row('Verified', verifiedByName ? `✓ ${escapeHtml(verifiedByName)}` : 'Waiting for the admin', verifiedByName ? '#059669' : '#d97706')}
   </table>`;
-  const selfie = completion.selfieUrl
-    ? `<img src="${completion.selfieUrl}" style="width:96px;height:120px;object-fit:cover;border-radius:8px;" />`
-    : '';
-  return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;">${table}${selfie}</div>`;
+  return `<div style="margin-bottom:18px;">${table}</div>`;
 }
 
 /**
@@ -188,29 +185,36 @@ function miniMapHtml(lat: number, lng: number, width: number, height: number): s
   </div>`;
 }
 
-/** Signature on the left, where it was signed on the right — side by side, same height. */
-function signatureAndLocationHtml(completion: TaskCompletion): string {
+/** The proof block at the end: selfie, signature, and where it was signed — side by side, same height. */
+function proofHtml(completion: TaskCompletion): string {
+  const hasSelfie = !!completion.selfieUrl;
   const hasSig = !!completion.signatureUrl;
   const hasLoc = completion.signedLat != null && completion.signedLng != null;
-  if (!hasSig && !hasLoc) return '';
+  if (!hasSelfie && !hasSig && !hasLoc) return '';
+  const selfie = hasSelfie
+    ? `<div>
+    <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Selfie</p>
+    <img src="${completion.selfieUrl}" style="width:96px;height:130px;object-fit:cover;border-radius:8px;" />
+  </div>`
+    : '';
   const sig = hasSig
     ? `<div>
     <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Signature</p>
-    <img src="${completion.signatureUrl}" style="width:220px;height:130px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#fff;" />
+    <img src="${completion.signatureUrl}" style="width:${hasSelfie ? 180 : 220}px;height:130px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#fff;" />
   </div>`
     : '<div></div>';
   const loc = hasLoc
     ? `<div>
     <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Signed at</p>
     <a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">
-      ${miniMapHtml(completion.signedLat!, completion.signedLng!, 240, 130)}
-      <p style="font-size:11px;color:#111827;font-weight:600;margin:6px 0 0;max-width:240px;">${escapeHtml(completion.signedAddress ?? 'Open in Maps')}${
+      ${miniMapHtml(completion.signedLat!, completion.signedLng!, hasSelfie ? 220 : 240, 130)}
+      <p style="font-size:11px;color:#111827;font-weight:600;margin:6px 0 0;max-width:${hasSelfie ? 220 : 240}px;">${escapeHtml(completion.signedAddress ?? 'Open in Maps')}${
         completion.signedAccuracyM != null ? ` <span style="color:#6b7280;font-weight:400;">(±${Math.round(completion.signedAccuracyM)} m)</span>` : ''
       }</p>
     </a>
   </div>`
     : '';
-  return `<div style="margin-top:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;page-break-inside:avoid;">${sig}${loc}</div>`;
+  return `<div style="margin-top:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;page-break-inside:avoid;">${selfie}${sig}${loc}</div>`;
 }
 
 function reportFilename(data: AuditReportData): string {
