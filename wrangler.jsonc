@@ -25,7 +25,10 @@
   },
   // Subdomain only — the apex hijazionline.com stays on the separate
   // "sage-legal" worker (see ~/Projects/hijazionline-portfolio).
+  // bdaudit.* is the app's name since the BD Audit rename; rungs.* stays so
+  // Home Screen shortcuts made before it keep working.
   "routes": [
+    { "pattern": "bdaudit.hijazionline.com", "custom_domain": true },
     { "pattern": "rungs.hijazionline.com", "custom_domain": true }
   ]
 }
