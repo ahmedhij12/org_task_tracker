@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
+import { resizeImage } from '@/lib/resizeImage';
 import { useAuth } from '@/hooks/useAuth';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
@@ -54,8 +55,9 @@ export function ChickenActive() {
       const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6, base64: true });
       if (shot.canceled || !shot.assets[0]?.base64) return;
       setBusyId(id);
+      const small = await resizeImage(shot.assets[0].base64);
       const path = `${profile?.orgId}/chicken-unload-${id}-${Date.now()}.jpg`;
-      const { error: upErr } = await supabase.storage.from('task-proofs').upload(path, decode(shot.assets[0].base64), { contentType: 'image/jpeg' });
+      const { error: upErr } = await supabase.storage.from('task-proofs').upload(path, decode(small), { contentType: 'image/jpeg' });
       if (upErr) throw upErr;
       const url = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
       await markUnloaded(id, url);

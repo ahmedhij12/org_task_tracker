@@ -63,18 +63,19 @@ export function SelfieCapture({ visible, onCapture, onClose, onError }: {
   const capture = () => {
     const video = videoRef.current;
     if (!video) return;
-    const size = Math.min(video.videoWidth, video.videoHeight) || 640;
+    const raw = Math.min(video.videoWidth, video.videoHeight) || 640;
+    const size = Math.min(raw, 720); // a face never needs more than this
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     // Centre-crop to a square and mirror to match the preview.
-    const sx = (video.videoWidth - size) / 2;
-    const sy = (video.videoHeight - size) / 2;
+    const sx = (video.videoWidth - raw) / 2;
+    const sy = (video.videoHeight - raw) / 2;
     ctx.translate(size, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
+    ctx.drawImage(video, sx, sy, raw, raw, 0, 0, size, size);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
     const base64 = dataUrl.split(',')[1] ?? '';
     streamRef.current?.getTracks().forEach((tk) => tk.stop());

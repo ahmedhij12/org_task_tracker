@@ -39,6 +39,22 @@
         height: 100%;
         flex: 1;
       }
+      /* The app is built for phones. On a computer, keep it to a phone-ish
+         column in the middle instead of stretching buttons across the window. */
+      @media (min-width: 820px) {
+        body {
+          background-color: #E9ECEF;
+        }
+        @media (prefers-color-scheme: dark) {
+          body { background-color: #0B0B0B; }
+        }
+        #root {
+          width: 100%;
+          max-width: 480px;
+          margin: 0 auto;
+          box-shadow: 0 0 40px rgba(0, 0, 0, 0.18);
+        }
+      }
     </style>
   </head>
 

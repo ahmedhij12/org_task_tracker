@@ -13,6 +13,8 @@ import { isoForBranchTime } from '@/lib/time';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 
+const CHICKENS_PER_BUCKET = 8;
+
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; isAudit?: boolean; onClose: () => void }) {
@@ -108,10 +110,15 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               ) : null}
 
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('chicken.marinationHeading')}</Text>
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 6 }}>
                 <TimeField label={t('chicken.time')} value={marinTime} onChange={setMarinTime} />
                 {field(t('chicken.countIn'), countIn, setCountIn, 'num')}
               </View>
+              {Number(countIn) > 0 ? (
+                <Text style={{ fontSize: 12, color: c.brand, fontWeight: '700', marginBottom: 14 }}>
+                  {t('chicken.bucketMath', { buckets: Number(countIn), chickens: Number(countIn) * CHICKENS_PER_BUCKET })}
+                </Text>
+              ) : <View style={{ height: 12 }} />}
 
               <Pressable onPress={() => setRemind((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, backgroundColor: c.bgSubtle, borderRadius: 12, padding: 12 }}>
                 <Ionicons name={remind ? 'notifications' : 'notifications-off-outline'} size={20} color={remind ? c.brand : c.textMuted} />
@@ -127,10 +134,17 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
                 <Text style={{ fontSize: 14, color: c.text }}>{t('chicken.addUnload')}</Text>
               </Pressable>
               {hasUnload ? (
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
-                  <TimeField label={t('chicken.unloadTime')} value={unloadTime} onChange={setUnloadTime} />
-                  {field(t('chicken.countOut'), countOut, setCountOut, 'num')}
-                </View>
+                <>
+                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 6 }}>
+                    <TimeField label={t('chicken.unloadTime')} value={unloadTime} onChange={setUnloadTime} />
+                    {field(t('chicken.countOut'), countOut, setCountOut, 'num')}
+                  </View>
+                  {Number(countOut) > 0 ? (
+                    <Text style={{ fontSize: 12, color: c.brand, fontWeight: '700', marginBottom: 14 }}>
+                      {t('chicken.bucketMath', { buckets: Number(countOut), chickens: Number(countOut) * CHICKENS_PER_BUCKET })}
+                    </Text>
+                  ) : <View style={{ height: 12 }} />}
+                </>
               ) : null}
 
               <TextInput value={note} onChangeText={setNote} placeholder={t('chicken.notePlaceholder')} placeholderTextColor={c.textFaint} multiline

@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
+import { resizeImage } from '@/lib/resizeImage';
 import { useAuth } from '@/hooks/useAuth';
 import { ScoreRing } from '@/components/ScoreRing';
 import { computeScore } from '@/lib/score';
@@ -148,9 +149,10 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     try {
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, base64: true });
       if (!result.canceled && result.assets[0]?.base64) {
+        const small = await resizeImage(result.assets[0].base64);
         setSectionPhotos((prev) => ({
           ...prev,
-          [sectionTitle]: [...(prev[sectionTitle] ?? []), { uri: result.assets[0].uri, base64: result.assets[0].base64! }],
+          [sectionTitle]: [...(prev[sectionTitle] ?? []), { uri: result.assets[0].uri, base64: small }],
         }));
       }
     } catch (e: any) {

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { decode } from 'base64-arraybuffer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
+import { resizeImage } from '@/lib/resizeImage';
 import { useAuth } from '@/hooks/useAuth';
 import { useOilTests } from '@/hooks/useOilTests';
 import { readTesterPhoto, gradeForTpm } from '@/lib/oilOcr';
@@ -70,7 +71,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
     try {
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6, base64: true });
       if (result.canceled || !result.assets[0]?.base64) return;
-      const shot = { uri: result.assets[0].uri, base64: result.assets[0].base64 };
+      const shot = { uri: result.assets[0].uri, base64: await resizeImage(result.assets[0].base64) };
       setPhoto(shot);
       // Best-effort auto-read; the numbers stay editable no matter what it returns.
       setReading(true);

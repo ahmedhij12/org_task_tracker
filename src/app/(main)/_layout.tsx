@@ -8,6 +8,7 @@ import { ChecklistDataProvider } from '@/hooks/useChecklists';
 import { OilTestsProvider } from '@/hooks/useOilTests';
 import { ChickenProvider } from '@/hooks/useChicken';
 import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
+import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useThemeColors } from '@/components/ui';
 
@@ -21,6 +22,7 @@ export default function MainLayout() {
           <ChickenProvider>
             <MainTabs />
             <PermissionsOnboarding />
+            <ConfirmBranchLocation />
           </ChickenProvider>
         </OilTestsProvider>
       </ChecklistDataProvider>
