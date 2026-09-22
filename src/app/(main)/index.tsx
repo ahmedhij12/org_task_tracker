@@ -21,6 +21,7 @@ import { formatScore, gradeColors, gradeOf } from '@/lib/score';
 import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
 import { MyAuditScore } from '@/components/MyAuditScore';
 import { TodayChecklistCard } from '@/components/TodayChecklistCard';
+import { OilTestCard } from '@/components/OilTestCard';
 import { BranchAudits } from '@/components/BranchAudits';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
@@ -74,6 +75,7 @@ function TeamAdminDashboard() {
         </View>
 
         <TodayChecklistCard />
+        <OilTestCard />
 
         {myTasks.length > 0 ? (
           <>
@@ -400,6 +402,7 @@ function EmployeeHome() {
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{organization?.name}</Text>
 
         <TodayChecklistCard />
+        <OilTestCard />
 
         {myTasks.length === 0 ? null : (
           <View style={{ marginTop: 16 }}>

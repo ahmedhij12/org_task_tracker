@@ -306,3 +306,35 @@ export interface PeriodAdjustment {
   reason: string | null;
   createdAt: string;
 }
+
+/** A fryer/station at a branch that gets oil-tested. Admin-managed. */
+export interface OilFryer {
+  id: string;
+  orgId: string;
+  teamId: string;
+  name: string;
+  sortOrder: number;
+  archived: boolean;
+}
+
+export type OilGrade = 'good' | 'watch' | 'change';
+
+/** One oil-tester reading of one fryer. grade is derived from tpm at write time. */
+export interface OilTest {
+  id: string;
+  orgId: string;
+  teamId: string;
+  fryerId: string;
+  fryerName?: string;
+  actorId: string;
+  actorName?: string;
+  isAudit: boolean;
+  tpm: number;
+  tempC: number | null;
+  filtered: boolean;
+  grade: OilGrade;
+  photoUrl: string;
+  signatureUrl: string | null;
+  note: string | null;
+  testedAt: string;
+}
