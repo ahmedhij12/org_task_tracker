@@ -11,6 +11,7 @@ import { computeScore } from '@/lib/score';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useOrgData } from '@/hooks/useOrgData';
 import { SignaturePad } from '@/components/SignaturePad';
+import { SelfieCapture } from '@/components/SelfieCapture';
 import { SigningLocation, type SignedLocation } from '@/components/SigningLocation';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
@@ -69,6 +70,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
   const [signedLocation, setSignedLocation] = useState<SignedLocation | null>(null);
   const [selfie, setSelfie] = useState<{ uri: string; base64: string } | null>(null);
+  const [selfieOpen, setSelfieOpen] = useState(false);
   const handleLocation = useCallback((loc: SignedLocation | null) => setSignedLocation(loc), []);
 
   const branchMembers = members.filter(
@@ -199,28 +201,9 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     (!task.isAudit || (!!signatureSvg && !!signedLocation)) &&
     (!needsProof || (!!selfie && !!signedLocation && !!signatureSvg));
 
-  const takeSelfie = async () => {
-    setError(null);
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setError(t('fill.selfieCameraNeeded'));
-      return;
-    }
-    try {
-      // Live front camera only — never the photo library.
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        cameraType: ImagePicker.CameraType.front,
-        quality: 0.5,
-        base64: true,
-      });
-      if (!result.canceled && result.assets[0]?.base64) {
-        setSelfie({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
-      }
-    } catch (e: any) {
-      setError(e?.message ?? t('fill.cameraFailed'));
-    }
-  };
+  // Opens the front-camera capture (SelfieCapture forces the front camera and a
+  // live shot on web, where the OS picker otherwise allows any file/rear camera).
+  const takeSelfie = () => { setError(null); setSelfieOpen(true); };
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -311,6 +294,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   if (!template) return null;
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
         <KeyboardAvoidingView
@@ -856,5 +840,12 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
         </KeyboardAvoidingView>
       </View>
     </Modal>
+    <SelfieCapture
+      visible={selfieOpen}
+      onCapture={(shot) => setSelfie(shot)}
+      onClose={() => setSelfieOpen(false)}
+      onError={() => setError(t('fill.selfieCameraNeeded'))}
+    />
+    </>
   );
 }
