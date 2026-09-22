@@ -105,7 +105,7 @@ begin
         headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || v_token),
         body := jsonb_build_object(
           'subscriptions', v_subs,
-          'title', 'حان وقت رفع الخل',
+          'title', 'حان وقت تفريغ الخل',
           'body', r.branch || ' · تم التخليل ' ||
                   to_char(r.marinated_at at time zone r.timezone, 'HH12:MI AM') ||
                   ' · مرت ' || public.marination_hours() || ' ساعات',
