@@ -360,4 +360,8 @@ export interface ChickenMarination {
   countOut: number | null;
   note: string | null;
   signatureUrl: string | null;
+  /** When the vinegar must come out; null if no reminder was asked for. */
+  remindAt?: string | null;
+  /** Photo taken when the vinegar was removed — the proof it happened. */
+  unloadPhotoUrl?: string | null;
 }

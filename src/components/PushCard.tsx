@@ -1,8 +1,6 @@
-import { useState } from 'react';
-import { View, Text, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { supabase } from '@/lib/supabase';
 import { useWebPush } from '@/hooks/useWebPush';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 
@@ -12,18 +10,9 @@ import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 export function PushCard() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { state, busy, enable, detail, retry } = useWebPush();
-  const [testMsg, setTestMsg] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
+  const { state, busy, enable, detail } = useWebPush();
 
   if (state === 'unsupported') return null;
-
-  const sendTest = async () => {
-    setTesting(true); setTestMsg(null);
-    const { data, error } = await supabase.rpc('send_test_push');
-    setTestMsg(error ? error.message : data && Number(data) > 0 ? t('push.testSent') : t('push.testNoSub'));
-    setTesting(false);
-  };
 
   return (
     <Card style={{ marginBottom: 14 }}>
@@ -31,24 +20,10 @@ export function PushCard() {
       <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 12 }}>{t('push.pushOnHint')}</Text>
 
       {state === 'granted' ? (
-        <>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Ionicons name="checkmark-circle" size={20} color={c.emerald} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: c.emerald }}>{t('push.pushOn')}</Text>
-          </View>
-          {testing ? <ActivityIndicator color={c.brand} /> : (
-            <Pressable onPress={sendTest} style={{ alignSelf: 'flex-start', borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: c.brand }}>{t('push.sendTest')}</Text>
-            </Pressable>
-          )}
-          {testMsg ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8 }}>{testMsg}</Text> : null}
-          <Pressable
-            onPress={async () => { setTestMsg(null); setTesting(true); try { await retry(); setTestMsg(t('push.registered')); } catch (e: any) { setTestMsg(String(e?.message ?? e)); } setTesting(false); }}
-            style={{ alignSelf: 'flex-start', marginTop: 10 }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>{t('push.register')}</Text>
-          </Pressable>
-        </>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="checkmark-circle" size={20} color={c.emerald} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: c.emerald }}>{t('push.pushOn')}</Text>
+        </View>
       ) : state === 'needs-install' ? (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
           <Ionicons name="phone-portrait-outline" size={18} color={c.amber} />

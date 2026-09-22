@@ -16,6 +16,8 @@ function mapRow(row: any): ChickenMarination {
     unloadedAt: row.unloaded_at,
     countOut: row.count_out == null ? null : Number(row.count_out),
     note: row.note,
+    remindAt: row.remind_at ?? null,
+    unloadPhotoUrl: row.unload_photo_url ?? null,
     signatureUrl: row.signature_url,
   };
 }
@@ -29,6 +31,8 @@ export interface SubmitChickenInput {
   note?: string | null;
   signatureUrl?: string | null;
   isAudit?: boolean;
+  /** Ask for the "remove the vinegar" reminder when the marination hours are up. */
+  remind?: boolean;
 }
 
 interface ChickenContextValue {
@@ -36,6 +40,9 @@ interface ChickenContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   submit: (input: SubmitChickenInput) => Promise<void>;
+  /** Record that a batch came out. The removal time is stamped by the server
+   * (never the phone) and a photo is required as proof. */
+  markUnloaded: (id: string, photoUrl: string, countOut?: number | null) => Promise<void>;
 }
 
 const ChickenContext = createContext<ChickenContextValue | undefined>(undefined);
@@ -82,6 +89,7 @@ export function ChickenProvider({ children }: { children: ReactNode }) {
         p_note: input.note ?? null,
         p_signature_url: input.signatureUrl ?? null,
         p_is_audit: input.isAudit ?? false,
+        p_remind: input.remind ?? false,
       });
       if (error) throw error;
       await refresh();
@@ -89,7 +97,18 @@ export function ChickenProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
-  const value = useMemo(() => ({ records, loading, refresh, submit }), [records, loading, refresh, submit]);
+  const markUnloaded = useCallback<ChickenContextValue['markUnloaded']>(
+    async (id, photoUrl, countOut) => {
+      const { error } = await supabase.rpc('set_chicken_unloaded', {
+        p_id: id, p_photo_url: photoUrl, p_count_out: countOut ?? null,
+      });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const value = useMemo(() => ({ records, loading, refresh, submit, markUnloaded }), [records, loading, refresh, submit, markUnloaded]);
   return <ChickenContext.Provider value={value}>{children}</ChickenContext.Provider>;
 }
 

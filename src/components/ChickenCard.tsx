@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useChicken } from '@/hooks/useChicken';
 import { ChickenSheet } from '@/components/ChickenSheet';
+import { ChickenActive } from '@/components/ChickenActive';
 import { useThemeColors } from '@/components/ui';
 
 /** Dashboard card for supervisors/managers to record a chicken marination. */
@@ -31,6 +32,7 @@ export function ChickenCard({ isAudit }: { isAudit?: boolean } = {}) {
         </View>
         <Ionicons name="add-circle" size={28} color={c.brand} />
       </Pressable>
+      <ChickenActive />
       <ChickenSheet visible={open} isAudit={isAudit} onClose={() => setOpen(false)} />
     </>
   );

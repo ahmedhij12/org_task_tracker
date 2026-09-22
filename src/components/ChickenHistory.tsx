@@ -9,6 +9,8 @@ import { useThemeColors } from '@/components/ui';
 import type { ChickenMarination } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
 
+const MARINATION_HOURS = 3;
+
 /** Chicken marination history, all roles (RLS-scoped): a day list → that day's
  * records with times, counts, who. */
 export function ChickenHistory() {
@@ -75,6 +77,21 @@ export function ChickenHistory() {
                       </>
                     ) : null}
                   </View>
+                  {x.unloadedAt ? (() => {
+                    // Proof for the admin: was the vinegar out within the 3 hours?
+                    const lateMs = new Date(x.unloadedAt).getTime() - (new Date(x.marinatedAt).getTime() + MARINATION_HOURS * 3600000);
+                    const late = lateMs > 5 * 60000; // 5 min grace
+                    const mins = Math.round(Math.abs(lateMs) / 60000);
+                    const label = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <Ionicons name={late ? 'alert-circle' : 'checkmark-circle'} size={14} color={late ? c.rose : c.emerald} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: late ? c.rose : c.emerald }}>
+                          {late ? t('chicken.removedLate', { time: label }) : t('chicken.removedOnTime')}
+                        </Text>
+                      </View>
+                    );
+                  })() : null}
                   <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 3 }}>
                     {isOwner ? `${teamName(x.teamId)} · ` : ''}{x.actorName ?? ''}{x.isAudit ? ` · ${t('chicken.byAuditor')}` : ''}
                   </Text>

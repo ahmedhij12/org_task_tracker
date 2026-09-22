@@ -28,6 +28,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const [marinTime, setMarinTime] = useState(hhmm(new Date()));
   const [countIn, setCountIn] = useState('');
   const [hasUnload, setHasUnload] = useState(false);
+  const [remind, setRemind] = useState(true);
   const [unloadTime, setUnloadTime] = useState(hhmm(new Date()));
   const [countOut, setCountOut] = useState('');
   const [note, setNote] = useState('');
@@ -37,7 +38,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
 
   const reset = () => {
     setBranchId(myBranches[0]?.id ?? null); setMarinTime(hhmm(new Date())); setCountIn('');
-    setHasUnload(false); setUnloadTime(hhmm(new Date())); setCountOut(''); setNote(''); setSignatureSvg(null); setError(null);
+    setHasUnload(false); setRemind(true); setUnloadTime(hhmm(new Date())); setCountOut(''); setNote(''); setSignatureSvg(null); setError(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
@@ -61,7 +62,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
       await submit({
         teamId: effectiveBranchId, marinatedAt, countIn: countIn.trim() === '' ? null : Number(countIn),
         unloadedAt: hasUnload ? isoForBranchTime(unloadTime, tz) : null, countOut: hasUnload && countOut.trim() !== '' ? Number(countOut) : null,
-        note: note.trim() || null, signatureUrl, isAudit: !!isAudit,
+        note: note.trim() || null, signatureUrl, isAudit: !!isAudit, remind,
       });
       reset(); onClose();
     } catch (e: any) {
@@ -111,6 +112,15 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
                 <TimeField label={t('chicken.time')} value={marinTime} onChange={setMarinTime} />
                 {field(t('chicken.countIn'), countIn, setCountIn, 'num')}
               </View>
+
+              <Pressable onPress={() => setRemind((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, backgroundColor: c.bgSubtle, borderRadius: 12, padding: 12 }}>
+                <Ionicons name={remind ? 'notifications' : 'notifications-off-outline'} size={20} color={remind ? c.brand : c.textMuted} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{t('chicken.remindMe')}</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>{t('chicken.remindHint')}</Text>
+                </View>
+                <Ionicons name={remind ? 'checkbox' : 'square-outline'} size={22} color={remind ? c.brand : c.textMuted} />
+              </Pressable>
 
               <Pressable onPress={() => setHasUnload((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <Ionicons name={hasUnload ? 'checkbox' : 'square-outline'} size={22} color={hasUnload ? c.brand : c.textMuted} />
