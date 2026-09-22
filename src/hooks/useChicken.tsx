@@ -18,6 +18,7 @@ function mapRow(row: any): ChickenMarination {
     note: row.note,
     remindAt: row.remind_at ?? null,
     unloadPhotoUrl: row.unload_photo_url ?? null,
+    unloadedByName: row.unloader?.name ?? null,
     signatureUrl: row.signature_url,
   };
 }
@@ -56,7 +57,7 @@ export function ChickenProvider({ children }: { children: ReactNode }) {
     if (!session) return;
     const res = await supabase
       .from('chicken_marinations')
-      .select('*, profiles!chicken_marinations_actor_id_fkey(name)')
+      .select('*, profiles!chicken_marinations_actor_id_fkey(name), unloader:profiles!chicken_marinations_unloaded_by_fkey(name)')
       .order('marinated_at', { ascending: false })
       .limit(500);
     if (!res.error) setRecords((res.data ?? []).map(mapRow));

@@ -369,4 +369,6 @@ export interface ChickenMarination {
   remindAt?: string | null;
   /** Photo taken when the vinegar was removed — the proof it happened. */
   unloadPhotoUrl?: string | null;
+  /** Who emptied it — often a different shift from whoever marinated. */
+  unloadedByName?: string | null;
 }

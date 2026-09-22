@@ -94,6 +94,7 @@ export function ChickenHistory() {
                   })() : null}
                   <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 3 }}>
                     {isOwner ? `${teamName(x.teamId)} · ` : ''}{x.actorName ?? ''}{x.isAudit ? ` · ${t('chicken.byAuditor')}` : ''}
+                    {x.unloadedByName && x.unloadedByName !== x.actorName ? ` · ${t('chicken.emptiedBy', { name: x.unloadedByName })}` : ''}
                   </Text>
                   {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}
                 </View>

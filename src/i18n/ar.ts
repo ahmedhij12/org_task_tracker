@@ -397,6 +397,7 @@ export default {
     notPinned: "لم يُحدد الموقع — اضغط لتثبيته على الخريطة",
   },
   chicken: {
+    emptiedBy: "فرّغها {{name}}",
     remindMe: "ذكّرني بتفريغ الخل",
     remindHint: "إشعار بعد 3 ساعات من التخليل.",
     activeTitle: "قيد التخليل الآن",

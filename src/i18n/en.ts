@@ -387,6 +387,7 @@ export default {
     notPinned: "No location set — tap to pin on the map",
   },
   chicken: {
+    emptiedBy: "emptied by {{name}}",
     remindMe: "Remind me to remove the vinegar",
     remindHint: "A notification 3 hours after marinating.",
     activeTitle: "In marination now",
