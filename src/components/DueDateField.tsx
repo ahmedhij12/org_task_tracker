@@ -29,7 +29,7 @@ export function DueDateField({ value, onChange }: Props) {
   const [showPicker, setShowPicker] = useState(false);
 
   const label = value
-    ? value.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    ? value.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
     : 'No due date';
 
   if (Platform.OS === 'web') {

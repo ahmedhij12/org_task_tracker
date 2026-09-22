@@ -8,20 +8,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { SignaturePad } from '@/components/SignaturePad';
+import { TimeField } from '@/components/TimeField';
+import { isoForBranchTime } from '@/lib/time';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-// Turns "14:30" into today's ISO timestamp; returns null if malformed.
-function toIso(time: string): string | null {
-  const m = time.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const h = Number(m[1]); const mi = Number(m[2]);
-  if (h > 23 || mi > 59) return null;
-  const d = new Date();
-  d.setHours(h, mi, 0, 0);
-  return d.toISOString();
-}
 
 export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; isAudit?: boolean; onClose: () => void }) {
   const c = useThemeColors();
@@ -49,12 +41,14 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
-  const canSubmit = !!branchId && !!toIso(marinTime) && !submitting;
+  // teams can arrive after this sheet mounts, so never trust the initial pick alone.
+  const effectiveBranchId = branchId ?? myBranches[0]?.id ?? null;
+  const canSubmit = !!effectiveBranchId && !submitting;
 
   const handleSubmit = async () => {
-    if (!canSubmit || !branchId) return;
-    const marinatedAt = toIso(marinTime);
-    if (!marinatedAt) { setError(t('chicken.badTime')); return; }
+    if (!canSubmit || !effectiveBranchId) return;
+    const tz = teams.find((tm) => tm.id === effectiveBranchId)?.timezone ?? 'Asia/Baghdad';
+    const marinatedAt = isoForBranchTime(marinTime, tz);
     setError(null); setSubmitting(true);
     try {
       let signatureUrl: string | null = null;
@@ -65,8 +59,8 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
         signatureUrl = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
       }
       await submit({
-        teamId: branchId, marinatedAt, countIn: countIn.trim() === '' ? null : Number(countIn),
-        unloadedAt: hasUnload ? toIso(unloadTime) : null, countOut: hasUnload && countOut.trim() !== '' ? Number(countOut) : null,
+        teamId: effectiveBranchId, marinatedAt, countIn: countIn.trim() === '' ? null : Number(countIn),
+        unloadedAt: hasUnload ? isoForBranchTime(unloadTime, tz) : null, countOut: hasUnload && countOut.trim() !== '' ? Number(countOut) : null,
         note: note.trim() || null, signatureUrl, isAudit: !!isAudit,
       });
       reset(); onClose();
@@ -101,7 +95,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               {myBranches.length > 1 ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                   {myBranches.map((tm) => {
-                    const active = branchId === tm.id;
+                    const active = effectiveBranchId === tm.id;
                     return (
                       <Pressable key={tm.id} onPress={() => setBranchId(tm.id)}
                         style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: active ? c.brand : c.bgSubtle, borderWidth: 1, borderColor: active ? c.brand : c.border }}>
@@ -114,7 +108,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
 
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('chicken.marinationHeading')}</Text>
               <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
-                {field(t('chicken.time'), marinTime, setMarinTime, 'time')}
+                <TimeField label={t('chicken.time')} value={marinTime} onChange={setMarinTime} />
                 {field(t('chicken.countIn'), countIn, setCountIn, 'num')}
               </View>
 
@@ -124,7 +118,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               </Pressable>
               {hasUnload ? (
                 <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
-                  {field(t('chicken.unloadTime'), unloadTime, setUnloadTime, 'time')}
+                  <TimeField label={t('chicken.unloadTime')} value={unloadTime} onChange={setUnloadTime} />
                   {field(t('chicken.countOut'), countOut, setCountOut, 'num')}
                 </View>
               ) : null}

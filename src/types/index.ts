@@ -51,6 +51,8 @@ export interface Team {
   orgId: string;
   name: string;
   createdAt: string;
+  /** IANA zone of this branch; times display in it, not the viewer's. */
+  timezone: string;
 }
 
 export interface Brand {

@@ -28,7 +28,7 @@ export function formatDue(
   const now = new Date();
   const tomorrow = new Date();
   tomorrow.setDate(now.getDate() + 1);
-  const time = d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+  const time = d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
   if (isSameDay(d, now)) return labels.today(time);
   if (isSameDay(d, tomorrow)) return labels.tomorrow(time);
   return `${d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })} ${time}`;

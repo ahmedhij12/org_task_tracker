@@ -102,7 +102,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
     }
   };
 
-  const timeLabel = now.toLocaleString(i18n.language, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const timeLabel = now.toLocaleString(i18n.language, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>

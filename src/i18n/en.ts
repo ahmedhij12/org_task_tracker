@@ -437,7 +437,7 @@ export default {
     photoHint: "The app reads the numbers for you.",
     reading: "Reading the screen…",
     tpm: "TPM %",
-    temp: "Temperature °C",
+    temp: "Temperature °C (optional)",
     grade_good: "Good — keep frying",
     grade_watch: "Watch it — near the limit",
     grade_change: "Change the oil now",

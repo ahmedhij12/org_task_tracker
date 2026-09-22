@@ -24,7 +24,7 @@ export function TodayChecklistCard() {
       new Date(h.createdAt).toDateString() === new Date().toDateString()
   );
   const reviewer = todaysChecklist?.reviewedBy ? members.find((m) => m.id === todaysChecklist.reviewedBy) : null;
-  const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
+  const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <>

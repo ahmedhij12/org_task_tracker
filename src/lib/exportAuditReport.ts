@@ -55,7 +55,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   const iqd = Math.abs(points * completion.iqdPerPoint).toLocaleString(locale);
   const score = completion.score;
   const shiftLabel = completion.shift === 'morning' ? 'AM' : completion.shift === 'evening' ? 'PM' : '—';
-  const dateLabel = new Date(completion.createdAt).toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' });
+  const dateLabel = new Date(completion.createdAt).toLocaleString(locale, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
   const bySection = new Map<string, ChecklistAnswer[]>();
   for (const a of answers) bySection.set(a.sectionTitle, [...(bySection.get(a.sectionTitle) ?? []), a]);

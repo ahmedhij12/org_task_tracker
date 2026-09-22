@@ -186,7 +186,7 @@ export function TaskRow({ task, members, showAssignee, canComplete, onPressCheck
           {task.completedAt ? (
             <Text style={{ fontSize: 11, color: c.textFaint, marginTop: 6 }}>
               {t('taskRow.completed', {
-                date: new Date(task.completedAt).toLocaleString(i18n.language, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+                date: new Date(task.completedAt).toLocaleString(i18n.language, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }),
               })}
             </Text>
           ) : null}

@@ -6,6 +6,7 @@ import { ChickenHistory } from '@/components/ChickenHistory';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { useRefreshAll } from '@/hooks/useRefreshAll';
 import { useOrgData } from '@/hooks/useOrgData';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { AdjustPointsSheet } from '@/components/AdjustPointsSheet';
@@ -23,6 +24,7 @@ function when(iso: string, locale: string): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    hour12: true,
   });
 }
 
@@ -31,6 +33,7 @@ export default function HistoryScreen() {
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
   const { history, tasks, allMembers: members, teams, loading, refresh } = useOrgData();
+  const refreshAll = useRefreshAll(refresh);
   const [filter, setFilter] = useState<Filter>('all');
   const [openEntry, setOpenEntry] = useState<TaskCompletion | null>(null);
   const [pointsEntry, setPointsEntry] = useState<TaskCompletion | null>(null);
@@ -97,7 +100,7 @@ export default function HistoryScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>

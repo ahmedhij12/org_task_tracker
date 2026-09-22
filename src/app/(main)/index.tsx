@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { useRefreshAll } from '@/hooks/useRefreshAll';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useReports } from '@/hooks/useReports';
 import { Card, useThemeColors } from '@/components/ui';
@@ -39,6 +40,7 @@ function TeamAdminDashboard() {
   const { t } = useTranslation();
   const { profile, organization } = useAuth();
   const { tasks, teams, members, history, loading, refresh, setTaskCompletion } = useOrgData();
+  const refreshAll = useRefreshAll(refresh);
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
 
@@ -66,7 +68,7 @@ function TeamAdminDashboard() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
         <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
@@ -133,6 +135,7 @@ function OwnerDashboard() {
   const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
   const { currentSummary, loading, refresh, loadSupervisorStreaks } = useReports();
+  const refreshAll = useRefreshAll(refresh);
   const { tasks, history, setTaskCompletion } = useOrgData();
   const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
@@ -204,7 +207,7 @@ function OwnerDashboard() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
@@ -374,6 +377,7 @@ function EmployeeHome() {
   const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
   const { tasks, members, history, loading, refresh, setTaskCompletion } = useOrgData();
+  const refreshAll = useRefreshAll(refresh);
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
 
@@ -401,7 +405,7 @@ function EmployeeHome() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
         <Text style={{ fontSize: 13, color: c.textFaint }}>
           {new Date().toLocaleDateString(i18n.language, { weekday: 'long', month: 'long', day: 'numeric' })}

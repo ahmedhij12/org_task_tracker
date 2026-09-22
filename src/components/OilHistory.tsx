@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { PhotoViewer } from '@/components/PhotoViewer';
 import { useThemeColors } from '@/components/ui';
 import type { OilGrade, OilTest } from '@/types';
+import { timeOf, dayKey, dateOf } from '@/lib/time';
 
 const GRADE_HEX: Record<OilGrade, string> = { good: '#10B981', watch: '#F59E0B', change: '#E8141A' };
 
@@ -25,6 +26,8 @@ export function OilHistory() {
   const [viewer, setViewer] = useState<string[] | null>(null);
 
   const teamName = (id: string) => teams.find((tm) => tm.id === id)?.name ?? '';
+  // Show the time AT THE BRANCH, not the viewer's clock.
+  const tzOf = (teamId: string) => teams.find((tm) => tm.id === teamId)?.timezone ?? 'Asia/Baghdad';
 
   // Latest grade per active fryer, grouped by branch.
   const byBranch = useMemo(() => {
@@ -45,7 +48,7 @@ export function OilHistory() {
     const set = new Map<string, OilTest[]>();
     for (const x of tests) {
       if (x.fryerId !== openFryer.id) continue;
-      const key = new Date(x.testedAt).toDateString();
+      const key = dayKey(x.testedAt, tzOf(x.teamId));
       (set.get(key) ?? set.set(key, []).get(key)!).push(x);
     }
     return [...set.entries()];
@@ -97,7 +100,7 @@ export function OilHistory() {
                     <Pressable key={k} onPress={() => setDay(k)}
                       style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: active ? c.brand : c.bgSubtle, borderWidth: 1, borderColor: active ? c.brand : c.border }}>
                       <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#fff' : c.text }}>
-                        {new Date(k).toLocaleDateString(i18n.language, { day: 'numeric', month: 'short' })}
+                        {dateOf(k + 'T12:00:00Z', i18n.language, { day: 'numeric', month: 'short' })}
                       </Text>
                     </Pressable>
                   );
@@ -119,7 +122,7 @@ export function OilHistory() {
                       {x.filtered ? <Ionicons name="funnel" size={13} color={c.textMuted} /> : null}
                     </View>
                     <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-                      {new Date(x.testedAt).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' })}
+                      {timeOf(x.testedAt, i18n.language, tzOf(x.teamId))}
                       {x.actorName ? ` · ${x.actorName}` : ''}{x.isAudit ? ` · ${t('oil.byAuditor')}` : ''}
                     </Text>
                     {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}

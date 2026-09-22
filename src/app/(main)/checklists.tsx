@@ -45,7 +45,7 @@ export default function ChecklistsScreen() {
   }, [teams, submissions, isOwner, profile?.id, profile?.teamIds]);
 
   const nameOf = (id: string) => allMembers.find((m) => m.id === id)?.name ?? t('history.someone');
-  const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>

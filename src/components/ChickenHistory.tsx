@@ -7,6 +7,7 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemeColors } from '@/components/ui';
 import type { ChickenMarination } from '@/types';
+import { timeOf, dayKey, dateOf } from '@/lib/time';
 
 /** Chicken marination history, all roles (RLS-scoped): a day list → that day's
  * records with times, counts, who. */
@@ -20,12 +21,14 @@ export function ChickenHistory() {
   const [openDay, setOpenDay] = useState<string | null>(null);
 
   const teamName = (id: string) => teams.find((tm) => tm.id === id)?.name ?? '';
-  const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
+  // Show the time AT THE BRANCH, not the viewer's clock.
+  const tzOf = (teamId: string) => teams.find((tm) => tm.id === teamId)?.timezone ?? 'Asia/Baghdad';
+  const time = (iso: string, teamId: string) => timeOf(iso, i18n.language, tzOf(teamId));
 
   const days = useMemo(() => {
     const map = new Map<string, ChickenMarination[]>();
     for (const x of records) {
-      const key = new Date(x.marinatedAt).toDateString();
+      const key = dayKey(x.marinatedAt, tzOf(x.teamId));
       (map.get(key) ?? map.set(key, []).get(key)!).push(x);
     }
     return [...map.entries()];
@@ -43,7 +46,7 @@ export function ChickenHistory() {
           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
           <Ionicons name="restaurant-outline" size={20} color={c.brand} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{new Date(k).toLocaleDateString(i18n.language, { weekday: 'short', day: 'numeric', month: 'short' })}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{dateOf(k + 'T12:00:00Z', i18n.language)}</Text>
             <Text style={{ fontSize: 12, color: c.textMuted }}>{t('chicken.batchCount', { count: list.length })}</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
@@ -54,7 +57,7 @@ export function ChickenHistory() {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '85%' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>{openDay ? new Date(openDay).toLocaleDateString(i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>{openDay ? dateOf(openDay + 'T12:00:00Z', i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</Text>
               <Pressable onPress={() => setOpenDay(null)} hitSlop={8}><Ionicons name="close" size={24} color={c.textMuted} /></Pressable>
             </View>
             <ScrollView style={{ maxHeight: 460 }}>
@@ -62,12 +65,12 @@ export function ChickenHistory() {
                 <View key={x.id} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Ionicons name="arrow-down-circle" size={16} color={c.emerald} />
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{time(x.marinatedAt)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{time(x.marinatedAt, x.teamId)}</Text>
                     {x.countIn != null ? <Text style={{ fontSize: 13, color: c.textMuted }}>· {t('chicken.inN', { count: x.countIn })}</Text> : null}
                     {x.unloadedAt ? (
                       <>
                         <Ionicons name="arrow-up-circle" size={16} color={c.amber} />
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{time(x.unloadedAt)}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{time(x.unloadedAt, x.teamId)}</Text>
                         {x.countOut != null ? <Text style={{ fontSize: 13, color: c.textMuted }}>· {t('chicken.outN', { count: x.countOut })}</Text> : null}
                       </>
                     ) : null}
