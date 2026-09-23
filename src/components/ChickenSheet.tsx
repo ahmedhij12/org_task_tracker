@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
-import { SignaturePad } from '@/components/SignaturePad';
 import { TimeField } from '@/components/TimeField';
 import { isoForBranchTime } from '@/lib/time';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
@@ -17,13 +16,19 @@ const CHICKENS_PER_BUCKET = 8;
 
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; isAudit?: boolean; onClose: () => void }) {
+export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const c = useThemeColors();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
   const { teams } = useOrgData();
   const { submit } = useChicken();
+  const { width, height } = useWindowDimensions();
+  // Two number boxes side by side do not fit a narrow phone, and the whole
+  // sheet has to breathe less on a short one.
+  const narrow = width < 360;
+  const tight = height < 700;
+  const gapY = tight ? 8 : 14;
 
   const myBranches = useMemo(() => (profile?.role === 'owner' ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id))), [teams, profile]);
   const [branchId, setBranchId] = useState<string | null>(myBranches[0]?.id ?? null);
@@ -34,13 +39,12 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const [unloadTime, setUnloadTime] = useState(hhmm(new Date()));
   const [countOut, setCountOut] = useState('');
   const [note, setNote] = useState('');
-  const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setBranchId(myBranches[0]?.id ?? null); setMarinTime(hhmm(new Date())); setCountIn('');
-    setHasUnload(false); setRemind(true); setUnloadTime(hhmm(new Date())); setCountOut(''); setNote(''); setSignatureSvg(null); setError(null);
+    setHasUnload(false); setRemind(true); setUnloadTime(hhmm(new Date())); setCountOut(''); setNote(''); setError(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
@@ -54,17 +58,10 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
     const marinatedAt = isoForBranchTime(marinTime, tz);
     setError(null); setSubmitting(true);
     try {
-      let signatureUrl: string | null = null;
-      if (signatureSvg) {
-        const path = `${profile?.orgId}/chicken-sig-${Date.now()}.svg`;
-        const { error: e } = await supabase.storage.from('task-proofs').upload(path, new TextEncoder().encode(signatureSvg), { contentType: 'image/svg+xml' });
-        if (e) throw e;
-        signatureUrl = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
-      }
       await submit({
         teamId: effectiveBranchId, marinatedAt, countIn: countIn.trim() === '' ? null : Number(countIn),
         unloadedAt: hasUnload ? isoForBranchTime(unloadTime, tz) : null, countOut: hasUnload && countOut.trim() !== '' ? Number(countOut) : null,
-        note: note.trim() || null, signatureUrl, isAudit: !!isAudit, remind,
+        note: note.trim() || null, signatureUrl: null, remind,
       });
       reset(); onClose();
     } catch (e: any) {
@@ -86,8 +83,8 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ maxHeight: '94%', flexShrink: 1 }}>
-          <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20, paddingBottom: Math.max(28, insets.bottom + 16), flexShrink: 1, minHeight: 0 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: tight ? 14 : 20, paddingBottom: Math.max(tight ? 18 : 28, insets.bottom + 12), flexShrink: 1, minHeight: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: gapY }}>
               <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, flex: 1 }}>{t('chicken.title')}</Text>
               <Pressable onPress={handleClose} hitSlop={8}><Ionicons name="close" size={24} color={c.textMuted} /></Pressable>
             </View>
@@ -96,7 +93,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               {error ? <ErrorBanner message={error} /> : null}
 
               {myBranches.length > 1 ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: gapY }}>
                   {myBranches.map((tm) => {
                     const active = effectiveBranchId === tm.id;
                     return (
@@ -110,7 +107,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               ) : null}
 
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('chicken.marinationHeading')}</Text>
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 6 }}>
+              <View style={{ flexDirection: narrow ? 'column' : 'row', gap: narrow ? 10 : 12, marginBottom: 6 }}>
                 <TimeField label={t('chicken.time')} value={marinTime} onChange={setMarinTime} />
                 {field(t('chicken.countIn'), countIn, setCountIn, 'num')}
               </View>
@@ -120,7 +117,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
                 </Text>
               ) : <View style={{ height: 12 }} />}
 
-              <Pressable onPress={() => setRemind((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, backgroundColor: c.bgSubtle, borderRadius: 12, padding: 12 }}>
+              <Pressable onPress={() => setRemind((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: gapY, backgroundColor: c.bgSubtle, borderRadius: 12, padding: tight ? 10 : 12 }}>
                 <Ionicons name={remind ? 'notifications' : 'notifications-off-outline'} size={20} color={remind ? c.brand : c.textMuted} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{t('chicken.remindMe')}</Text>
@@ -135,7 +132,7 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               </Pressable>
               {hasUnload ? (
                 <>
-                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 6 }}>
+                  <View style={{ flexDirection: narrow ? 'column' : 'row', gap: narrow ? 10 : 12, marginBottom: 6 }}>
                     <TimeField label={t('chicken.unloadTime')} value={unloadTime} onChange={setUnloadTime} />
                     {field(t('chicken.countOut'), countOut, setCountOut, 'num')}
                   </View>
@@ -148,11 +145,8 @@ export function ChickenSheet({ visible, isAudit, onClose }: { visible: boolean; 
               ) : null}
 
               <TextInput value={note} onChangeText={setNote} placeholder={t('chicken.notePlaceholder')} placeholderTextColor={c.textFaint} multiline
-                style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: 18, minHeight: 44, textAlign: textAlignFor(note) }} />
+                style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: gapY, minHeight: 44, textAlign: textAlignFor(note) }} />
 
-              <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('chicken.signOptional')}</Text>
-              <SignaturePad onChange={setSignatureSvg} />
-              <View style={{ height: 8 }} />
             </ScrollView>
 
             {submitting ? (

@@ -10,16 +10,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { timeOf } from '@/lib/time';
+import { dueAt, humanSpan } from '@/lib/marination';
 import { useThemeColors } from '@/components/ui';
-
-const MARINATION_HOURS = 3;
-
-function human(ms: number): string {
-  const mins = Math.max(0, Math.round(Math.abs(ms) / 60000));
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
 
 /** Batches still marinating: how long is left, and the photo-backed removal.
  * The removal time is stamped by the server, so it can't be back-dated. */
@@ -73,15 +65,14 @@ export function ChickenActive() {
       <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted, marginBottom: 8 }}>{t('chicken.activeTitle')}</Text>
       {error ? <Text style={{ fontSize: 12, color: c.rose, marginBottom: 8 }}>{error}</Text> : null}
       {active.map((r) => {
-        const due = new Date(r.remindAt ?? new Date(new Date(r.marinatedAt).getTime() + MARINATION_HOURS * 3600000)).getTime();
-        const left = due - Date.now();
+        const left = dueAt(r) - Date.now();
         const over = left < 0;
         return (
           <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 8, backgroundColor: over ? '#E8141A18' : c.bgSubtle, borderWidth: 1, borderColor: over ? '#E8141A55' : c.border }}>
             <Ionicons name={over ? 'alarm' : 'time-outline'} size={22} color={over ? '#E8141A' : c.brand} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '800', color: over ? '#E8141A' : c.text }}>
-                {over ? t('chicken.overdue', { time: human(left) }) : t('chicken.dueIn', { time: human(left) })}
+                {over ? t('chicken.overdue', { time: humanSpan(left) }) : t('chicken.dueIn', { time: humanSpan(left) })}
               </Text>
               <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
                 {timeOf(r.marinatedAt, i18n.language, tzOf(r.teamId))}

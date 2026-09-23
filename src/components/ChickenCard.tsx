@@ -7,8 +7,9 @@ import { ChickenSheet } from '@/components/ChickenSheet';
 import { ChickenActive } from '@/components/ChickenActive';
 import { useThemeColors } from '@/components/ui';
 
-/** Dashboard card for supervisors/managers to record a chicken marination. */
-export function ChickenCard({ isAudit }: { isAudit?: boolean } = {}) {
+/** Dashboard card for supervisors/managers to record a chicken marination.
+ * The admin/auditor does not record one — he gets ChickenMonitor instead. */
+export function ChickenCard() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { records } = useChicken();
@@ -33,7 +34,7 @@ export function ChickenCard({ isAudit }: { isAudit?: boolean } = {}) {
         <Ionicons name="add-circle" size={28} color={c.brand} />
       </Pressable>
       <ChickenActive />
-      <ChickenSheet visible={open} isAudit={isAudit} onClose={() => setOpen(false)} />
+      <ChickenSheet visible={open} onClose={() => setOpen(false)} />
     </>
   );
 }
