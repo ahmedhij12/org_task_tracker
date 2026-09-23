@@ -18,11 +18,13 @@ function roleLabel(role: Profile['role'], t: (key: string) => string): string {
   return t('people.roleEmployee');
 }
 
-// A dedicated bucket, distinct from any real team id: the owner, every
-// team_admin, and any employee not yet assigned to a branch. Grouping staff
-// by branch only makes sense for people a branch actually has — these
-// roles/states don't fit that, so they get their own section instead of
-// being forced under a branch or silently dropped.
+// A dedicated bucket, distinct from any real team id: everyone who belongs to
+// no branch at all — the owners, who run the whole org, and anyone not yet
+// assigned. Grouping staff by branch only makes sense for people a branch
+// actually has, so the branchless get their own section instead of being
+// forced under a branch or silently dropped. Membership is what decides this,
+// NOT the role: a branch manager belongs to a branch and is listed there, and
+// listing him here as well put the same person on screen twice.
 const ADMIN_GROUP_ID = '__admin__';
 
 export default function PeopleScreen() {
@@ -55,7 +57,7 @@ export default function PeopleScreen() {
     {
       id: ADMIN_GROUP_ID,
       name: t('people.adminGroup'),
-      members: visible.filter((m) => m.role === 'owner' || m.role === 'team_admin' || m.teamIds.length === 0),
+      members: visible.filter((m) => m.teamIds.length === 0),
     },
   ].filter((g) => g.members.length > 0);
 
