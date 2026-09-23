@@ -141,7 +141,8 @@ It is the single source of truth for how the app behaves.
 | **Push test** — send a test notification | to a whole branch, or to chosen people |
 | **Oil test times** — add, change, remove | whole company |
 | **Oil test grace** | whole company |
-| **Marination hours + grace** | whole company |
+| **Marination hours** | whole company |
+| **Marination early grace** and **late grace** — two separate numbers | whole company |
 | **Checklist times + grace** | per branch |
 | **Penalty amounts** — late checklist, marination | each rule its own flat IQD amount |
 
@@ -329,10 +330,26 @@ What happens instead:
 Note this is the only rule whose warning goes **upward** rather than to the
 person who did it. It is a "find out what happened" signal, not a fine.
 
-**Needs confirming:** a grace on the early side, so a removal at 2h58m is not
-flagged. Proposal — the same grace applies to both sides, set once in the
-control panel: within the grace either way is on time, past it in either
-direction is flagged.
+### The two graces are separate numbers
+
+Agreed 2026-09-24: **an early grace and a late grace, each set on its own** in
+the control panel. One number for both would be wrong, and his own figures show
+why — he wants a late grace of up to an hour, because the man simply forgot.
+Apply that same hour to the early side and chicken pulled at **two hours** would
+count as on time, which is the exact thing he called a big issue.
+
+| | What it means | Typical grace |
+|---|---|---|
+| **Late** | He forgot. Over-marinated — bad, not dangerous | generous, 30–60 min |
+| **Early** | He pulled it deliberately. Under-marinated chicken went out | tight, 5–10 min |
+
+So a batch is on time between `marinated + hours − earlyGrace` and
+`marinated + hours + lateGrace`. Before that window → warning upward to the
+hygiene auditor and the branch manager. After it → late, penalty on the
+supervisor.
+
+The early grace should never be set as loose as the late one. Worth a quiet
+hint in the control panel when someone tries.
 
 Still parked: the **Learning zone**, renaming "admin", and per-question photos
 for supervisors *(an auditor photographing a few things on a visit is a
