@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { resizeImage } from '@/lib/resizeImage';
 import { useAuth } from '@/hooks/useAuth';
 import { useOilTests } from '@/hooks/useOilTests';
+import { useOrgData } from '@/hooks/useOrgData';
 import { readTesterPhoto, gradeForTpm } from '@/lib/oilOcr';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
@@ -22,7 +23,9 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
   const { fryers, submitTest } = useOilTests();
+  const { teams } = useOrgData();
 
+  const [branchId, setBranchId] = useState<string | null>(null);
   const [fryerId, setFryerId] = useState<string | null>(null);
   const [photo, setPhoto] = useState<{ uri: string; base64: string } | null>(null);
   const [reading, setReading] = useState(false);
@@ -36,6 +39,18 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const [error, setError] = useState<string | null>(null);
 
   const now = useMemo(() => new Date(), [visible]);
+
+  // Which branches this person can test in — taken from the fryers they can
+  // actually see, not the org's branch list. The admin sees every branch, so he
+  // picks one first (the same order as an audit checklist); a supervisor has
+  // one and never sees the question. Two branches can name a fryer the same
+  // thing, which made one flat list of chips impossible to choose from.
+  const branches = useMemo(() => {
+    const ids = [...new Set(fryers.map((f) => f.teamId))];
+    return ids.map((id) => ({ id, name: teams.find((tm) => tm.id === id)?.name ?? '' }));
+  }, [fryers, teams]);
+  const needsBranch = branches.length > 1;
+  const visibleFryers = needsBranch ? fryers.filter((f) => f.teamId === branchId) : fryers;
 
   // Ask the server which scheduled slot this moment belongs to, so the person
   // is told they're late before they fill anything in — not after.
@@ -57,7 +72,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const grade: OilGrade | null = tpmNum != null && isFinite(tpmNum) ? gradeForTpm(tpmNum) : null;
 
   const reset = () => {
-    setFryerId(null); setPhoto(null); setTpm(''); setTemp(''); setFiltered(null);
+    setBranchId(null); setFryerId(null); setPhoto(null); setTpm(''); setTemp(''); setFiltered(null);
     setNote(''); setError(null); setReading(false); setLateReason(''); setMinutesLate(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
@@ -130,10 +145,28 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
             <ScrollView style={{ flexShrink: 1, minHeight: 0 }} keyboardShouldPersistTaps="handled">
               {error ? <ErrorBanner message={error} /> : null}
 
+              {needsBranch && !branchId ? (
+                <>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 10 }}>{t('oil.whichBranch')}</Text>
+                  {branches.map((b) => (
+                    <Pressable key={b.id} onPress={() => { setBranchId(b.id); setFryerId(null); }}
+                      style={{ paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>{b.name}</Text>
+                    </Pressable>
+                  ))}
+                </>
+              ) : (
+                <>
+              {needsBranch ? (
+                <Pressable onPress={() => { setBranchId(null); setFryerId(null); }} style={{ marginBottom: 10 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: c.brand }}>{t('oil.backToBranch')}</Text>
+                </Pressable>
+              ) : null}
+
               {/* Fryer picker */}
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('oil.whichFryer')}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-                {fryers.map((f: OilFryer) => {
+                {visibleFryers.map((f: OilFryer) => {
                   const active = fryerId === f.id;
                   return (
                     <Pressable key={f.id} onPress={() => setFryerId(f.id)}
@@ -142,7 +175,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
                     </Pressable>
                   );
                 })}
-                {fryers.length === 0 ? <Text style={{ fontSize: 13, color: c.textMuted }}>{t('oil.noFryers')}</Text> : null}
+                {visibleFryers.length === 0 ? <Text style={{ fontSize: 13, color: c.textMuted }}>{t('oil.noFryers')}</Text> : null}
               </View>
 
               {/* Photo + auto-read */}
@@ -216,6 +249,8 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
                 style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: 18, minHeight: 44, textAlign: textAlignFor(note) }} />
 
               <View style={{ height: 4 }} />
+                </>
+              )}
             </ScrollView>
 
             {submitting ? (
