@@ -10,6 +10,7 @@ import { ChickenProvider } from '@/hooks/useChicken';
 import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
 import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/components/ui';
 
 export default function MainLayout() {
@@ -39,6 +40,7 @@ function MainTabs() {
   const isEmployee = profile?.role === 'employee';
   const unverified = useUnverifiedChecklistCount();
   const isArabic = i18n.language?.startsWith('ar');
+  const insets = useSafeAreaInsets();
 
   return (
       <Tabs
@@ -46,14 +48,18 @@ function MainTabs() {
           headerShown: false,
           tabBarActiveTintColor: c.accent,
           tabBarInactiveTintColor: c.textFaint,
-          tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.border },
-          // Arabic ascenders and descenders do not fit the default label box —
-          // seven tabs of it came out clipped top and bottom, which English
-          // never showed because Latin sits inside a much shorter band.
-          tabBarLabelStyle: isArabic
-            ? { fontSize: 9.5, lineHeight: 15, paddingBottom: 1 }
-            : { fontSize: 11, lineHeight: 13 },
-          tabBarItemStyle: isArabic ? { paddingTop: 3 } : undefined,
+          // English keeps the stock label metrics exactly — overriding them
+          // clipped it. Arabic letters reach higher and lower than Latin, so
+          // the fix is a TALLER bar, never a moved label: nudging the label
+          // down inside a fixed box just pushed it out of sight.
+          tabBarStyle: {
+            backgroundColor: c.bg,
+            borderTopColor: c.border,
+            ...(isArabic
+              ? { height: 64 + insets.bottom, paddingTop: 6, paddingBottom: insets.bottom + 6 }
+              : null),
+          },
+          tabBarLabelStyle: isArabic ? { fontSize: 10 } : undefined,
         }}
       >
         <Tabs.Screen
