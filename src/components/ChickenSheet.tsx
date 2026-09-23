@@ -34,17 +34,14 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
   const [branchId, setBranchId] = useState<string | null>(myBranches[0]?.id ?? null);
   const [marinTime, setMarinTime] = useState(hhmm(new Date()));
   const [countIn, setCountIn] = useState('');
-  const [hasUnload, setHasUnload] = useState(false);
   const [remind, setRemind] = useState(true);
-  const [unloadTime, setUnloadTime] = useState(hhmm(new Date()));
-  const [countOut, setCountOut] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setBranchId(myBranches[0]?.id ?? null); setMarinTime(hhmm(new Date())); setCountIn('');
-    setHasUnload(false); setRemind(true); setUnloadTime(hhmm(new Date())); setCountOut(''); setNote(''); setError(null);
+    setRemind(true); setNote(''); setError(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
@@ -56,15 +53,9 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
   // happened. A batch recorded as "in at 1 PM, out at 4 PM" at 1:47 PM is not a
   // record of anything — and the monitor used to call it "Removed on time".
   const timeProblem = useMemo(() => {
-    const now = Date.now();
     const marinated = new Date(isoForBranchTime(marinTime, tz)).getTime();
-    if (marinated > now) return t('chicken.errFutureMarinated');
-    if (!hasUnload) return null;
-    const out = new Date(isoForBranchTime(unloadTime, tz)).getTime();
-    if (out > now) return t('chicken.errFutureUnload');
-    if (out < marinated) return t('chicken.errUnloadBeforeMarinated');
-    return null;
-  }, [marinTime, unloadTime, hasUnload, tz, t]);
+    return marinated > Date.now() ? t('chicken.errFutureMarinated') : null;
+  }, [marinTime, tz, t]);
 
   const canSubmit = !!effectiveBranchId && !submitting && !timeProblem;
 
@@ -75,7 +66,7 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
     try {
       await submit({
         teamId: effectiveBranchId, marinatedAt, countIn: countIn.trim() === '' ? null : Number(countIn),
-        unloadedAt: hasUnload ? isoForBranchTime(unloadTime, tz) : null, countOut: hasUnload && countOut.trim() !== '' ? Number(countOut) : null,
+        unloadedAt: null, countOut: null,
         note: note.trim() || null, signatureUrl: null, remind,
       });
       reset(); onClose();
@@ -142,23 +133,7 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
                 <Ionicons name={remind ? 'checkbox' : 'square-outline'} size={22} color={remind ? c.brand : c.textMuted} />
               </Pressable>
 
-              <Pressable onPress={() => setHasUnload((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <Ionicons name={hasUnload ? 'checkbox' : 'square-outline'} size={22} color={hasUnload ? c.brand : c.textMuted} />
-                <Text style={{ fontSize: 14, color: c.text }}>{t('chicken.addUnload')}</Text>
-              </Pressable>
-              {hasUnload ? (
-                <>
-                  <View style={{ flexDirection: narrow ? 'column' : 'row', gap: narrow ? 10 : 12, marginBottom: 6 }}>
-                    <TimeField label={t('chicken.unloadTime')} value={unloadTime} onChange={setUnloadTime} />
-                    {field(t('chicken.countOut'), countOut, setCountOut, 'num')}
-                  </View>
-                  {Number(countOut) > 0 ? (
-                    <Text style={{ fontSize: 12, color: c.brand, fontWeight: '700', marginBottom: 14 }}>
-                      {t('chicken.bucketMath', { buckets: Number(countOut), chickens: Number(countOut) * CHICKENS_PER_BUCKET })}
-                    </Text>
-                  ) : <View style={{ height: 12 }} />}
-                </>
-              ) : null}
+              <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: gapY, lineHeight: 18 }}>{t('chicken.removalLater')}</Text>
 
               <TextInput value={note} onChangeText={setNote} placeholder={t('chicken.notePlaceholder')} placeholderTextColor={c.textFaint} multiline
                 style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: gapY, minHeight: 44, textAlign: textAlignFor(note) }} />
