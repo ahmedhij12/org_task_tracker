@@ -141,7 +141,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   ${sectionsHtml}
 
 
-  ${proofHtml(completion)}
+  ${proofHtml(completion, kind === 'audit' ? auditorName : subjectName, locale)}
 </body>
 </html>`;
 }
@@ -178,43 +178,83 @@ function miniMapHtml(lat: number, lng: number, width: number, height: number): s
       <path d="M13 1C6.4 1 1 6.3 1 12.8 1 21.6 13 33 13 33s12-11.4 12-20.2C25 6.3 19.6 1 13 1z" fill="#dc2626" stroke="#fff" stroke-width="2"/>
       <circle cx="13" cy="12.5" r="4.5" fill="#fff"/>
     </svg>`;
-  return `<div style="position:relative;width:${width}px;height:${height}px;overflow:hidden;border:1px solid #e5e7eb;border-radius:8px;background:#eef0f3;">
+  return `<div style="position:relative;width:${width}px;height:${height}px;overflow:hidden;background:#eef0f3;">
     ${tiles.join('')}
     ${pin}
     <div style="position:absolute;right:3px;bottom:2px;font-size:7px;color:#6b7280;background:rgba(255,255,255,0.85);padding:0 3px;border-radius:3px;">© OpenStreetMap contributors</div>
   </div>`;
 }
 
-/** The proof block at the end: selfie, signature, and where it was signed — side by side, same height. */
-function proofHtml(completion: TaskCompletion): string {
+/**
+ * The verification panel that closes the report: who was standing there, their
+ * signature, and the spot it was signed. Laid out as a fixed-width table, not
+ * flexbox — print engines (expo-print on iOS especially) honour table columns
+ * far more reliably than flex gaps, and the three cells have to line up.
+ * Every cell is the same size and framed the same way, and each carries a
+ * caption, so the block reads as a record rather than three loose pictures.
+ */
+function proofHtml(completion: TaskCompletion, signerName: string, locale: string): string {
   const hasSelfie = !!completion.selfieUrl;
   const hasSig = !!completion.signatureUrl;
   const hasLoc = completion.signedLat != null && completion.signedLng != null;
   if (!hasSelfie && !hasSig && !hasLoc) return '';
-  const selfie = hasSelfie
-    ? `<div>
-    <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Selfie</p>
-    <img src="${completion.selfieUrl}" style="width:96px;height:130px;object-fit:cover;border-radius:8px;" />
-  </div>`
-    : '';
-  const sig = hasSig
-    ? `<div>
-    <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Signature</p>
-    <img src="${completion.signatureUrl}" style="width:${hasSelfie ? 180 : 220}px;height:130px;border:1px solid #e5e7eb;border-radius:8px;object-fit:contain;background:#fff;" />
-  </div>`
-    : '<div></div>';
-  const loc = hasLoc
-    ? `<div>
-    <p style="font-size:11px;color:#6b7280;margin:0 0 6px;">Signed at</p>
-    <a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">
-      ${miniMapHtml(completion.signedLat!, completion.signedLng!, hasSelfie ? 220 : 240, 130)}
-      <p style="font-size:11px;color:#111827;font-weight:600;margin:6px 0 0;max-width:${hasSelfie ? 220 : 240}px;">${escapeHtml(completion.signedAddress ?? 'Open in Maps')}${
-        completion.signedAccuracyM != null ? ` <span style="color:#6b7280;font-weight:400;">(±${Math.round(completion.signedAccuracyM)} m)</span>` : ''
-      }</p>
-    </a>
-  </div>`
-    : '';
-  return `<div style="margin-top:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;page-break-inside:avoid;">${selfie}${sig}${loc}</div>`;
+
+  // Usable width inside the page padding and the panel's own border/padding.
+  const INNER = 506;
+  const GAP = 14;
+  const count = Number(hasSelfie) + Number(hasSig) + Number(hasLoc);
+  // Capped: one lone signature stretched across the whole panel looked like a
+  // mistake. Three cells land at 160 and never hit the cap.
+  const cellW = Math.min(240, Math.floor((INNER - GAP * (count - 1)) / count));
+  const BOX_H = 138;
+
+  const frame = (inner: string) =>
+    `<div style="width:${cellW}px;height:${BOX_H}px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;">${inner}</div>`;
+  const label = (text: string) =>
+    `<p style="font-size:9px;letter-spacing:0.7px;text-transform:uppercase;color:#9ca3af;margin:0 0 6px;font-weight:700;">${text}</p>`;
+  const caption = (main: string, sub = '') =>
+    `<p style="font-size:10px;color:#374151;margin:6px 0 0;line-height:1.35;width:${cellW}px;">${main}${
+      sub ? `<br /><span style="color:#9ca3af;">${sub}</span>` : ''
+    }</p>`;
+
+  const signedAt = new Date(completion.createdAt).toLocaleString(locale, {
+    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+
+  const cells: string[] = [];
+  if (hasSelfie) {
+    cells.push(
+      label('Selfie') +
+        frame(`<img src="${completion.selfieUrl}" style="width:${cellW}px;height:${BOX_H}px;object-fit:cover;object-position:center 28%;display:block;" />`) +
+        caption(escapeHtml(signerName))
+    );
+  }
+  if (hasSig) {
+    cells.push(
+      label('Signature') +
+        frame(`<img src="${completion.signatureUrl}" style="width:${cellW - 16}px;height:${BOX_H - 16}px;margin:8px;object-fit:contain;display:block;" />`) +
+        caption(escapeHtml(signerName), signedAt)
+    );
+  }
+  if (hasLoc) {
+    const accuracy = completion.signedAccuracyM != null ? `±${Math.round(completion.signedAccuracyM)} m` : '';
+    cells.push(
+      label('Signed at') +
+        `<a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">` +
+        frame(miniMapHtml(completion.signedLat!, completion.signedLng!, cellW, BOX_H)) +
+        caption(escapeHtml(completion.signedAddress ?? 'Open in Maps'), accuracy) +
+        '</a>'
+    );
+  }
+
+  const tds = cells
+    .map((cell, i) => `<td style="width:${cellW}px;vertical-align:top;${i > 0 ? `padding-left:${GAP}px;` : ''}">${cell}</td>`)
+    .join('');
+
+  return `<div style="margin-top:26px;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px 16px;page-break-inside:avoid;">
+    <p style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b7280;font-weight:700;margin:0 0 12px;border-bottom:1px solid #f3f4f6;padding-bottom:8px;">Verification</p>
+    <table style="border-collapse:collapse;table-layout:fixed;"><tr>${tds}</tr></table>
+  </div>`;
 }
 
 function reportFilename(data: AuditReportData): string {
