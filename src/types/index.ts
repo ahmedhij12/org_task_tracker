@@ -25,6 +25,13 @@ export interface Profile {
   mustChangePassword: boolean;
   /** Deactivated accounts cannot sign in. */
   active: boolean;
+  /**
+   * An admin who may also deactivate and delete OTHER admins. A flag rather
+   * than a fourth role, because 17 RLS policies key off role = 'owner' and a
+   * super admin is still an ordinary admin in every one of them. Nothing in
+   * the app can set it — it is granted in the database.
+   */
+  isSuperAdmin: boolean;
   /** Optional, added later by the user, only used for password recovery. */
   recoveryEmail: string | null;
   /** Set once an owner deletes this (already deactivated) person. Kept only so past audits keep their name. */

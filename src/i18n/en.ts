@@ -160,6 +160,7 @@ export default {
     addStaff: 'Add staff',
     emptyState: 'No one here yet. Tap "{{addStaff}}" to create an account and hand them the username and password.',
     emptyStateManager: "No one is assigned to your branch yet. Your admin creates the accounts and assigns them here.",
+    roleSuperAdmin: "Super admin",
     roleOwner: 'Admin',
     roleTeamAdmin: 'Branch manager',
     roleEmployee: 'Supervisor',

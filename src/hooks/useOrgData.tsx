@@ -83,6 +83,7 @@ function mapProfile(row: any, teamIds: string[], teamBrandIds: Record<string, st
     role: row.role,
     mustChangePassword: row.must_change_password,
     active: row.active,
+    isSuperAdmin: row.is_super_admin ?? false,
     recoveryEmail: row.recovery_email,
     deletedAt: row.deleted_at ?? null,
     avatarUrl: row.avatar_url ?? null,

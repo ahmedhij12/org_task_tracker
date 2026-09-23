@@ -43,9 +43,18 @@ export function ManageUserSheet({ member, onClose }: Props) {
   // immediately, instead of showing the snapshot from when the sheet opened.
   const live = members.find((m) => m.id === member.id) ?? member;
 
-  // The owner is never deactivatable, and nobody can deactivate themselves.
-  const canDeactivate = live.role !== 'owner' && live.id !== profile?.id;
   const isOwner = profile?.role === 'owner';
+  const isSuperAdmin = !!profile?.isSuperAdmin;
+  // Nobody can switch themselves off, and nothing can switch off the super
+  // admin — that account is what restores the others. One admin may not touch
+  // a peer admin either; only the super admin may, which is the whole point of
+  // the flag. Everything the server refuses is hidden here too, so the button
+  // is never offered just to fail.
+  const canDeactivate =
+    live.id !== profile?.id &&
+    !live.isSuperAdmin &&
+    (live.role !== 'owner' || isSuperAdmin);
+  const canDelete = canDeactivate && isOwner;
   const memberTeams = teams.filter((t) => live.teamIds.includes(t.id));
   // An owner can add anyone (branch manager or supervisor) to any branch; a
   // branch manager can only add a supervisor, and only to their own branch.
@@ -382,7 +391,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
                     </Pressable>
                   )}
 
-                  {isOwner && !live.active && !confirmingDeactivate ? (
+                  {canDelete && !live.active && !confirmingDeactivate ? (
                     <Pressable
                       onPress={() => setConfirmingDelete(true)}
                       disabled={loading}

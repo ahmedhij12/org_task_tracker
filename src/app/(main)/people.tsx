@@ -12,9 +12,10 @@ import { ON_ACCENT } from '@/theme';
 import { initials } from '@/lib/taskUtils';
 import type { Profile } from '@/types';
 
-function roleLabel(role: Profile['role'], t: (key: string) => string): string {
-  if (role === 'owner') return t('people.roleOwner');
-  if (role === 'team_admin') return t('people.roleTeamAdmin');
+function roleLabel(member: Profile, t: (key: string) => string): string {
+  if (member.isSuperAdmin) return t('people.roleSuperAdmin');
+  if (member.role === 'owner') return t('people.roleOwner');
+  if (member.role === 'team_admin') return t('people.roleTeamAdmin');
   return t('people.roleEmployee');
 }
 
@@ -146,7 +147,7 @@ export default function PeopleScreen() {
                               <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{m.name}</Text>
                               <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
                                 {m.username ? `@${m.username} • ` : ''}
-                                {roleLabel(m.role, t)}
+                                {roleLabel(m, t)}
                                 {memberTeams.length > 0 ? ` • ${memberTeams.map((team) => team.name).join(', ')}` : ''}
                               </Text>
                             </View>

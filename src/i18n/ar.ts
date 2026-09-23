@@ -159,6 +159,7 @@ export default {
     addStaff: 'إضافة موظف',
     emptyState: 'لا يوجد أحد هنا بعد. اضغط على "{{addStaff}}" لإنشاء حساب وتسليمه اسم المستخدم وكلمة المرور.',
     emptyStateManager: "لا يوجد أحد في فرعك بعد. المسؤول هو من ينشئ الحسابات ويضيفهم هنا.",
+    roleSuperAdmin: "مدير عام",
     roleOwner: 'المدير',
     roleTeamAdmin: 'مدير الفرع',
     roleEmployee: 'مشرف',

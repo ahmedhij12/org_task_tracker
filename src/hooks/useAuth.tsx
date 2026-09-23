@@ -89,6 +89,7 @@ function mapProfile(
     role: Role;
     must_change_password: boolean;
     active: boolean;
+    is_super_admin?: boolean | null;
     recovery_email: string | null;
     deleted_at?: string | null;
     avatar_url?: string | null;
@@ -109,6 +110,7 @@ function mapProfile(
     role: row.role,
     mustChangePassword: row.must_change_password,
     active: row.active,
+    isSuperAdmin: row.is_super_admin ?? false,
     recoveryEmail: row.recovery_email,
     deletedAt: row.deleted_at ?? null,
     avatarUrl: row.avatar_url ?? null,
