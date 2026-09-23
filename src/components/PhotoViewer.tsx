@@ -29,6 +29,13 @@ function ZoomablePhoto({
   onZoomChange: (zoomed: boolean) => void;
 }) {
   const imgH = height * 0.85;
+  // Mirrors the zoom for the gestures that must switch off at 1x. Kept in
+  // React state, not only a shared value, because `enabled` is read on render.
+  const [isZoomed, setIsZoomed] = useState(false);
+  const setZoom = (z: boolean) => {
+    setIsZoomed(z);
+    onZoomChange(z);
+  };
 
   const scale = useSharedValue(1);
   const startScale = useSharedValue(1);
@@ -62,7 +69,7 @@ function ZoomablePhoto({
     }
     x.value = withTiming(clamp(x.value, limitX(Math.min(scale.value, MAX_ZOOM))));
     y.value = withTiming(clamp(y.value, limitY(Math.min(scale.value, MAX_ZOOM))));
-    runOnJS(onZoomChange)(scale.value > 1.01);
+    runOnJS(setZoom)(scale.value > 1.01);
   };
 
   const pinch = Gesture.Pinch()
@@ -76,14 +83,14 @@ function ZoomablePhoto({
 
   const pan = Gesture.Pan()
     .averageTouches(true)
+    // Off at 1x so a sideways swipe reaches the pager and moves to the next
+    // photo, which is what it did before this component grew gestures.
+    .enabled(isZoomed)
     .onStart(() => {
       startX.value = x.value;
       startY.value = y.value;
     })
     .onUpdate((e) => {
-      // Only meaningful once there is something off-screen to look at; below
-      // that the pager's own swipe should win.
-      if (scale.value <= 1.01) return;
       x.value = startX.value + e.translationX;
       y.value = startY.value + e.translationY;
     })
@@ -97,7 +104,7 @@ function ZoomablePhoto({
         scale.value = withTiming(1);
         x.value = withTiming(0);
         y.value = withTiming(0);
-        runOnJS(onZoomChange)(false);
+        runOnJS(setZoom)(false);
         return;
       }
       // Zoom toward the spot that was tapped, not the middle of the photo.
@@ -106,7 +113,7 @@ function ZoomablePhoto({
       scale.value = withTiming(TAP_ZOOM);
       x.value = withTiming(clamp(dx, limitX(TAP_ZOOM)));
       y.value = withTiming(clamp(dy, limitY(TAP_ZOOM)));
-      runOnJS(onZoomChange)(true);
+      runOnJS(setZoom)(true);
     });
 
   // Pinch and drag run together; the double tap races them.
@@ -120,7 +127,7 @@ function ZoomablePhoto({
     <GestureDetector gesture={gesture}>
       <View style={{ width, height, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <Animated.View style={style}>
-          <Image source={{ uri }} style={{ width, height: imgH }} contentFit="contain" transition={120} />
+          <Image source={{ uri }} style={{ width, height: imgH }} contentFit="contain" />
         </Animated.View>
       </View>
     </GestureDetector>

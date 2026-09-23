@@ -34,10 +34,11 @@ export default function MainLayout() {
 function MainTabs() {
   const { profile } = useAuth();
   const c = useThemeColors();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isOwner = profile?.role === 'owner';
   const isEmployee = profile?.role === 'employee';
   const unverified = useUnverifiedChecklistCount();
+  const isArabic = i18n.language?.startsWith('ar');
 
   return (
       <Tabs
@@ -46,6 +47,13 @@ function MainTabs() {
           tabBarActiveTintColor: c.accent,
           tabBarInactiveTintColor: c.textFaint,
           tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.border },
+          // Arabic ascenders and descenders do not fit the default label box —
+          // seven tabs of it came out clipped top and bottom, which English
+          // never showed because Latin sits inside a much shorter band.
+          tabBarLabelStyle: isArabic
+            ? { fontSize: 9.5, lineHeight: 15, paddingBottom: 1 }
+            : { fontSize: 11, lineHeight: 13 },
+          tabBarItemStyle: isArabic ? { paddingTop: 3 } : undefined,
         }}
       >
         <Tabs.Screen
