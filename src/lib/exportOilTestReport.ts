@@ -84,7 +84,14 @@ function bidi(s: string): string {
 }
 
 function slotLine(test: OilTest, locale: string): string {
-  if (!test.slotTime) return '<span style="color:#767676;font-weight:400;">Not tied to a scheduled slot</span>';
+  if (!test.slotTime) {
+    // oil_slot_for returns no slot for an auditor's spot check, and for a
+    // SECOND test in a slot another test already covered — deliberately, so
+    // the same slot is never counted late twice. Neither is a failing.
+    return test.isAudit
+      ? '<span style="color:#767676;font-weight:400;">Spot check by the auditor</span>'
+      : '<span style="color:#767676;font-weight:400;">Extra check &mdash; not one of the scheduled tests</span>';
+  }
   const slot = new Date(test.slotTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
   if (test.minutesLate != null && test.minutesLate > 0) {
     return `${slot} <span style="font-weight:400;color:#B91C1C;">&mdash; ${test.minutesLate} minutes late</span>`;
@@ -145,8 +152,11 @@ function buildHtml(data: OilTestReportData, logoDataUri: string): string {
         <td style="width:${changeWidth}%;background:#E8141A;"></td>
       </tr>
     </table>
-    <div style="position:relative;height:13px;">
-      <div style="position:absolute;top:0;left:${markerLeft};width:2px;height:11px;background:#111827;"></div>
+    <div style="position:relative;height:30px;">
+      <div style="position:absolute;top:0;left:${markerLeft};width:2px;height:9px;background:#111827;"></div>
+      <div style="position:absolute;top:9px;left:${markerLeft};transform:translateX(-50%);white-space:nowrap;">
+        <span style="font-size:13px;font-weight:700;color:${g.ink};">${test.tpm}</span><span style="font-size:10px;color:#767676;"> TPM</span>
+      </div>
     </div>
     <table style="width:100%;font-size:11px;color:#767676;border-collapse:collapse;">
       <tr>

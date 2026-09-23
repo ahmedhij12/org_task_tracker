@@ -21,6 +21,7 @@ function ZoomablePhoto({
   height: number;
   onZoomChange: (zoomed: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [zoomed, setZoomed] = useState(false);
   const hRef = useRef<ScrollView>(null);
   const vRef = useRef<ScrollView>(null);
@@ -74,10 +75,18 @@ function ZoomablePhoto({
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => vRef.current?.scrollTo({ y: (imgH * ZOOM - height) / 2, animated: false })}
       >
-        <Pressable onPress={toggle}>
-          <Image source={{ uri }} style={{ width: width * ZOOM, height: imgH * ZOOM }} resizeMode="contain" />
-        </Pressable>
+        {/* No Pressable around the image: on web it swallows the drag, so the
+            photo zoomed in and then would not move. Zooming back out is the
+            button below instead. */}
+        <Image source={{ uri }} style={{ width: width * ZOOM, height: imgH * ZOOM }} resizeMode="contain" />
       </ScrollView>
+      <Pressable
+        onPress={toggle}
+        style={{ position: 'absolute', right: 16, bottom: 24, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+      >
+        <Ionicons name="contract-outline" size={18} color="#fff" />
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('viewer.zoomOut')}</Text>
+      </Pressable>
     </ScrollView>
   );
 }
