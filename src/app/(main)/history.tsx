@@ -90,6 +90,26 @@ export default function HistoryScreen() {
   // filter row at all when that's a single branch — nothing to choose between.
   const filterTeams = isOwner ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id));
 
+  // Same shape as the oil and chicken sections above: with several branches in
+  // view this is one row per branch, and tapping it narrows the whole screen.
+  // Entries that belong to no branch stay listed underneath rather than vanish.
+  const collapsed = filter === 'all' && filterTeams.length > 1;
+  const branchRows = useMemo(() => {
+    const map = new Map<string, { done: number; missed: number }>();
+    const bump = (id: string, key: 'done' | 'missed') => {
+      const row = map.get(id) ?? { done: 0, missed: 0 };
+      row[key] += 1;
+      map.set(id, row);
+    };
+    for (const h of history) { const b = branchIdOf(h); if (b) bump(b, 'done'); }
+    for (const tk of failedTasks) { if (tk.teamId) bump(tk.teamId, 'missed'); }
+    return filterTeams
+      .filter((tm) => map.has(tm.id))
+      .map((tm) => ({ id: tm.id, name: tm.name, ...map.get(tm.id)! }));
+  }, [history, failedTasks, filterTeams, memberById]);
+  const orphans = useMemo(() => (collapsed ? history.filter((h) => !branchIdOf(h)) : []), [history, collapsed, memberById]);
+
+
   const scopeNote = isOwner
     ? t('history.scopeAll')
     : isLeader
@@ -135,26 +155,65 @@ export default function HistoryScreen() {
         ) : null}
 
         <OilHistory filter={filter} onPickBranch={setFilter} />
-        <ChickenHistory filter={filter} />
+        <ChickenHistory filter={filter} onPickBranch={setFilter} />
 
-        {missedShown.map((task) => (
-          <MissedRow key={task.id} task={task} nameOf={nameOf} />
-        ))}
+        {shown.length > 0 || missedShown.length > 0 ? (
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, marginBottom: 10 }}>{t('history.checklistsTitle')}</Text>
+        ) : null}
 
-        {shown.length === 0 && missedShown.length === 0 ? (
-          <Text style={{ fontSize: 13, color: c.textFaint }}>{t('history.nothingYet')}</Text>
+        {collapsed ? (
+          <>
+            {branchRows.map((b) => (
+              <Pressable key={b.id} onPress={() => setFilter(b.id)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
+                <Ionicons name="clipboard-outline" size={20} color={c.brand} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{b.name}</Text>
+                  <Text style={{ fontSize: 12, color: b.missed ? c.rose : c.textMuted }}>
+                    {t('history.branchCount', { count: b.done })}
+                    {b.missed ? ` · ${t('history.branchMissed', { count: b.missed })}` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
+              </Pressable>
+            ))}
+            {orphans.map((h) => (
+              <HistoryRow
+                key={h.id}
+                entry={h}
+                task={taskById.get(h.taskId)}
+                actorName={nameOf(h.actorId)}
+                onPress={() => setOpenEntry(h)}
+                pointsAccess={canEditPoints(h) ? 'edit' : canViewPoints(h) ? 'view' : null}
+                onPointsPress={() => setPointsEntry(h)}
+              />
+            ))}
+            {branchRows.length === 0 && orphans.length === 0 ? (
+              <Text style={{ fontSize: 13, color: c.textFaint }}>{t('history.nothingYet')}</Text>
+            ) : null}
+          </>
         ) : (
-          shown.map((h) => (
-            <HistoryRow
-              key={h.id}
-              entry={h}
-              task={taskById.get(h.taskId)}
-              actorName={nameOf(h.actorId)}
-              onPress={() => setOpenEntry(h)}
-              pointsAccess={canEditPoints(h) ? 'edit' : canViewPoints(h) ? 'view' : null}
-              onPointsPress={() => setPointsEntry(h)}
-            />
-          ))
+          <>
+            {missedShown.map((task) => (
+              <MissedRow key={task.id} task={task} nameOf={nameOf} />
+            ))}
+
+            {shown.length === 0 && missedShown.length === 0 ? (
+              <Text style={{ fontSize: 13, color: c.textFaint }}>{t('history.nothingYet')}</Text>
+            ) : (
+              shown.map((h) => (
+                <HistoryRow
+                  key={h.id}
+                  entry={h}
+                  task={taskById.get(h.taskId)}
+                  actorName={nameOf(h.actorId)}
+                  onPress={() => setOpenEntry(h)}
+                  pointsAccess={canEditPoints(h) ? 'edit' : canViewPoints(h) ? 'view' : null}
+                  onPointsPress={() => setPointsEntry(h)}
+                />
+              ))
+            )}
+          </>
         )}
       </ScrollView>
 

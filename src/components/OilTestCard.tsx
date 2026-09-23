@@ -33,7 +33,11 @@ export function OilTestCard({ isAudit }: { isAudit?: boolean } = {}) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }}>{t('oil.cardTitle')}</Text>
-          <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('oil.todayTests', { count: todays.length })}</Text>
+          {/* The admin does not work a branch's slots, so a count of today's
+              tests tells him nothing here — he reads those in History. */}
+          {isAudit ? null : (
+            <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('oil.todayTests', { count: todays.length })}</Text>
+          )}
         </View>
         <Ionicons name="add-circle" size={28} color={c.brand} />
       </Pressable>

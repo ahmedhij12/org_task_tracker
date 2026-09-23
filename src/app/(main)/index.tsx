@@ -26,7 +26,6 @@ import { OilTestCard } from '@/components/OilTestCard';
 import { OilAlert } from '@/components/OilAlert';
 import { ReinstallNotice } from '@/components/ReinstallNotice';
 import { ChickenCard } from '@/components/ChickenCard';
-import { ChickenMonitor } from '@/components/ChickenMonitor';
 import { BranchAudits } from '@/components/BranchAudits';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
@@ -230,7 +229,6 @@ function OwnerDashboard() {
         <ReinstallNotice />
         <OilAlert />
         <OilTestCard isAudit />
-        <ChickenMonitor />
 
         {myTasks.length > 0 ? (
           <>

@@ -11,10 +11,11 @@ import type { ChickenMarination } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
 import { marinationStatus, humanSpan } from '@/lib/marination';
 
-/** Chicken marination history, all roles (RLS-scoped): a day list → that day's
- * records with times, counts, who. Follows the History screen's branch filter
- * so one chip scopes the whole page rather than each section separately. */
-export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
+/** Chicken marination history, all roles (RLS-scoped), built like the oil
+ * section above it: with several branches in view it is one row per branch, and
+ * tapping it narrows the whole History screen to that branch — only then does
+ * the day list appear, and a day opens that day's records. */
+export function ChickenHistory({ filter = 'all', onPickBranch }: { filter?: string; onPickBranch?: (teamId: string) => void } = {}) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { records } = useChicken();
@@ -34,6 +35,14 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
     [records, filter]
   );
 
+  // One row per branch while more than one is in view, same as the fryers.
+  const branches = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const x of scoped) map.set(x.teamId, (map.get(x.teamId) ?? 0) + 1);
+    return [...map.entries()].map(([teamId, count]) => ({ teamId, name: teamName(teamId), count }));
+  }, [scoped, teams]);
+  const collapsed = branches.length > 1;
+
   const days = useMemo(() => {
     const map = new Map<string, ChickenMarination[]>();
     for (const x of scoped) {
@@ -50,7 +59,19 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   return (
     <View style={{ marginBottom: 20 }}>
       <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, marginBottom: 10 }}>{t('chicken.historyTitle')}</Text>
-      {days.slice(0, 30).map(([k, list]) => (
+      {collapsed
+        ? branches.map((b) => (
+            <Pressable key={b.teamId} onPress={() => onPickBranch?.(b.teamId)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
+              <Ionicons name="restaurant-outline" size={20} color={c.brand} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{b.name}</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted }}>{t('chicken.batchCount', { count: b.count })}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
+            </Pressable>
+          ))
+        : days.slice(0, 30).map(([k, list]) => (
         <Pressable key={k} onPress={() => setOpenDay(k)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
           <Ionicons name="restaurant-outline" size={20} color={c.brand} />
@@ -62,7 +83,7 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
         </Pressable>
       ))}
 
-      <Modal visible={!!openDay} animationType="slide" transparent onRequestClose={() => setOpenDay(null)}>
+      <Modal visible={!!openDay && !collapsed} animationType="slide" transparent onRequestClose={() => setOpenDay(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '85%' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
