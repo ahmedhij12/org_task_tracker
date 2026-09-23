@@ -81,6 +81,7 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
       reset(); onClose();
     } catch (e: any) {
       setError(e?.message ?? t('chicken.submitFailed'));
+    } finally {
       setSubmitting(false);
     }
   };

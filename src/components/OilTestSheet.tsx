@@ -144,6 +144,10 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
       onClose();
     } catch (e: any) {
       setError(e?.message ?? t('oil.submitFailed'));
+    } finally {
+      // On the success path this sheet used to leave `submitting` true, so the
+      // NEXT test opened on a spinner with no Save button and could never be
+      // sent. Always clear it, the way FillChecklistSheet does.
       setSubmitting(false);
     }
   };
