@@ -11,8 +11,9 @@ import { timeOf, dayKey, dateOf } from '@/lib/time';
 import { marinationStatus, humanSpan } from '@/lib/marination';
 
 /** Chicken marination history, all roles (RLS-scoped): a day list → that day's
- * records with times, counts, who. */
-export function ChickenHistory() {
+ * records with times, counts, who. Follows the History screen's branch filter
+ * so one chip scopes the whole page rather than each section separately. */
+export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { records } = useChicken();
@@ -26,18 +27,23 @@ export function ChickenHistory() {
   const tzOf = (teamId: string) => teams.find((tm) => tm.id === teamId)?.timezone ?? 'Asia/Baghdad';
   const time = (iso: string, teamId: string) => timeOf(iso, i18n.language, tzOf(teamId));
 
+  const scoped = useMemo(
+    () => (filter === 'all' ? records : records.filter((x) => x.teamId === filter)),
+    [records, filter]
+  );
+
   const days = useMemo(() => {
     const map = new Map<string, ChickenMarination[]>();
-    for (const x of records) {
+    for (const x of scoped) {
       const key = dayKey(x.marinatedAt, tzOf(x.teamId));
       (map.get(key) ?? map.set(key, []).get(key)!).push(x);
     }
     return [...map.entries()];
-  }, [records]);
+  }, [scoped]);
 
   const dayRecords = days.find(([k]) => k === openDay)?.[1] ?? [];
 
-  if (records.length === 0) return null;
+  if (scoped.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 20 }}>

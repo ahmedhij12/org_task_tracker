@@ -483,6 +483,8 @@ export default {
     testsCount_zero: "No tests yet",
     testsCount_one: "{{count}} test",
     testsCount_other: "{{count}} tests",
+    fryersCount_one: "{{count}} fryer",
+    fryersCount_other: "{{count}} fryers",
     byAuditor: "auditor",
     noTestsYet: "No tests yet.",
     needChange_one: "{{count}} fryer needs change",

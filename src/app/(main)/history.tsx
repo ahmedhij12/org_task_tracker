@@ -62,7 +62,7 @@ export default function HistoryScreen() {
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
-  // The branch a history entry belongs to, for the branch filter below —
+  // The branch a history entry belongs to, for the branch filter above —
   // the SUBJECT's branch (via profile_teams) on an audit, since the audit
   // task's own team_id can differ from who's actually being audited (the
   // same attribution rule get_period_report already uses), and the actor's
@@ -105,9 +105,6 @@ export default function HistoryScreen() {
         <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>
 
-        <OilHistory />
-        <ChickenHistory />
-
         {filterTeams.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 16 }}>
           {(
@@ -136,6 +133,9 @@ export default function HistoryScreen() {
           })}
         </ScrollView>
         ) : null}
+
+        <OilHistory filter={filter} onPickBranch={setFilter} />
+        <ChickenHistory filter={filter} />
 
         {missedShown.map((task) => (
           <MissedRow key={task.id} task={task} nameOf={nameOf} />

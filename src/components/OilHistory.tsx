@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useOilTests } from '@/hooks/useOilTests';
 import { useOrgData } from '@/hooks/useOrgData';
-import { useAuth } from '@/hooks/useAuth';
 import { PhotoViewer } from '@/components/PhotoViewer';
 import { useThemeColors } from '@/components/ui';
 import type { OilGrade, OilTest } from '@/types';
@@ -12,15 +11,16 @@ import { timeOf, dayKey, dateOf } from '@/lib/time';
 
 const GRADE_HEX: Record<OilGrade, string> = { good: '#10B981', watch: '#F59E0B', change: '#E8141A' };
 
-/** History for oil tests, shared by all roles (RLS scopes the rows): a list of
- * fryers grouped by branch → tap a fryer → pick a day → that day's tests. */
-export function OilHistory() {
+/** History for oil tests, shared by all roles (RLS scopes the rows). With more
+ * than one branch in view this stays ONE row per branch — tapping it narrows the
+ * whole History screen to that branch, and only then do its fryers appear. A
+ * group with twenty branches would otherwise open on a hundred fryer rows.
+ * Inside a branch: tap a fryer → pick a day → that day's tests. */
+export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; onPickBranch?: (teamId: string) => void } = {}) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { tests, fryers } = useOilTests();
   const { teams } = useOrgData();
-  const { profile } = useAuth();
-  const isOwner = profile?.role === 'owner';
 
   const [openFryer, setOpenFryer] = useState<{ id: string; name: string; branch: string } | null>(null);
   const [viewer, setViewer] = useState<string[] | null>(null);
@@ -29,19 +29,42 @@ export function OilHistory() {
   // Show the time AT THE BRANCH, not the viewer's clock.
   const tzOf = (teamId: string) => teams.find((tm) => tm.id === teamId)?.timezone ?? 'Asia/Baghdad';
 
-  // Latest grade per active fryer, grouped by branch.
-  const byBranch = useMemo(() => {
+  // Latest grade per active fryer, grouped by branch, plus the branch's own
+  // roll-up: its worst fryer is what the admin needs to see from the outside.
+  const branches = useMemo(() => {
     const latest = new Map<string, OilTest>();
     for (const x of tests) if (!latest.has(x.fryerId)) latest.set(x.fryerId, x); // tests are newest-first
-    const groups: Record<string, { id: string; name: string; branch: string; grade: OilGrade | null; count: number }[]> = {};
+    const groups = new Map<string, { id: string; name: string; grade: OilGrade | null; count: number }[]>();
     for (const f of fryers) {
-      const branch = teamName(f.teamId);
       const last = latest.get(f.id);
       const count = tests.filter((x) => x.fryerId === f.id).length;
-      (groups[branch] ||= []).push({ id: f.id, name: f.name, branch, grade: last?.grade ?? null, count });
+      (groups.get(f.teamId) ?? groups.set(f.teamId, []).get(f.teamId)!).push({
+        id: f.id,
+        name: f.name,
+        grade: last?.grade ?? null,
+        count,
+      });
     }
-    return groups;
+    return [...groups.entries()].map(([teamId, rows]) => ({
+      teamId,
+      name: teamName(teamId),
+      rows,
+      tests: rows.reduce((n, r) => n + r.count, 0),
+      needChange: rows.filter((r) => r.grade === 'change').length,
+      worst: (rows.some((r) => r.grade === 'change')
+        ? 'change'
+        : rows.some((r) => r.grade === 'watch')
+          ? 'watch'
+          : rows.some((r) => r.grade === 'good')
+            ? 'good'
+            : null) as OilGrade | null,
+    }));
   }, [tests, fryers, teams]);
+
+  const scoped = filter === 'all' ? branches : branches.filter((b) => b.teamId === filter);
+  // One row per branch only while several are in view; a single branch goes
+  // straight to its fryers — there would be nothing to choose between.
+  const collapsed = scoped.length > 1;
 
   const days = useMemo(() => {
     if (!openFryer) return [];
@@ -57,29 +80,40 @@ export function OilHistory() {
   const [day, setDay] = useState<string | null>(null);
   const dayTests = days.find(([k]) => k === day)?.[1] ?? days[0]?.[1] ?? [];
 
-  if (fryers.length === 0) return null;
+  if (fryers.length === 0 || scoped.length === 0) return null;
 
   return (
     <View style={{ marginBottom: 20 }}>
       <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, marginBottom: 10 }}>{t('oil.historyTitle')}</Text>
-      {Object.entries(byBranch).map(([branch, rows]) => (
-        <View key={branch} style={{ marginBottom: 8 }}>
-          {isOwner && Object.keys(byBranch).length > 1 ? (
-            <Text style={{ fontSize: 12, fontWeight: '700', color: c.textFaint, marginBottom: 6, marginTop: 4 }}>{branch}</Text>
-          ) : null}
-          {rows.map((f) => (
-            <Pressable key={f.id} onPress={() => { setOpenFryer({ id: f.id, name: f.name, branch }); setDay(null); }}
+      {collapsed
+        ? scoped.map((b) => (
+            <Pressable key={b.teamId} onPress={() => onPickBranch?.(b.teamId)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
-              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: f.grade ? GRADE_HEX[f.grade] : c.border }} />
+              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: b.worst ? GRADE_HEX[b.worst] : c.border }} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{f.name}</Text>
-                <Text style={{ fontSize: 12, color: c.textMuted }}>{t('oil.testsCount', { count: f.count })}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{b.name}</Text>
+                <Text style={{ fontSize: 12, color: b.needChange ? GRADE_HEX.change : c.textMuted }}>
+                  {b.needChange
+                    ? t('oil.needChange', { count: b.needChange })
+                    : `${t('oil.fryersCount', { count: b.rows.length })} · ${t('oil.testsCount', { count: b.tests })}`}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
             </Pressable>
-          ))}
-        </View>
-      ))}
+          ))
+        : scoped.map((b) =>
+            b.rows.map((f) => (
+              <Pressable key={f.id} onPress={() => { setOpenFryer({ id: f.id, name: f.name, branch: b.name }); setDay(null); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: f.grade ? GRADE_HEX[f.grade] : c.border }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{f.name}</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>{t('oil.testsCount', { count: f.count })}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
+              </Pressable>
+            ))
+          )}
 
       <Modal visible={!!openFryer} animationType="slide" transparent onRequestClose={() => setOpenFryer(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
