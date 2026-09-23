@@ -311,14 +311,28 @@ checklist score, which already freezes `points_awarded`, `score` and
 `iqd_per_point`. Raise the late-checklist penalty from 20,000 to 30,000 and
 last month's 20,000 penalties stay at 20,000.
 
-### Still open
+### Removing the chicken EARLY — a violation, and a serious one
 
-**Is taking the chicken out EARLY also wrong?** Today only the upper bound is
-checked, so a batch marinated at 12:00 and removed at 12:00 — zero minutes in
-the vinegar, a real Karbala row — grades **"on time"**. If the rule is "3 hours
-then remove", then removing at 1 hour means under-marinated chicken reached
-customers. Needs his call: is early a violation, does it carry a penalty, and is
-there a grace on that side too?
+His words: *"yes and its a big issue, removing before 3 hours."* Out at 2.5 hours
+means the marination never completed and under-marinated chicken reached
+customers. Today the app only checks the late side, so a real Karbala row
+marinated 12:00 and removed 12:00 — **zero minutes in the vinegar** — grades
+*"on time"*.
+
+What happens instead:
+- **A warning**, not an automatic penalty
+- It goes to the **hygiene auditor and the branch manager**, not to the
+  supervisor — they follow up on *why* it happened
+- The auditor can then turn it into a penalty if the reason does not hold up,
+  the same way she owns the other automatic penalties
+
+Note this is the only rule whose warning goes **upward** rather than to the
+person who did it. It is a "find out what happened" signal, not a fine.
+
+**Needs confirming:** a grace on the early side, so a removal at 2h58m is not
+flagged. Proposal — the same grace applies to both sides, set once in the
+control panel: within the grace either way is on time, past it in either
+direction is flagged.
 
 Still parked: the **Learning zone**, renaming "admin", and per-question photos
 for supervisors *(an auditor photographing a few things on a visit is a
