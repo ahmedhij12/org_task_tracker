@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Image, Modal } from 'react-native';
+import { Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useOilTests } from '@/hooks/useOilTests';
 import { useOrgData } from '@/hooks/useOrgData';
 import { PhotoViewer } from '@/components/PhotoViewer';
+import { useAuth } from '@/hooks/useAuth';
+import { exportOilTestReport, buildWebOilTestFile } from '@/lib/exportOilTestReport';
+import { shareOrDownloadFile } from '@/lib/webPdf';
 import { useThemeColors } from '@/components/ui';
 import type { OilGrade, OilTest } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
@@ -21,9 +25,29 @@ export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; 
   const { t, i18n } = useTranslation();
   const { tests, fryers } = useOilTests();
   const { teams } = useOrgData();
+  const { profile } = useAuth();
 
   const [openFryer, setOpenFryer] = useState<{ id: string; name: string; branch: string } | null>(null);
   const [viewer, setViewer] = useState<string[] | null>(null);
+  // Sharing a test long after it was taken: the same PDF the sheet offers the
+  // moment it is saved, for whoever did not send it then.
+  const [sharingId, setSharingId] = useState<string | null>(null);
+
+  const shareTest = async (x: OilTest) => {
+    setSharingId(x.id);
+    try {
+      const data = {
+        test: x,
+        branchName: teamName(x.teamId),
+        fryerName: fryers.find((f) => f.id === x.fryerId)?.name ?? '',
+        testerName: x.actorName ?? profile?.name ?? '',
+        locale: i18n.language,
+      };
+      if (Platform.OS === 'web') await shareOrDownloadFile(await buildWebOilTestFile(data));
+      else await exportOilTestReport(data);
+    } catch { /* the share sheet was dismissed, or the PDF failed — nothing to undo */ }
+    setSharingId(null);
+  };
 
   const teamName = (id: string) => teams.find((tm) => tm.id === id)?.name ?? '';
   // Show the time AT THE BRANCH, not the viewer's clock.
@@ -168,6 +192,11 @@ export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; 
                     {x.lateReason ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>“{x.lateReason}”</Text> : null}
                     {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}
                   </View>
+                  <Pressable onPress={() => shareTest(x)} hitSlop={10} disabled={sharingId === x.id} style={{ padding: 6 }}>
+                    {sharingId === x.id
+                      ? <ActivityIndicator size="small" color={c.brand} />
+                      : <Ionicons name="share-outline" size={20} color={c.brand} />}
+                  </Pressable>
                 </View>
               ))}
               {dayTests.length === 0 ? <Text style={{ fontSize: 13, color: c.textFaint, paddingVertical: 20 }}>{t('oil.noTestsYet')}</Text> : null}
