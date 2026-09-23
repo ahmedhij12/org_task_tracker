@@ -530,6 +530,8 @@ export default {
     cardTitle: "فحص الدهن",
     cardHint: "افحص دهن القلاية",
     whichBranch: "أي فرع؟",
+    errTpmRange: "يجب أن تكون TPM بين 0 و{{max}}. تحقّق من القراءة على الجهاز.",
+    errTempRange: "يجب أن تكون الحرارة بين 0 و{{max}} °م. انتبه للفاصلة العشرية — 185.3 وليس 1853.",
     backToBranch: "‹ رجوع إلى الفرع",
     whichFryer: "أي قلاية؟",
     noFryers: "لا توجد قلايات بعد — يضيفها المدير.",

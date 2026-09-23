@@ -502,6 +502,8 @@ export default {
     cardTitle: "Oil test",
     cardHint: "Test a fryer's oil",
     whichBranch: "Which branch?",
+    errTpmRange: "TPM must be between 0 and {{max}}. Check the reading on the tester.",
+    errTempRange: "Temperature must be between 0 and {{max}} °C. Check the decimal point — 185.3, not 1853.",
     backToBranch: "‹ Back to branch",
     whichFryer: "Which fryer?",
     noFryers: "No fryers yet — the admin adds them.",

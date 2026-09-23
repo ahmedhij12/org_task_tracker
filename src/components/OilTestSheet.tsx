@@ -17,6 +17,10 @@ import type { OilFryer, OilGrade } from '@/types';
 
 const GRADE_HEX: Record<OilGrade, string> = { good: '#10B981', watch: '#F59E0B', change: '#E8141A' };
 
+// Mirrors the check constraints on public.oil_tests.
+const TPM_MAX = 100;
+const TEMP_MAX = 400;
+
 export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; isAudit?: boolean; onClose: () => void }) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
@@ -90,8 +94,12 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
       setReading(true);
       try {
         const r = await readTesterPhoto(shot.base64, 'image/jpeg');
-        if (r.tpm != null) setTpm(String(r.tpm));
-        if (r.tempC != null) setTemp(String(r.tempC));
+        // The reader drops a decimal point now and then — it once returned
+        // 1853 for a screen showing 185.3. Filling an impossible number in is
+        // worse than filling nothing: it looks answered, and the save fails at
+        // the very end. Out of range, the box stays empty for them to type.
+        if (r.tpm != null && r.tpm >= 0 && r.tpm <= TPM_MAX) setTpm(String(r.tpm));
+        if (r.tempC != null && r.tempC >= 0 && r.tempC <= TEMP_MAX) setTemp(String(r.tempC));
       } catch { /* silent — user types the numbers */ }
       setReading(false);
     } catch (e: any) {
@@ -100,9 +108,20 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
     }
   };
 
+  // The same limits oil_tests carries (tpm 0-100, temp_c 0-400). Checked here
+  // so a supervisor is told in his own language while he can still fix it,
+  // instead of being handed a Postgres constraint name after pressing Save.
+  const tempNum = temp.trim() === '' ? null : Number(temp);
+  const numberProblem =
+    tpmNum != null && (!isFinite(tpmNum) || tpmNum < 0 || tpmNum > TPM_MAX)
+      ? t('oil.errTpmRange', { max: TPM_MAX })
+      : tempNum != null && (!isFinite(tempNum) || tempNum < 0 || tempNum > TEMP_MAX)
+        ? t('oil.errTempRange', { max: TEMP_MAX })
+        : null;
+
   const canSubmit =
     !!fryerId && !!photo && tpmNum != null && isFinite(tpmNum) && filtered != null && !submitting &&
-    (minutesLate == null || lateReason.trim().length > 0);
+    !numberProblem && (minutesLate == null || lateReason.trim().length > 0);
 
   const handleSubmit = async () => {
     if (!canSubmit || !photo || !fryerId || tpmNum == null) return;
@@ -210,6 +229,13 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: GRADE_HEX[grade] + '22', borderRadius: 12, padding: 12, marginBottom: 18 }}>
                   <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: GRADE_HEX[grade] }} />
                   <Text style={{ fontSize: 14, fontWeight: '700', color: GRADE_HEX[grade] }}>{t(`oil.grade_${grade}`)}</Text>
+                </View>
+              ) : null}
+
+              {numberProblem ? (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 18 }}>
+                  <Ionicons name="alert-circle" size={16} color={c.rose} style={{ marginTop: 1 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: c.rose, flex: 1 }}>{numberProblem}</Text>
                 </View>
               ) : null}
 
