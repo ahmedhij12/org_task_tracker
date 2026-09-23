@@ -95,7 +95,9 @@ export default function PeopleScreen() {
 
         {visible.length === 0 ? (
           <Text style={{ fontSize: 13, color: c.textFaint }}>
-            {t('people.emptyState', { addStaff: t('people.addStaff') })}
+            {/* A branch manager has no "Add staff" button, so telling him to tap it
+                was an instruction he could not follow. */}
+            {isOwner ? t('people.emptyState', { addStaff: t('people.addStaff') }) : t('people.emptyStateManager')}
           </Text>
         ) : null}
 
