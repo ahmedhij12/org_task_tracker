@@ -56,7 +56,8 @@ interface OilTestsContextValue {
   tests: OilTest[];
   loading: boolean;
   refresh: () => Promise<void>;
-  submitTest: (input: SubmitOilTestInput) => Promise<void>;
+  /** Resolves to the new test's id, so the caller can offer to share it. */
+  submitTest: (input: SubmitOilTestInput) => Promise<string>;
 }
 
 const OilTestsContext = createContext<OilTestsContextValue | undefined>(undefined);
@@ -99,7 +100,7 @@ export function OilTestsProvider({ children }: { children: ReactNode }) {
 
   const submitTest = useCallback<OilTestsContextValue['submitTest']>(
     async (input) => {
-      const { error } = await supabase.rpc('submit_oil_test', {
+      const { data, error } = await supabase.rpc('submit_oil_test', {
         p_fryer_id: input.fryerId,
         p_tpm: input.tpm,
         p_temp_c: input.tempC,
@@ -112,6 +113,7 @@ export function OilTestsProvider({ children }: { children: ReactNode }) {
       });
       if (error) throw error;
       await refresh();
+      return data as string;
     },
     [refresh]
   );

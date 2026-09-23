@@ -11,6 +11,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useOilTests } from '@/hooks/useOilTests';
 import { useOrgData } from '@/hooks/useOrgData';
 import { readTesterPhoto, gradeForTpm } from '@/lib/oilOcr';
+import { exportOilTestReport, buildWebOilTestFile } from '@/lib/exportOilTestReport';
+import { shareOrDownloadFile } from '@/lib/webPdf';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 import type { OilFryer, OilGrade } from '@/types';
@@ -26,7 +28,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
-  const { fryers, submitTest } = useOilTests();
+  const { fryers, tests, submitTest } = useOilTests();
   const { teams } = useOrgData();
 
   const [branchId, setBranchId] = useState<string | null>(null);
@@ -41,6 +43,11 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const [minutesLate, setMinutesLate] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set once the test is in. The sheet then stays open on a short "saved"
+  // step offering the PDF, because the moment to send it is now, at the fryer.
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [webPdf, setWebPdf] = useState<globalThis.File | null>(null);
 
   const now = useMemo(() => new Date(), [visible]);
 
@@ -78,6 +85,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const reset = () => {
     setBranchId(null); setFryerId(null); setPhoto(null); setTpm(''); setTemp(''); setFiltered(null);
     setNote(''); setError(null); setReading(false); setLateReason(''); setMinutesLate(null);
+    setSavedId(null); setExporting(false); setWebPdf(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
@@ -134,14 +142,13 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from('task-proofs').getPublicUrl(path);
 
-      await submitTest({
+      const id = await submitTest({
         fryerId, tpm: tpmNum, tempC: temp.trim() === '' ? null : Number(temp),
         filtered: filtered === true, photoUrl: pub.publicUrl, signatureUrl: null, note: note.trim() || null,
         lateReason: lateReason.trim() || null,
         isAudit: !!isAudit,
       });
-      reset();
-      onClose();
+      setSavedId(id);
     } catch (e: any) {
       setError(e?.message ?? t('oil.submitFailed'));
     } finally {
@@ -149,6 +156,43 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
       // NEXT test opened on a spinner with no Save button and could never be
       // sent. Always clear it, the way FillChecklistSheet does.
       setSubmitting(false);
+    }
+  };
+
+  const savedTest = savedId ? tests.find((x) => x.id === savedId) ?? null : null;
+  const savedFryer = savedTest ? fryers.find((f) => f.id === savedTest.fryerId) : undefined;
+
+  const reportData = savedTest
+    ? {
+        test: savedTest,
+        branchName: teams.find((tm) => tm.id === savedTest.teamId)?.name ?? '',
+        fryerName: savedFryer?.name ?? '',
+        testerName: profile?.name ?? '',
+        locale: i18n.language,
+      }
+    : null;
+
+  const handleShare = async () => {
+    if (!reportData) return;
+    setError(null);
+    setExporting(true);
+    try {
+      if (Platform.OS === 'web') setWebPdf(await buildWebOilTestFile(reportData));
+      else await exportOilTestReport(reportData);
+    } catch (e: any) {
+      setError(e?.message ?? t('oil.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleSendWebPdf = async () => {
+    if (!webPdf) return;
+    setError(null);
+    try {
+      await shareOrDownloadFile(webPdf);
+    } catch (e: any) {
+      setError(e?.message ?? t('oil.exportFailed'));
     }
   };
 
@@ -165,6 +209,26 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
             </View>
             <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 14 }}>{timeLabel}</Text>
 
+            {savedId ? (
+              <View style={{ paddingBottom: 4 }}>
+                {error ? <ErrorBanner message={error} /> : null}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <Ionicons name="checkmark-circle" size={22} color={c.emerald} />
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: c.text, flex: 1 }}>{t('oil.savedTitle')}</Text>
+                </View>
+                <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 18, lineHeight: 19 }}>{t('oil.shareAsk')}</Text>
+                {exporting ? (
+                  <View style={{ paddingVertical: 14, alignItems: 'center' }}><ActivityIndicator color={c.brand} /></View>
+                ) : webPdf ? (
+                  <PrimaryButton title={t('oil.sharePdf')} onPress={handleSendWebPdf} />
+                ) : (
+                  <PrimaryButton title={t('oil.shareWhatsapp')} onPress={handleShare} disabled={!reportData} />
+                )}
+                <View style={{ height: 10 }} />
+                <SecondaryButton title={t('oil.doneNoShare')} onPress={handleClose} />
+              </View>
+            ) : (
+            <>
             <ScrollView style={{ flexShrink: 1, minHeight: 0 }} keyboardShouldPersistTaps="handled">
               {error ? <ErrorBanner message={error} /> : null}
 
@@ -291,6 +355,8 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
                 <View style={{ height: 10 }} />
                 <SecondaryButton title={t('oil.cancel')} onPress={handleClose} />
               </>
+            )}
+            </>
             )}
           </View>
         </KeyboardAvoidingView>
