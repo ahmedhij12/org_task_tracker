@@ -10,7 +10,6 @@ import { resizeImage } from '@/lib/resizeImage';
 import { useAuth } from '@/hooks/useAuth';
 import { useOilTests } from '@/hooks/useOilTests';
 import { readTesterPhoto, gradeForTpm } from '@/lib/oilOcr';
-import { SignaturePad } from '@/components/SignaturePad';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 import type { OilFryer, OilGrade } from '@/types';
@@ -30,7 +29,6 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const [tpm, setTpm] = useState('');
   const [temp, setTemp] = useState('');
   const [filtered, setFiltered] = useState<boolean | null>(null);
-  const [signatureSvg, setSignatureSvg] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [lateReason, setLateReason] = useState('');
   const [minutesLate, setMinutesLate] = useState<number | null>(null);
@@ -60,7 +58,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
 
   const reset = () => {
     setFryerId(null); setPhoto(null); setTpm(''); setTemp(''); setFiltered(null);
-    setSignatureSvg(null); setNote(''); setError(null); setReading(false); setLateReason(''); setMinutesLate(null);
+    setNote(''); setError(null); setReading(false); setLateReason(''); setMinutesLate(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
@@ -102,17 +100,9 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from('task-proofs').getPublicUrl(path);
 
-      let signatureUrl: string | null = null;
-      if (signatureSvg) {
-        const sigPath = `${orgId}/oil-sig-${fryerId}-${Date.now()}.svg`;
-        const { error: sigErr } = await supabase.storage.from('task-proofs').upload(sigPath, new TextEncoder().encode(signatureSvg), { contentType: 'image/svg+xml' });
-        if (sigErr) throw sigErr;
-        signatureUrl = supabase.storage.from('task-proofs').getPublicUrl(sigPath).data.publicUrl;
-      }
-
       await submitTest({
         fryerId, tpm: tpmNum, tempC: temp.trim() === '' ? null : Number(temp),
-        filtered: filtered === true, photoUrl: pub.publicUrl, signatureUrl, note: note.trim() || null,
+        filtered: filtered === true, photoUrl: pub.publicUrl, signatureUrl: null, note: note.trim() || null,
         lateReason: lateReason.trim() || null,
         isAudit: !!isAudit,
       });
@@ -193,12 +183,15 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
               {/* Filtered Yes/No */}
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('oil.filtered')}</Text>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
-                {[{ v: true, l: t('oil.yes') }, { v: false, l: t('oil.no') }].map((o) => {
+                {/* Yes fills green, No fills red — same as the checklist. Both
+                    must change on press: styling "No" like the untouched state
+                    made the button look broken. */}
+                {[{ v: true, l: t('oil.yes'), on: c.emerald }, { v: false, l: t('oil.no'), on: c.rose }].map((o) => {
                   const active = filtered === o.v;
                   return (
                     <Pressable key={String(o.v)} onPress={() => setFiltered(o.v)}
-                      style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: active ? (o.v ? c.emerald : c.bgSubtle) : c.bgSubtle, borderWidth: 1, borderColor: active ? (o.v ? c.emerald : c.border) : c.border }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: active && o.v ? '#fff' : c.text }}>{o.l}</Text>
+                      style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: active ? o.on : c.bgSubtle, borderWidth: 1, borderColor: active ? o.on : c.border }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: active ? '#fff' : c.text }}>{o.l}</Text>
                     </Pressable>
                   );
                 })}
@@ -222,10 +215,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
               <TextInput value={note} onChangeText={setNote} placeholder={t('oil.notePlaceholder')} placeholderTextColor={c.textFaint} multiline
                 style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: 18, minHeight: 44, textAlign: textAlignFor(note) }} />
 
-              {/* Optional signature */}
-              <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('oil.signOptional')}</Text>
-              <SignaturePad onChange={setSignatureSvg} />
-              <View style={{ height: 8 }} />
+              <View style={{ height: 4 }} />
             </ScrollView>
 
             {submitting ? (
