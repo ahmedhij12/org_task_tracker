@@ -1,21 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, View, Pressable, ScrollView, Text, useWindowDimensions } from 'react-native';
-import { Image } from 'expo-image';
+import { Modal, View, Image, Pressable, ScrollView, Text, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming, runOnJS } from 'react-native-reanimated';
 
-const MAX_ZOOM = 5;
-/** What a double tap jumps to. */
-const TAP_ZOOM = 2.5;
+const ZOOM = 3;
 
 /**
- * One photo, zoomed the way every photo app does it: pinch with two fingers,
- * double tap a spot to jump in on it, drag to look around. Gesture-handler and
- * reanimated drive it, so a browser, an iPhone and an Android all behave the
- * same — the old version used a native ScrollView on iOS and a tap-to-zoom
- * fallback everywhere else, which on the web build zoomed but would not move.
+ * One photo that can be zoomed to inspect detail. iPhone: native pinch-zoom
+ * and pan. Web/Android (no native pinch in a ScrollView there): tap to zoom
+ * 3×, drag to look around, tap again to zoom back out.
  */
 function ZoomablePhoto({
   uri,
@@ -28,109 +21,73 @@ function ZoomablePhoto({
   height: number;
   onZoomChange: (zoomed: boolean) => void;
 }) {
+  const { t } = useTranslation();
+  const [zoomed, setZoomed] = useState(false);
+  const hRef = useRef<ScrollView>(null);
+  const vRef = useRef<ScrollView>(null);
   const imgH = height * 0.85;
-  // Mirrors the zoom for the gestures that must switch off at 1x. Kept in
-  // React state, not only a shared value, because `enabled` is read on render.
-  const [isZoomed, setIsZoomed] = useState(false);
-  const setZoom = (z: boolean) => {
-    setIsZoomed(z);
-    onZoomChange(z);
+
+  if (Platform.OS === 'ios') {
+    return (
+      <ScrollView
+        style={{ width, height }}
+        contentContainerStyle={{ width, height, alignItems: 'center', justifyContent: 'center' }}
+        maximumZoomScale={5}
+        minimumZoomScale={1}
+        centerContent
+        bouncesZoom
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        onScroll={(e) => onZoomChange((e.nativeEvent.zoomScale ?? 1) > 1.01)}
+        scrollEventThrottle={50}
+      >
+        <Image source={{ uri }} style={{ width, height: imgH }} resizeMode="contain" />
+      </ScrollView>
+    );
+  }
+
+  const toggle = () => {
+    setZoomed((z) => !z);
+    onZoomChange(!zoomed);
   };
 
-  const scale = useSharedValue(1);
-  const startScale = useSharedValue(1);
-  const x = useSharedValue(0);
-  const y = useSharedValue(0);
-  const startX = useSharedValue(0);
-  const startY = useSharedValue(0);
+  if (!zoomed) {
+    return (
+      <Pressable onPress={toggle} style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={{ uri }} style={{ width, height: imgH }} resizeMode="contain" />
+      </Pressable>
+    );
+  }
 
-  // How far the photo may be dragged before its edge comes past the screen.
-  const clamp = (v: number, limit: number) => {
-    'worklet';
-    return Math.min(limit, Math.max(-limit, v));
-  };
-  const limitX = (s: number) => {
-    'worklet';
-    return Math.max(0, (width * s - width) / 2);
-  };
-  const limitY = (s: number) => {
-    'worklet';
-    return Math.max(0, (imgH * s - height) / 2);
-  };
-
-  const settle = () => {
-    'worklet';
-    if (scale.value < 1) {
-      scale.value = withTiming(1);
-      x.value = withTiming(0);
-      y.value = withTiming(0);
-    } else if (scale.value > MAX_ZOOM) {
-      scale.value = withTiming(MAX_ZOOM);
-    }
-    x.value = withTiming(clamp(x.value, limitX(Math.min(scale.value, MAX_ZOOM))));
-    y.value = withTiming(clamp(y.value, limitY(Math.min(scale.value, MAX_ZOOM))));
-    runOnJS(setZoom)(scale.value > 1.01);
-  };
-
-  const pinch = Gesture.Pinch()
-    .onStart(() => {
-      startScale.value = scale.value;
-    })
-    .onUpdate((e) => {
-      scale.value = Math.max(0.5, Math.min(MAX_ZOOM + 0.5, startScale.value * e.scale));
-    })
-    .onEnd(settle);
-
-  const pan = Gesture.Pan()
-    .averageTouches(true)
-    // Off at 1x so a sideways swipe reaches the pager and moves to the next
-    // photo, which is what it did before this component grew gestures.
-    .enabled(isZoomed)
-    .onStart(() => {
-      startX.value = x.value;
-      startY.value = y.value;
-    })
-    .onUpdate((e) => {
-      x.value = startX.value + e.translationX;
-      y.value = startY.value + e.translationY;
-    })
-    .onEnd(settle);
-
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .maxDuration(280)
-    .onEnd((e) => {
-      if (scale.value > 1.01) {
-        scale.value = withTiming(1);
-        x.value = withTiming(0);
-        y.value = withTiming(0);
-        runOnJS(setZoom)(false);
-        return;
-      }
-      // Zoom toward the spot that was tapped, not the middle of the photo.
-      const dx = (width / 2 - e.x) * (TAP_ZOOM - 1);
-      const dy = (height / 2 - e.y) * (TAP_ZOOM - 1);
-      scale.value = withTiming(TAP_ZOOM);
-      x.value = withTiming(clamp(dx, limitX(TAP_ZOOM)));
-      y.value = withTiming(clamp(dy, limitY(TAP_ZOOM)));
-      runOnJS(setZoom)(true);
-    });
-
-  // Pinch and drag run together; the double tap races them.
-  const gesture = Gesture.Simultaneous(pinch, Gesture.Exclusive(doubleTap, pan));
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: x.value }, { translateY: y.value }, { scale: scale.value }],
-  }));
-
+  // Zoomed: the photo drawn 3× larger inside two nested scrollers, scrolled
+  // to its centre once laid out (contentOffset isn't honoured on web).
   return (
-    <GestureDetector gesture={gesture}>
-      <View style={{ width, height, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        <Animated.View style={style}>
-          <Image source={{ uri }} style={{ width, height: imgH }} contentFit="contain" />
-        </Animated.View>
-      </View>
-    </GestureDetector>
+    <ScrollView
+      ref={hRef}
+      horizontal
+      style={{ width, height }}
+      showsHorizontalScrollIndicator={false}
+      onContentSizeChange={() => hRef.current?.scrollTo({ x: (width * ZOOM - width) / 2, animated: false })}
+    >
+      <ScrollView
+        ref={vRef}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => vRef.current?.scrollTo({ y: (imgH * ZOOM - height) / 2, animated: false })}
+      >
+        {/* No Pressable around the image: on web it swallows the drag, so the
+            photo zoomed in and then would not move. Zooming back out is the
+            button below instead. */}
+        <Image source={{ uri }} style={{ width: width * ZOOM, height: imgH * ZOOM }} resizeMode="contain" />
+      </ScrollView>
+      <Pressable
+        onPress={toggle}
+        style={{ position: 'absolute', right: 16, bottom: 24, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+      >
+        <Ionicons name="contract-outline" size={18} color="#fff" />
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('viewer.zoomOut')}</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -194,7 +151,7 @@ export function PhotoViewer({ urls, index, onClose }: { urls: string[]; index: n
             </Text>
           ) : null}
           <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
-            {zoomed ? t('viewer.drag') : t('viewer.pinch')}
+            {Platform.OS === 'ios' ? t('viewer.pinch') : zoomed ? t('viewer.drag') : t('viewer.tap')}
           </Text>
         </View>
       </View>
