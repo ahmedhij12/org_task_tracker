@@ -32,11 +32,16 @@ export function marinationStatus(
   now: number = Date.now()
 ): MarinationStatus {
   const due = dueAt(r);
-  if (!r.unloadedAt) {
+  const out = r.unloadedAt ? new Date(r.unloadedAt).getTime() : null;
+  // A removal time that has not arrived yet is not a removal. The sheet lets
+  // the time be typed, so someone can enter "out at 4 PM" at 1:47 PM — and we
+  // used to answer "Removed on time" about chicken still sitting in vinegar.
+  // Until that moment passes the batch is exactly what it is: still in.
+  if (out == null || out > now) {
     const left = due - now;
     return left < 0 ? { state: 'overdue', ms: -left } : { state: 'marinating', ms: left };
   }
-  const over = new Date(r.unloadedAt).getTime() - due;
+  const over = out - due;
   return over > GRACE_MS ? { state: 'late', ms: over } : { state: 'onTime', ms: Math.abs(over) };
 }
 

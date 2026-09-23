@@ -50,11 +50,26 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
 
   // teams can arrive after this sheet mounts, so never trust the initial pick alone.
   const effectiveBranchId = branchId ?? myBranches[0]?.id ?? null;
-  const canSubmit = !!effectiveBranchId && !submitting;
+  const tz = teams.find((tm) => tm.id === effectiveBranchId)?.timezone ?? 'Asia/Baghdad';
+
+  // Both times are typed by hand, so both can describe something that has not
+  // happened. A batch recorded as "in at 1 PM, out at 4 PM" at 1:47 PM is not a
+  // record of anything — and the monitor used to call it "Removed on time".
+  const timeProblem = useMemo(() => {
+    const now = Date.now();
+    const marinated = new Date(isoForBranchTime(marinTime, tz)).getTime();
+    if (marinated > now) return t('chicken.errFutureMarinated');
+    if (!hasUnload) return null;
+    const out = new Date(isoForBranchTime(unloadTime, tz)).getTime();
+    if (out > now) return t('chicken.errFutureUnload');
+    if (out < marinated) return t('chicken.errUnloadBeforeMarinated');
+    return null;
+  }, [marinTime, unloadTime, hasUnload, tz, t]);
+
+  const canSubmit = !!effectiveBranchId && !submitting && !timeProblem;
 
   const handleSubmit = async () => {
     if (!canSubmit || !effectiveBranchId) return;
-    const tz = teams.find((tm) => tm.id === effectiveBranchId)?.timezone ?? 'Asia/Baghdad';
     const marinatedAt = isoForBranchTime(marinTime, tz);
     setError(null); setSubmitting(true);
     try {
@@ -148,6 +163,13 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
                 style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: gapY, minHeight: 44, textAlign: textAlignFor(note) }} />
 
             </ScrollView>
+
+            {timeProblem ? (
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+                <Ionicons name="alert-circle" size={16} color={c.rose} style={{ marginTop: 1 }} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: c.rose, flex: 1 }}>{timeProblem}</Text>
+              </View>
+            ) : null}
 
             {submitting ? (
               <View style={{ paddingVertical: 14, alignItems: 'center' }}><ActivityIndicator color={c.brand} /></View>

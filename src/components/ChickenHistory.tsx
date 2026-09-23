@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
+import { View, Text, Pressable, ScrollView, Modal, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
+import { PhotoViewer } from '@/components/PhotoViewer';
 import { useThemeColors } from '@/components/ui';
 import type { ChickenMarination } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
@@ -21,6 +22,7 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   const { profile } = useAuth();
   const isOwner = profile?.role === 'owner';
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<string[] | null>(null);
 
   const teamName = (id: string) => teams.find((tm) => tm.id === id)?.name ?? '';
   // Show the time AT THE BRANCH, not the viewer's clock.
@@ -100,6 +102,15 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
                     {isOwner ? `${teamName(x.teamId)} · ` : ''}{x.actorName ?? ''}{x.isAudit ? ` · ${t('chicken.byAuditor')}` : ''}
                     {x.unloadedByName && x.unloadedByName !== x.actorName ? ` · ${t('chicken.emptiedBy', { name: x.unloadedByName })}` : ''}
                   </Text>
+                  {/* The proof of the removal. It has always been uploaded and
+                      stored; until now there was nowhere in the app to see it. */}
+                  {x.unloadPhotoUrl ? (
+                    <Pressable onPress={() => setViewer([x.unloadPhotoUrl!])} style={{ marginTop: 6 }}>
+                      <Image source={{ uri: x.unloadPhotoUrl }} style={{ width: 72, height: 72, borderRadius: 10 }} />
+                    </Pressable>
+                  ) : x.unloadedAt ? (
+                    <Text style={{ fontSize: 11, color: c.textFaint, marginTop: 4 }}>{t('chicken.noRemovalPhoto')}</Text>
+                  ) : null}
                   {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}
                 </View>
               ))}
@@ -107,6 +118,8 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
           </View>
         </View>
       </Modal>
+
+      {viewer ? <PhotoViewer urls={viewer} index={0} onClose={() => setViewer(null)} /> : null}
     </View>
   );
 }
