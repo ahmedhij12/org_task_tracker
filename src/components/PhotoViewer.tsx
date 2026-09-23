@@ -14,15 +14,15 @@ function ZoomablePhoto({
   uri,
   width,
   height,
+  zoomed,
   onZoomChange,
 }: {
   uri: string;
   width: number;
   height: number;
+  zoomed: boolean;
   onZoomChange: (zoomed: boolean) => void;
 }) {
-  const { t } = useTranslation();
-  const [zoomed, setZoomed] = useState(false);
   const hRef = useRef<ScrollView>(null);
   const vRef = useRef<ScrollView>(null);
   const imgH = height * 0.85;
@@ -46,10 +46,7 @@ function ZoomablePhoto({
     );
   }
 
-  const toggle = () => {
-    setZoomed((z) => !z);
-    onZoomChange(!zoomed);
-  };
+  const toggle = () => onZoomChange(!zoomed);
 
   if (!zoomed) {
     return (
@@ -80,13 +77,6 @@ function ZoomablePhoto({
             button below instead. */}
         <Image source={{ uri }} style={{ width: width * ZOOM, height: imgH * ZOOM }} resizeMode="contain" />
       </ScrollView>
-      <Pressable
-        onPress={toggle}
-        style={{ position: 'absolute', right: 16, bottom: 24, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
-      >
-        <Ionicons name="contract-outline" size={18} color="#fff" />
-        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('viewer.zoomOut')}</Text>
-      </Pressable>
     </ScrollView>
   );
 }
@@ -123,7 +113,7 @@ export function PhotoViewer({ urls, index, onClose }: { urls: string[]; index: n
           scrollEventThrottle={100}
         >
           {urls.map((u) => (
-            <ZoomablePhoto key={u} uri={u} width={width} height={height} onZoomChange={setZoomed} />
+            <ZoomablePhoto key={u} uri={u} width={width} height={height} zoomed={zoomed} onZoomChange={setZoomed} />
           ))}
         </ScrollView>
         <Pressable
@@ -144,6 +134,15 @@ export function PhotoViewer({ urls, index, onClose }: { urls: string[]; index: n
         >
           <Ionicons name="close" size={24} color="#fff" />
         </Pressable>
+        {zoomed ? (
+          <Pressable
+            onPress={() => setZoomed(false)}
+            style={{ position: 'absolute', left: 18, top: 54, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 999, paddingHorizontal: 14, height: 40 }}
+          >
+            <Ionicons name="contract-outline" size={18} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{t('viewer.zoomOut')}</Text>
+          </Pressable>
+        ) : null}
         <View style={{ position: 'absolute', bottom: 36, alignSelf: 'center', alignItems: 'center', gap: 4 }} pointerEvents="none">
           {urls.length > 1 && !zoomed ? (
             <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>

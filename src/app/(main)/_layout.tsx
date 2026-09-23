@@ -48,18 +48,19 @@ function MainTabs() {
           headerShown: false,
           tabBarActiveTintColor: c.accent,
           tabBarInactiveTintColor: c.textFaint,
-          // English keeps the stock label metrics exactly — overriding them
-          // clipped it. Arabic letters reach higher and lower than Latin, so
-          // the fix is a TALLER bar, never a moved label: nudging the label
-          // down inside a fixed box just pushed it out of sight.
+          // Seven tabs, and the stock bar is too short for the labels of either
+          // language — English descenders were clipped too, it was just less
+          // obvious than Arabic. The fix is a TALLER bar for both; nudging a
+          // label down inside a fixed box only pushes it out of sight. The
+          // smaller type also buys back horizontal room on seven tabs.
           tabBarStyle: {
             backgroundColor: c.bg,
             borderTopColor: c.border,
-            ...(isArabic
-              ? { height: 64 + insets.bottom, paddingTop: 6, paddingBottom: insets.bottom + 6 }
-              : null),
+            height: 64 + insets.bottom,
+            paddingTop: 6,
+            paddingBottom: insets.bottom + 6,
           },
-          tabBarLabelStyle: isArabic ? { fontSize: 10 } : undefined,
+          tabBarLabelStyle: { fontSize: 10 },
         }}
       >
         <Tabs.Screen
