@@ -294,28 +294,37 @@ detailed statement is built.
 
 ---
 
-## 8. Still needs an answer from Ahmad
+## 8. His answers on the numbers (2026-09-24)
 
-Numbers, not decisions — but nothing can be built without them:
+| | Decision |
+|---|---|
+| **Marination time** | **3 hours**, and changeable in the control panel — 2.5, 4, 5. **The reminder follows whatever it is set to**, it is not a separate number. |
+| **Checklist grace** | Per branch, in the control panel. 30 or 60 minutes, agreed between the admin and the auditor. |
+| **Penalty amounts** | In the control panel, changeable at any time. **Changing one never touches penalties already given — only new ones.** |
+| **Oil test grace** | In the control panel, 10 to 60 minutes or more. A meeting with both auditors decides, then the admin sets it once for everyone. |
+| **"Never done" fires** | **At the next shift's time**, not at end of day. |
+| **The one-minute-late batch** | Not a problem. A 5-minute grace already exists (`GRACE_MS`, `src/lib/marination.ts`) and 15:00:59 reads *on time*. Nothing to change. |
 
-1. **Minimum marination time.** A batch recorded as 0 minutes in the vinegar
-   still grades "on time" today.
-2. **Checklist times per branch** — the actual times, based on opening hours.
-3. **Penalty amounts** — late checklist, marination.
-4. **Oil test grace** — how many minutes.
-5. **"Never done" — when does it fire?** End of day, or when the next shift's
-   time arrives?
-6. A real batch was marked **late by one minute** (marinated 12:00, removed
-   15:00:59). Worth a small grace so a man doing it right is not punished by a
-   round trip.
+### A rule that falls out of this
+**A penalty freezes its amount when it is created.** Same principle as the
+checklist score, which already freezes `points_awarded`, `score` and
+`iqd_per_point`. Raise the late-checklist penalty from 20,000 to 30,000 and
+last month's 20,000 penalties stay at 20,000.
+
+### Still open
+
+**Is taking the chicken out EARLY also wrong?** Today only the upper bound is
+checked, so a batch marinated at 12:00 and removed at 12:00 — zero minutes in
+the vinegar, a real Karbala row — grades **"on time"**. If the rule is "3 hours
+then remove", then removing at 1 hour means under-marinated chicken reached
+customers. Needs his call: is early a violation, does it carry a penalty, and is
+there a grace on that side too?
 
 Still parked: the **Learning zone**, renaming "admin", and per-question photos
 for supervisors *(an auditor photographing a few things on a visit is a
 different scale and is approved)*.
 
 Still blocked, unrelated: **recovery email / SMTP**.
-
----
 
 ## 9. Build order
 
