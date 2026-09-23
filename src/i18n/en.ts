@@ -301,7 +301,7 @@ export default {
   },
   viewer: {
     close: "Close",
-    pinch: "Pinch to zoom",
+    pinch: "Pinch or double tap to zoom",
     drag: "Drag to look around",
     zoomOut: "Zoom out",
     tap: "Tap the photo to zoom",
