@@ -301,10 +301,7 @@ export default {
   },
   viewer: {
     close: "Close",
-    pinch: "Pinch to zoom",
-    drag: "Drag to look around",
-    zoomOut: "Zoom out",
-    tap: "Tap the photo to zoom",
+    hint: "Pinch or double-tap to zoom · swipe down to close",
   },
   settings: {
     roleAdmin: "Admin",
