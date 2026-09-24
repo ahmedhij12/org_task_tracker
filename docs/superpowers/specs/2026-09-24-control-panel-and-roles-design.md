@@ -1,6 +1,13 @@
 # Control panel, roles, and the penalty system — design
 
 **Status:** agreed in conversation 2026-09-24. Nothing built yet.
+
+> **PARKED 2026-09-25: the roles and the flow** (sections 1, 3, 4, 5, 6: the
+> seven roles, shifts, warnings/penalties, the month-end chain, the statement).
+> His manager asked to park it because another company is working on the same
+> idea and they do not want a conflict. Do not build phases 4-7 until he lifts
+> this. The control panel itself (phase 1 plan, 2026-09-24) was not named in
+> the parking decision; confirm with him before building it.
 **Read this back and correct it before any code is written.**
 
 The point of all of it: the app should be run from inside the app. Ahmad should
