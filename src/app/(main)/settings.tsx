@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { FryersSheet } from '@/components/FryersSheet';
+import { router } from 'expo-router';
 import { PushCard } from '@/components/PushCard';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +18,7 @@ import type { ThemePref } from '@/types';
 export default function SettingsScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { profile, organization, teams, signOut, addRecoveryEmail, setIqdPerPoint, updateMyProfile } = useAuth();
+  const { profile, organization, teams, signOut, addRecoveryEmail, updateMyProfile } = useAuth();
   const { themePref, setThemePref } = useThemePref();
   const { languagePref, setLanguagePref, needsRestartForDirection } = useLanguagePref();
   const [copied, setCopied] = useState(false);
@@ -32,11 +32,6 @@ export default function SettingsScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [rateText, setRateText] = useState(String(organization?.iqdPerPoint ?? ''));
-  const [managingFryers, setManagingFryers] = useState(false);
-  const [savingRate, setSavingRate] = useState(false);
-  const [rateNotice, setRateNotice] = useState<string | null>(null);
-  const [rateError, setRateError] = useState<string | null>(null);
   // In-app rather than Alert.alert: react-native-web does not implement Alert
   // with buttons, so the callback never fires and sign-out silently did nothing.
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -104,25 +99,6 @@ export default function SettingsScreen() {
       setProfileError(e?.message ?? t('settings.profileFailed'));
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  const parsedRate = Number(rateText.replace(/,/g, '').trim());
-  const rateValid = rateText.trim() !== '' && Number.isFinite(parsedRate) && parsedRate > 0;
-
-  const handleSaveRate = async () => {
-    if (!rateValid || savingRate) return;
-    setSavingRate(true);
-    setRateNotice(null);
-    setRateError(null);
-    try {
-      await setIqdPerPoint(parsedRate);
-      setRateText(String(parsedRate));
-      setRateNotice(t('settings.rateSaved', { rate: parsedRate.toLocaleString() }));
-    } catch (e: any) {
-      setRateError(e?.message ?? t('settings.rateFailed'));
-    } finally {
-      setSavingRate(false);
     }
   };
 
@@ -216,45 +192,18 @@ export default function SettingsScreen() {
         </Card>
 
         {profile?.role === 'owner' ? (
-          <Card style={{ marginBottom: 14 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
-              {t('settings.pointValue')}
-            </Text>
-            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
-              {t('settings.pointValueHint', { rate: (organization?.iqdPerPoint ?? 0).toLocaleString() })}
-            </Text>
-            {rateError ? <ErrorBanner message={rateError} /> : null}
-            {rateNotice ? (
-              <View style={{ backgroundColor: c.brandSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
-                <Text style={{ color: c.brand, fontSize: 13 }}>{rateNotice}</Text>
+          <Pressable onPress={() => router.push('/(main)/control-panel')} accessibilityRole="button" testID="open-control-panel">
+            <Card style={{ marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Ionicons name="options" size={22} color={c.brand} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{t('control.title')}</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('control.openHint')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
               </View>
-            ) : null}
-            <FieldInput
-              placeholder="25000"
-              value={rateText}
-              onChangeText={(v) => {
-                setRateText(v);
-                setRateNotice(null);
-              }}
-              keyboardType="number-pad"
-            />
-            <PrimaryButton
-              title={t('settings.savePointValue')}
-              onPress={handleSaveRate}
-              loading={savingRate}
-              disabled={!rateValid || parsedRate === organization?.iqdPerPoint}
-            />
-          </Card>
-        ) : null}
-
-        {profile?.role === 'owner' ? (
-          <Card style={{ marginBottom: 14 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
-              {t('oil.fryersCardTitle')}
-            </Text>
-            <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 12 }}>{t('oil.fryersCardHint')}</Text>
-            <PrimaryButton title={t('oil.manageFryers')} onPress={() => setManagingFryers(true)} />
-          </Card>
+            </Card>
+          </Pressable>
         ) : null}
 
         <PushCard />
@@ -395,7 +344,6 @@ export default function SettingsScreen() {
 
         <Text style={{ fontSize: 11, color: c.textFaint, textAlign: 'center', marginTop: 24 }}>BD Audit • v2.0.0</Text>
       </ScrollView>
-      <FryersSheet visible={managingFryers} onClose={() => setManagingFryers(false)} />
     </SafeAreaView>
   );
 }

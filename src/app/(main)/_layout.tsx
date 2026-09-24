@@ -118,6 +118,12 @@ function MainTabs() {
           }}
         />
         <Tabs.Screen
+          name="control-panel"
+          options={{
+            href: null, // reached from Settings, not a tab
+          }}
+        />
+        <Tabs.Screen
           name="settings"
           options={{
             title: t('mainTabs.settings'),

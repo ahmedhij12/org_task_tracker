@@ -342,6 +342,12 @@ export default {
     stay: "Stay signed in",
     signOut: "Sign out",
   },
+  control: {
+    title: "Control panel",
+    subtitle: "How the app works for the whole company. A change here applies to everyone straight away — no update needed.",
+    openHint: "Point value, fryers",
+    back: "Settings",
+  },
   pointsSheet: {
     loadFailed: "Could not load the adjustment history.",
     invalid: "Enter a valid amount.",
