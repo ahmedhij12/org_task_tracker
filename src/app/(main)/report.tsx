@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
@@ -78,7 +79,10 @@ export default function ReportScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginBottom: 16 }}>{t('report.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <MenuButton />
+          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('report.title')}</Text>
+        </View>
 
         <PrimaryButton title={t('report.closeMonth')} onPress={handleClose} loading={closing} />
         {closeError ? <Text style={{ color: c.rose, fontSize: 12, marginTop: 8 }}>{closeError}</Text> : null}

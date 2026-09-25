@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { PushCard } from '@/components/PushCard';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
@@ -105,7 +106,10 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginBottom: 20 }}>{t('settings.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <MenuButton />
+          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('settings.title')}</Text>
+        </View>
 
         <Card style={{ marginBottom: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,17 +10,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { exportOilTestReport, buildWebOilTestFile } from '@/lib/exportOilTestReport';
 import { shareOrDownloadFile } from '@/lib/webPdf';
 import { useThemeColors } from '@/components/ui';
+import { BranchBackRow } from '@/components/BranchBackRow';
 import type { OilGrade, OilTest } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
 
 const GRADE_HEX: Record<OilGrade, string> = { good: '#10B981', watch: '#F59E0B', change: '#E8141A' };
 
 /** History for oil tests, shared by all roles (RLS scopes the rows). With more
- * than one branch in view this stays ONE row per branch — tapping it narrows the
- * whole History screen to that branch, and only then do its fryers appear. A
- * group with twenty branches would otherwise open on a hundred fryer rows.
+ * than one branch in view this stays ONE row per branch — tapping it opens that
+ * branch's fryers in THIS section only (the other sections keep every branch).
+ * A group with twenty branches would otherwise open on a hundred fryer rows.
  * Inside a branch: tap a fryer → pick a day → that day's tests. */
-export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; onPickBranch?: (teamId: string) => void } = {}) {
+export function OilHistory({ filter = 'all' }: { filter?: string } = {}) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { tests, fryers } = useOilTests();
@@ -28,6 +29,9 @@ export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; 
   const { profile } = useAuth();
 
   const [openFryer, setOpenFryer] = useState<{ id: string; name: string; branch: string } | null>(null);
+  // The branch opened inside this section; the screen's own filter wins.
+  const [picked, setPicked] = useState<string | null>(null);
+  useEffect(() => setPicked(null), [filter]);
   const [viewer, setViewer] = useState<string[] | null>(null);
   // Sharing a test long after it was taken: the same PDF the sheet offers the
   // moment it is saved, for whoever did not send it then.
@@ -85,7 +89,8 @@ export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; 
     }));
   }, [tests, fryers, teams]);
 
-  const scoped = filter === 'all' ? branches : branches.filter((b) => b.teamId === filter);
+  const inView = filter === 'all' ? branches : branches.filter((b) => b.teamId === filter);
+  const scoped = picked ? inView.filter((b) => b.teamId === picked) : inView;
   // One row per branch only while several are in view; a single branch goes
   // straight to its fryers — there would be nothing to choose between.
   const collapsed = scoped.length > 1;
@@ -109,9 +114,10 @@ export function OilHistory({ filter = 'all', onPickBranch }: { filter?: string; 
   return (
     <View style={{ marginBottom: 20 }}>
       <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, marginBottom: 10 }}>{t('oil.historyTitle')}</Text>
+      {picked && inView.length > 1 ? <BranchBackRow name={teamName(picked)} onBack={() => setPicked(null)} /> : null}
       {collapsed
         ? scoped.map((b) => (
-            <Pressable key={b.teamId} onPress={() => onPickBranch?.(b.teamId)}
+            <Pressable key={b.teamId} onPress={() => setPicked(b.teamId)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
               <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: b.worst ? GRADE_HEX[b.worst] : c.border }} />
               <View style={{ flex: 1 }}>

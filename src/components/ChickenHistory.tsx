@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Modal, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -7,15 +7,16 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
 import { PhotoViewer } from '@/components/PhotoViewer';
 import { useThemeColors } from '@/components/ui';
+import { BranchBackRow } from '@/components/BranchBackRow';
 import type { ChickenMarination } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
 import { marinationStatus, humanSpan } from '@/lib/marination';
 
 /** Chicken marination history, all roles (RLS-scoped), built like the oil
  * section above it: with several branches in view it is one row per branch, and
- * tapping it narrows the whole History screen to that branch — only then does
- * the day list appear, and a day opens that day's records. */
-export function ChickenHistory({ filter = 'all', onPickBranch }: { filter?: string; onPickBranch?: (teamId: string) => void } = {}) {
+ * tapping one opens THAT branch's marination days right here — the other
+ * sections keep every branch. A day opens that day's records. */
+export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { records } = useChicken();
@@ -23,6 +24,9 @@ export function ChickenHistory({ filter = 'all', onPickBranch }: { filter?: stri
   const { profile } = useAuth();
   const isOwner = profile?.role === 'owner';
   const [openDay, setOpenDay] = useState<string | null>(null);
+  // The branch opened inside this section; the screen's own filter wins.
+  const [picked, setPicked] = useState<string | null>(null);
+  useEffect(() => setPicked(null), [filter]);
   const [viewer, setViewer] = useState<string[] | null>(null);
 
   const teamName = (id: string) => teams.find((tm) => tm.id === id)?.name ?? '';
@@ -30,10 +34,12 @@ export function ChickenHistory({ filter = 'all', onPickBranch }: { filter?: stri
   const tzOf = (teamId: string) => teams.find((tm) => tm.id === teamId)?.timezone ?? 'Asia/Baghdad';
   const time = (iso: string, teamId: string) => timeOf(iso, i18n.language, tzOf(teamId));
 
-  const scoped = useMemo(
+  const inView = useMemo(
     () => (filter === 'all' ? records : records.filter((x) => x.teamId === filter)),
     [records, filter]
   );
+  const scoped = useMemo(() => (picked ? inView.filter((x) => x.teamId === picked) : inView), [inView, picked]);
+  const inViewBranchCount = useMemo(() => new Set(inView.map((x) => x.teamId)).size, [inView]);
 
   // One row per branch while more than one is in view, same as the fryers.
   const branches = useMemo(() => {
@@ -59,9 +65,10 @@ export function ChickenHistory({ filter = 'all', onPickBranch }: { filter?: stri
   return (
     <View style={{ marginBottom: 20 }}>
       <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, marginBottom: 10 }}>{t('chicken.historyTitle')}</Text>
+      {picked && inViewBranchCount > 1 ? <BranchBackRow name={teamName(picked)} onBack={() => setPicked(null)} /> : null}
       {collapsed
         ? branches.map((b) => (
-            <Pressable key={b.teamId} onPress={() => onPickBranch?.(b.teamId)}
+            <Pressable key={b.teamId} onPress={() => setPicked(b.teamId)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
               <Ionicons name="restaurant-outline" size={20} color={c.brand} />
               <View style={{ flex: 1 }}>

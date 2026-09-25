@@ -5,6 +5,7 @@ import { BranchLocationPicker, type PinnedLocation } from '@/components/BranchLo
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import { useOrgData } from '@/hooks/useOrgData';
 import { Card, FieldInput, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { ON_ACCENT } from '@/theme';
@@ -45,7 +46,10 @@ export default function TeamsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('teams.title')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <MenuButton />
+            <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('teams.title')}</Text>
+          </View>
           <Pressable
             onPress={() => setCreating(true)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }}

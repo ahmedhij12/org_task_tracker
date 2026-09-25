@@ -1,25 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { useRefreshAll } from '@/hooks/useRefreshAll';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useReports } from '@/hooks/useReports';
 import { Card, useThemeColors } from '@/components/ui';
-import { ON_ACCENT } from '@/theme';
 import { TaskRow } from '@/components/TaskRow';
 import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
-import { bucketTasks, effectiveTaskCompleted, latestCompletionForTask } from '@/lib/taskUtils';
+import { bucketTasks, effectiveTaskCompleted } from '@/lib/taskUtils';
 import { groupBranchSummary, type BranchGroup } from '@/lib/branchSummary';
 import { ScorePill } from '@/components/ScoreRing';
 import { formatScore, gradeColors, gradeOf } from '@/lib/score';
-import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
 import { MyAuditScore } from '@/components/MyAuditScore';
 import { TodayChecklistCard } from '@/components/TodayChecklistCard';
 import { OilTestCard } from '@/components/OilTestCard';
@@ -27,6 +25,7 @@ import { OilAlert } from '@/components/OilAlert';
 import { ReinstallNotice } from '@/components/ReinstallNotice';
 import { ChickenCard } from '@/components/ChickenCard';
 import { BranchAudits } from '@/components/BranchAudits';
+import { AuditCard } from '@/components/AuditCard';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
 export default function MainIndex() {
@@ -138,37 +137,9 @@ function OwnerDashboard() {
   const { profile, organization } = useAuth();
   const { currentSummary, loading, refresh, loadSupervisorStreaks } = useReports();
   const refreshAll = useRefreshAll(refresh);
-  const { tasks, history, setTaskCompletion } = useOrgData();
   const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
-  const [proofTask, setProofTask] = useState<OrgTask | null>(null);
   const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
-  const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-
-  // The owner is never assigned an ordinary task by anyone else (assignment
-  // only flows downward) — in practice this is their own audit tasks, but
-  // written generally in case that ever changes.
-  const myTasks = tasks
-    .filter((tsk) => tsk.assigneeId === profile?.id)
-    .map((tsk) => ({ ...tsk, completed: effectiveTaskCompleted(tsk, history) }))
-    .filter((tsk) => {
-      if (!tsk.completed) return true;
-      if (!tsk.requiresReview) return false;
-      return !latestCompletionForTask(tsk.id, history)?.reviewedBy;
-    });
-
-  const handlePressCheckbox = (tsk: OrgTask) => {
-    if (tsk.templateId) {
-      if (!tsk.completed) setChecklistTask(tsk);
-      return;
-    }
-    if (!tsk.completed && tsk.requiresProof) {
-      setProofTask(tsk);
-      return;
-    }
-    setTaskCompletion(tsk.id, !tsk.completed).catch((e) => console.warn(e));
-  };
 
   const handleCopy = async () => {
     if (!organization) return;
@@ -211,7 +182,10 @@ function OwnerDashboard() {
         contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <View style={{ paddingTop: 1 }}>
+            <MenuButton />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
@@ -229,27 +203,8 @@ function OwnerDashboard() {
         <ReinstallNotice />
         <OilAlert />
         <OilTestCard isAudit />
-
-        {myTasks.length > 0 ? (
-          <>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
-              {t('dashboard.auditTypesHeading')}
-            </Text>
-            <Text style={{ fontSize: 12, color: c.textMuted, marginTop: -4, marginBottom: 8 }}>{t('dashboard.auditTypesHint')}</Text>
-            {/* No swipe-to-delete here: with no "+" on the admin dashboard, deleting an audit type would leave no way to start that audit. */}
-            {myTasks.map((tsk) => (
-              <TaskRow
-                key={tsk.id}
-                task={tsk}
-                members={[]}
-                showAssignee={false}
-                canComplete
-                onPressCheckbox={() => handlePressCheckbox(tsk)}
-                onEdit={tsk.templateId ? () => setEditingTemplateId(tsk.templateId) : undefined}
-              />
-            ))}
-          </>
-        ) : null}
+        {/* Replaces the "+" screen: an audit starts here. Checklist templates are edited in Checklists. */}
+        <AuditCard />
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}
@@ -321,55 +276,6 @@ function OwnerDashboard() {
         )}
       </ScrollView>
 
-      {proofTask ? (
-        <CompleteTaskSheet
-          task={proofTask}
-          orgId={organization!.id}
-          visible={!!proofTask}
-          onCancel={() => setProofTask(null)}
-          onSubmit={async (note, photoUrls) => {
-            await setTaskCompletion(proofTask.id, true, note || undefined, photoUrls);
-            setProofTask(null);
-          }}
-        />
-      ) : null}
-      {checklistTask ? (
-        <FillChecklistSheet
-          task={checklistTask}
-          orgId={organization!.id}
-          visible={!!checklistTask}
-          onClose={() => setChecklistTask(null)}
-        />
-      ) : null}
-      <CreateChecklistTemplateSheet
-        visible={!!editingTemplateId}
-        editingTemplateId={editingTemplateId ?? undefined}
-        onClose={() => setEditingTemplateId(null)}
-      />
-
-      <Pressable
-        onPress={() => router.push('/(main)/create-task')}
-        accessibilityRole="button"
-        accessibilityLabel={t('dashboard.addTask')}
-        style={{
-          position: 'absolute',
-          right: 20,
-          bottom: 24,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: c.accent,
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: c.accent,
-          shadowOpacity: 0.4,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 6,
-        }}
-      >
-        <Ionicons name="add" size={28} color={ON_ACCENT} />
-      </Pressable>
     </SafeAreaView>
   );
 }

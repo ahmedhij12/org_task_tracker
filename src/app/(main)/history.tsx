@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { OilHistory } from '@/components/OilHistory';
 import { ChickenHistory } from '@/components/ChickenHistory';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { useRefreshAll } from '@/hooks/useRefreshAll';
 import { useOrgData } from '@/hooks/useOrgData';
@@ -13,6 +14,8 @@ import { AdjustPointsSheet } from '@/components/AdjustPointsSheet';
 import { Card, useThemeColors } from '@/components/ui';
 import { isFailed, needsReview } from '@/types';
 import { ScorePill } from '@/components/ScoreRing';
+import { BranchBackRow } from '@/components/BranchBackRow';
+import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
 import type { OrgTask, TaskCompletion } from '@/types';
 
 /** 'all' or a team (branch) id — new branches show up automatically since this just reads the live teams list. */
@@ -32,14 +35,31 @@ export default function HistoryScreen() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
-  const { history, tasks, allMembers: members, teams, loading, refresh } = useOrgData();
+  const { history: allHistory, tasks, allMembers: members, teams, loading, refresh } = useOrgData();
   const refreshAll = useRefreshAll(refresh);
   const [filter, setFilter] = useState<Filter>('all');
+  // A branch opened inside the checklists section only — the oil and
+  // marination sections above keep their own. The chips at the top still
+  // narrow the whole screen.
+  const [pickedChecklistBranch, setPickedChecklistBranch] = useState<string | null>(null);
+  useEffect(() => setPickedChecklistBranch(null), [filter]);
+  const checklistBranch = filter !== 'all' ? filter : pickedChecklistBranch;
   const [openEntry, setOpenEntry] = useState<TaskCompletion | null>(null);
   const [pointsEntry, setPointsEntry] = useState<TaskCompletion | null>(null);
 
   const isOwner = profile?.role === 'owner';
   const isLeader = profile?.role === 'team_admin';
+
+  // An admin's daily checklists live in the Checklists tab, where they are
+  // verified; listing them here too put every one in two places. So for an
+  // admin this section is the audits. Supervisors have no Checklists tab, so
+  // their History keeps everything.
+  const dailyChecklists = useSupervisorChecklists();
+  const history = useMemo(() => {
+    if (!isOwner) return allHistory;
+    const daily = new Set(dailyChecklists.map((r) => r.id));
+    return allHistory.filter((h) => !daily.has(h.id));
+  }, [allHistory, dailyChecklists, isOwner]);
 
   // Same ownership rule as adjust_completion_points itself: an owner can
   // adjust any audit, a team_admin only the ones they personally performed.
@@ -75,13 +95,13 @@ export default function HistoryScreen() {
   };
 
   const missedShown = useMemo(
-    () => failedTasks.filter((t) => filter === 'all' || t.teamId === filter),
-    [failedTasks, filter]
+    () => failedTasks.filter((t) => !checklistBranch || t.teamId === checklistBranch),
+    [failedTasks, checklistBranch]
   );
 
   const shown = useMemo(
-    () => history.filter((h) => filter === 'all' || branchIdOf(h) === filter),
-    [history, filter, memberById]
+    () => history.filter((h) => !checklistBranch || branchIdOf(h) === checklistBranch),
+    [history, checklistBranch, memberById]
   );
 
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? t('history.someone');
@@ -93,7 +113,7 @@ export default function HistoryScreen() {
   // Same shape as the oil and chicken sections above: with several branches in
   // view this is one row per branch, and tapping it narrows the whole screen.
   // Entries that belong to no branch stay listed underneath rather than vanish.
-  const collapsed = filter === 'all' && filterTeams.length > 1;
+  const collapsed = !checklistBranch && filterTeams.length > 1;
   const branchRows = useMemo(() => {
     const map = new Map<string, { done: number; missed: number }>();
     const bump = (id: string, key: 'done' | 'missed') => {
@@ -122,7 +142,10 @@ export default function HistoryScreen() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <MenuButton />
+          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('history.title')}</Text>
+        </View>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, marginBottom: 16 }}>{scopeNote}</Text>
 
         {filterTeams.length > 1 ? (
@@ -154,23 +177,28 @@ export default function HistoryScreen() {
         </ScrollView>
         ) : null}
 
-        <OilHistory filter={filter} onPickBranch={setFilter} />
-        <ChickenHistory filter={filter} onPickBranch={setFilter} />
+        <OilHistory filter={filter} />
+        <ChickenHistory filter={filter} />
 
-        {shown.length > 0 || missedShown.length > 0 ? (
+        {isOwner ? (
+          <>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted }}>{t('history.auditsTitle')}</Text>
+            <Text style={{ fontSize: 12, color: c.textFaint, marginTop: 2, marginBottom: 10 }}>{t('history.auditsHint')}</Text>
+          </>
+        ) : shown.length > 0 || missedShown.length > 0 ? (
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, marginBottom: 10 }}>{t('history.checklistsTitle')}</Text>
         ) : null}
 
         {collapsed ? (
           <>
             {branchRows.map((b) => (
-              <Pressable key={b.id} onPress={() => setFilter(b.id)}
+              <Pressable key={b.id} onPress={() => setPickedChecklistBranch(b.id)}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
                 <Ionicons name="clipboard-outline" size={20} color={c.brand} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{b.name}</Text>
                   <Text style={{ fontSize: 12, color: b.missed ? c.rose : c.textMuted }}>
-                    {t('history.branchCount', { count: b.done })}
+                    {t(isOwner ? 'history.auditCount' : 'history.branchCount', { count: b.done })}
                     {b.missed ? ` · ${t('history.branchMissed', { count: b.missed })}` : ''}
                   </Text>
                 </View>
@@ -194,6 +222,12 @@ export default function HistoryScreen() {
           </>
         ) : (
           <>
+            {pickedChecklistBranch && filter === 'all' ? (
+              <BranchBackRow
+                name={teams.find((tm) => tm.id === pickedChecklistBranch)?.name ?? ''}
+                onBack={() => setPickedChecklistBranch(null)}
+              />
+            ) : null}
             {missedShown.map((task) => (
               <MissedRow key={task.id} task={task} nameOf={nameOf} />
             ))}

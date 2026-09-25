@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { CreateUserSheet } from '@/components/CreateUserSheet';
@@ -75,7 +76,10 @@ export default function PeopleScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('people.title')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <MenuButton />
+            <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('people.title')}</Text>
+          </View>
           {/* Only the admin adds staff; branch managers just see their team. */}
           {isOwner ? (
           <Pressable

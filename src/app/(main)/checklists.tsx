@@ -3,10 +3,13 @@ import { View, Text, ScrollView, Pressable, RefreshControl, Image } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { MenuButton } from '@/components/SideMenu';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
+import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
+import { useChecklists } from '@/hooks/useChecklists';
 import { Card, useThemeColors } from '@/components/ui';
 import type { TaskCompletion } from '@/types';
 
@@ -29,6 +32,18 @@ export default function ChecklistsScreen() {
   const submissions = useSupervisorChecklists();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<TaskCompletion | null>(null);
+  // Editing a template used to live behind the "+" screen, which is gone;
+  // the checklists themselves are the natural home for their questions.
+  const { templates } = useChecklists();
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const kindOf = (tpl: (typeof templates)[number]) =>
+    tpl.assignToRole === 'employee'
+      ? t('checklists.kindSupervisor')
+      : tpl.assignToRole === 'team_admin'
+        ? t('checklists.kindManager')
+        : tpl.name.endsWith(' — Audit')
+          ? t('checklists.kindAudit')
+          : t('checklists.kindOther');
 
   const branches = useMemo(() => {
     // A branch manager sees only their own branch(es), and their own
@@ -53,7 +68,10 @@ export default function ChecklistsScreen() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={c.brand} />}
       >
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('checklists.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <MenuButton />
+          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('checklists.title')}</Text>
+        </View>
         <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 4, marginBottom: 18 }}>{t('checklists.subtitle')}</Text>
 
         {branches.map(({ team, rows, unverified }) => {
@@ -152,7 +170,36 @@ export default function ChecklistsScreen() {
             </Card>
           );
         })}
+
+        {isOwner ? (
+          <View style={{ marginTop: 18 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase' }}>{t('checklists.templatesTitle')}</Text>
+            <Text style={{ fontSize: 12, color: c.textFaint, marginTop: 2, marginBottom: 10 }}>{t('checklists.templatesHint')}</Text>
+            {templates
+              .filter((tpl) => !tpl.archived)
+              .map((tpl) => (
+                <Pressable key={tpl.id} onPress={() => setEditingTemplateId(tpl.id)} accessibilityRole="button">
+                  <Card style={{ marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="document-text-outline" size={20} color={c.brand} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{tpl.name}</Text>
+                        <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{kindOf(tpl)}</Text>
+                      </View>
+                      <Ionicons name="create-outline" size={20} color={c.textMuted} />
+                    </View>
+                  </Card>
+                </Pressable>
+              ))}
+          </View>
+        ) : null}
       </ScrollView>
+
+      <CreateChecklistTemplateSheet
+        visible={!!editingTemplateId}
+        editingTemplateId={editingTemplateId ?? undefined}
+        onClose={() => setEditingTemplateId(null)}
+      />
 
       {selected ? (
         <CompletionDetailSheet

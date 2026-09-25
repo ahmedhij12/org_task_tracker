@@ -9,6 +9,7 @@ import { OilTestsProvider } from '@/hooks/useOilTests';
 import { ChickenProvider } from '@/hooks/useChicken';
 import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
 import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
+import { SideMenuProvider } from '@/components/SideMenu';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/components/ui';
@@ -21,9 +22,11 @@ export default function MainLayout() {
       <ChecklistDataProvider>
         <OilTestsProvider>
           <ChickenProvider>
-            <MainTabs />
-            <PermissionsOnboarding />
-            <ConfirmBranchLocation />
+            <SideMenuProvider>
+              <MainTabs />
+              <PermissionsOnboarding />
+              <ConfirmBranchLocation />
+            </SideMenuProvider>
           </ChickenProvider>
         </OilTestsProvider>
       </ChecklistDataProvider>
@@ -38,6 +41,13 @@ function MainTabs() {
   const { t, i18n } = useTranslation();
   const isOwner = profile?.role === 'owner';
   const isEmployee = profile?.role === 'employee';
+  const isManager = profile?.role === 'team_admin';
+  const isSuperAdmin = isOwner && !!profile?.isSuperAdmin;
+  // His choice (2026-09-25): an admin's bar keeps what they open all day —
+  // Dashboard, Branches, History, Settings; the super admin also keeps Staff.
+  // Everything else is in the side menu (components/SideMenu.tsx). A hidden
+  // tab is still a route, so the menu can open it. Supervisors and branch
+  // managers keep the bars they had.
   const unverified = useUnverifiedChecklistCount();
   const isArabic = i18n.language?.startsWith('ar');
   const insets = useSafeAreaInsets();
@@ -82,7 +92,7 @@ function MainTabs() {
           name="report"
           options={{
             title: t('mainTabs.report'),
-            href: isOwner ? undefined : null,
+            href: null, // admins open it from the side menu
             tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart" size={size} color={color} />,
           }}
         />
@@ -90,7 +100,7 @@ function MainTabs() {
           name="checklists"
           options={{
             title: t('mainTabs.checklists'),
-            href: isEmployee ? null : undefined,
+            href: isManager ? undefined : null, // admins: side menu
             tabBarBadge: !isEmployee && unverified > 0 ? unverified : undefined,
             tabBarIcon: ({ color, size }) => <Ionicons name="clipboard" size={size} color={color} />,
           }}
@@ -106,15 +116,10 @@ function MainTabs() {
           name="people"
           options={{
             title: t('mainTabs.people'),
-            // Employees have no one to manage, so the tab is hidden for them.
-            href: isEmployee ? null : undefined,
+            // Employees have no one to manage; an admin reaches Staff from
+            // the side menu, the super admin keeps it in the bar.
+            href: isManager || isSuperAdmin ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="person-add" size={size} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="create-task"
-          options={{
-            href: null, // pushed programmatically, not a tab destination
           }}
         />
         <Tabs.Screen
