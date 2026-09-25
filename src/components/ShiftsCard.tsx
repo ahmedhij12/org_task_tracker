@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
+import { Ionicons } from '@expo/vector-icons';
 import { Card, ErrorBanner, useThemeColors } from '@/components/ui';
+import { ScheduleSheet } from '@/components/ScheduleSheet';
 
 type Shift = 'AM' | 'PM' | 'OFF';
 const SHIFTS: Shift[] = ['AM', 'PM', 'OFF'];
@@ -25,7 +27,9 @@ export function ShiftsCard() {
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
   const { members, teams } = useOrgData();
-  const myTeams = teams.filter((tm) => profile?.teamIds.includes(tm.id));
+  // The admin schedules any branch — one without a manager has nobody else to do it.
+  const myTeams = profile?.role === 'owner' ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id));
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
   const team = teamId ?? myTeams[0]?.id ?? null;
 
@@ -95,7 +99,20 @@ export function ShiftsCard() {
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>{t('shifts.title')}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase' }}>{t('shifts.title')}</Text>
+        {supervisors.length > 0 ? (
+          <Pressable
+            testID="open-schedule"
+            onPress={() => setScheduleOpen(true)}
+            accessibilityRole="button"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.brand, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 }}
+          >
+            <Ionicons name="calendar-outline" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t('schedule.open')}</Text>
+          </Pressable>
+        ) : null}
+      </View>
       <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>{t('shifts.hint')}</Text>
       {error ? <ErrorBanner message={error} /> : null}
 
@@ -129,6 +146,15 @@ export function ShiftsCard() {
       )}
       {supervisors.length > 0 && unset > 0 ? (
         <Text style={{ fontSize: 12, color: c.amber, marginTop: 8 }}>{t('shifts.unsetCount', { count: unset })}</Text>
+      ) : null}
+      {scheduleOpen && team ? (
+        <ScheduleSheet
+          visible
+          teamId={team}
+          supervisors={supervisors.map((m) => ({ id: m.id, name: m.name }))}
+          onClose={() => setScheduleOpen(false)}
+          onSaved={load}
+        />
       ) : null}
     </Card>
   );

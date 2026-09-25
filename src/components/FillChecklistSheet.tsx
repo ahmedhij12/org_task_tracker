@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, Image, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,6 +52,10 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   const [answers, setAnswers] = useState<Record<string, { answer: boolean | 'na' | null; note: string }>>({});
   const [sectionPhotos, setSectionPhotos] = useState<Record<string, Shot[]>>({});
   const [offDutyReason, setOffDutyReason] = useState('');
+  // Past this branch's checklist deadline (+ grace): the reason is required
+  // and is saved as the completion's note (the database stamps the lateness).
+  const [late, setLate] = useState<{ dueAt: string } | null>(null);
+  const [lateReason, setLateReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // "Left to answer" filter: the question ids that were still open when it
@@ -196,13 +200,24 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
   );
   // The supervisors' daily checklist carries proof they were really there.
   const needsProof = !task.isAudit && !!template?.assignToRole;
+  const checkLate = async (): Promise<boolean> => {
+    const { data, error: e } = await supabase.rpc('my_checklist_slot', { p_team: task.teamId });
+    const slot = !e && Array.isArray(data) ? data[0] : null;
+    if (slot?.late) setLate({ dueAt: slot.due_at });
+    return !!slot?.late;
+  };
+  useEffect(() => {
+    if (visible && needsProof) checkLate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, needsProof, task.id]);
   const canSubmit =
     unanswered.length === 0 &&
     missingNotes.length === 0 &&
     !submitting &&
     !!template &&
     (!task.isAudit || (!!signatureSvg && !!signedLocation)) &&
-    (!needsProof || (!!selfie && !!signedLocation && !!signatureSvg));
+    (!needsProof || (!!selfie && !!signedLocation && !!signatureSvg)) &&
+    (!late || lateReason.trim().length > 0);
 
   // Opens the front-camera capture (SelfieCapture forces the front camera and a
   // live shot on web, where the OS picker otherwise allows any file/rear camera).
@@ -213,6 +228,11 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     setError(null);
     setSubmitting(true);
     try {
+      // The deadline may have passed while the sheet was open: ask for the reason first.
+      if (needsProof && !late && (await checkLate())) {
+        setError(t('fill.nowLate'));
+        return;
+      }
       const uploadedPhotos: { sectionTitle: string; photoUrl: string }[] = [];
       for (const [sectionTitle, shots] of Object.entries(sectionPhotos)) {
         for (let i = 0; i < shots.length; i += 1) {
@@ -263,7 +283,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
       await setTaskCompletion(
         task.id,
         true,
-        undefined,
+        late ? lateReason.trim() : undefined,
         [],
         payload,
         uploadedPhotos,
@@ -766,6 +786,22 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                 </ScrollView>
 
 
+                {late ? (
+                  <View testID="late-reason" style={{ backgroundColor: c.roseSoft, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: c.rose, marginBottom: 8 }}>
+                      {t('fill.lateTitle', { time: new Date(late.dueAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }) })}
+                    </Text>
+                    <TextInput
+                      value={lateReason}
+                      onChangeText={setLateReason}
+                      placeholder={t('fill.lateReasonPlaceholder')}
+                      placeholderTextColor={c.textFaint}
+                      multiline
+                      style={{ minHeight: 44, borderWidth: 1, borderColor: c.border, borderRadius: 10, padding: 10, fontSize: 14, color: c.text, backgroundColor: c.bg, textAlign: textAlignFor(lateReason) }}
+                    />
+                  </View>
+                ) : null}
+
                 <Text
                   onPress={leftCount > 0 ? showLeftOnly : undefined}
                   style={{ fontSize: 12, color: leftCount > 0 ? c.brand : c.textMuted, marginBottom: 10 }}
@@ -784,6 +820,8 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
                               ? t('fill.signAbove')
                             : needsProof && !signedLocation
                               ? t('fill.waitingLocation')
+                            : late && !lateReason.trim()
+                              ? t('fill.writeLateReason')
                               : t('fill.ready')}
                 </Text>
 

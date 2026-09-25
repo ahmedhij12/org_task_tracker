@@ -12,6 +12,7 @@ import { OilTimesCard } from '@/components/control/OilTimesCard';
 import { MarinationRulesCard } from '@/components/control/MarinationRulesCard';
 import { PenaltyAmountsCard } from '@/components/control/PenaltyAmountsCard';
 import { PushTestCard } from '@/components/control/PushTestCard';
+import { ChecklistDeadlinesCard } from '@/components/control/ChecklistDeadlinesCard';
 
 /**
  * The control panel: every setting that decides how the app behaves for the
@@ -42,6 +43,7 @@ export default function ControlPanelScreen() {
 
         <PointValueCard />
         <CheckInDistanceCard />
+        <ChecklistDeadlinesCard />
         <OilTimesCard />
         <MarinationRulesCard />
         <PenaltyAmountsCard />

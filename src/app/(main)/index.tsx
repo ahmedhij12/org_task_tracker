@@ -19,6 +19,7 @@ import { ScorePill } from '@/components/ScoreRing';
 import { formatScore, gradeColors, gradeOf } from '@/lib/score';
 import { MyAuditScore } from '@/components/MyAuditScore';
 import { TodayChecklistCard } from '@/components/TodayChecklistCard';
+import { ChecklistDeadlines } from '@/components/ChecklistDeadlines';
 import { OilTestCard } from '@/components/OilTestCard';
 import { OilAlert } from '@/components/OilAlert';
 import { ReinstallNotice } from '@/components/ReinstallNotice';
@@ -74,6 +75,7 @@ function TeamAdminDashboard() {
 
         <ReinstallNotice />
         <OilAlert />
+        <ChecklistDeadlines />
         <TodayChecklistCard />
         <OilTestCard />
         <ChickenCard />
@@ -177,6 +179,7 @@ function OwnerDashboard() {
         <OilTestCard isAudit />
         {/* Replaces the "+" screen: each audit checklist lives here for good — tap to start, pencil to edit. */}
         <AuditCards />
+        <ChecklistDeadlines />
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}
@@ -290,6 +293,7 @@ function EmployeeHome() {
       >
         <DashboardHeader badge={t('dashboard.employeeBadge')} subtitle={myBranchNames} />
 
+        <ChecklistDeadlines />
         <TodayChecklistCard />
         <OilTestCard />
         <ChickenCard />

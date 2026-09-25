@@ -110,8 +110,9 @@ export default function PeopleScreen() {
           </Text>
         ) : null}
 
-        {/* The branch manager sets his supervisors' shifts here (spec section 3). */}
-        {profile?.role === 'team_admin' ? <ShiftsCard /> : null}
+        {/* The branch manager sets his supervisors' shifts here (spec section 3);
+            the admin too, for a branch with no manager. */}
+        {profile?.role === 'team_admin' || profile?.role === 'owner' ? <ShiftsCard /> : null}
 
         {groups.map((group) => {
           const isOpen = expanded.has(group.id);
