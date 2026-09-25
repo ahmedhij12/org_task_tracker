@@ -396,6 +396,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    // One phone per account: this sign-in ends every other one (useSingleDevice
+    // makes the other phones notice within a minute). Never blocks sign-in.
+    await supabase.auth.signOut({ scope: 'others' }).catch(() => {});
   };
 
   const signOut = async () => {

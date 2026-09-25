@@ -45,6 +45,7 @@ export default {
       passwordPlaceholder: 'Your password',
       genericError: 'Could not sign in. Check your details and try again.',
       forgot: 'Forgot password?',
+      signedOutElsewhere: 'You were signed out because your account was opened on another phone. Each account works on one phone at a time.',
     },
     forgot: {
       title: 'Forgot password',

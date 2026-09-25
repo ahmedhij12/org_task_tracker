@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { FieldInput, UsernameInput, PrimaryButton, ErrorBanner, ScreenTitle, ScreenSubtitle, useThemeColors } from '@/components/ui';
 import { sanitizeOrgCode } from '@/lib/orgCode';
+import { takeSignedOutElsewhere } from '@/hooks/useSingleDevice';
 
 export default function SignInScreen() {
   const c = useThemeColors();
@@ -18,6 +19,11 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sent here because the same account was opened on another phone: say so.
+  const [elsewhere, setElsewhere] = useState(false);
+  useEffect(() => {
+    takeSignedOutElsewhere().then(setElsewhere);
+  }, []);
 
   const canSubmit = orgCode.trim() && username.trim() && password.length > 0;
 
@@ -48,6 +54,11 @@ export default function SignInScreen() {
 
           <View style={{ height: 20 }} />
 
+          {elsewhere ? (
+            <View style={{ backgroundColor: c.amberSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+              <Text style={{ color: c.amber, fontSize: 13, fontWeight: '600' }}>{t('auth.signin.signedOutElsewhere')}</Text>
+            </View>
+          ) : null}
           {error ? <ErrorBanner message={error} /> : null}
 
           <FieldInput

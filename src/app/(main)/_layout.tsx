@@ -12,6 +12,7 @@ import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
 import { SideMenuProvider } from '@/components/SideMenu';
 import { OrgSettingsProvider } from '@/hooks/useOrgSettings';
 import { useActivityTracking } from '@/hooks/useActivityTracking';
+import { useSingleDevice } from '@/hooks/useSingleDevice';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/components/ui';
@@ -42,6 +43,7 @@ export default function MainLayout() {
 function MainTabs() {
   const { profile } = useAuth();
   useActivityTracking();
+  useSingleDevice();
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const isOwner = profile?.role === 'owner';
