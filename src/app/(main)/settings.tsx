@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { PushCard } from '@/components/PushCard';
+import { RecoveryEmailCard } from '@/components/RecoveryEmailCard';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
@@ -19,14 +20,10 @@ import type { ThemePref } from '@/types';
 export default function SettingsScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { profile, organization, teams, signOut, addRecoveryEmail, updateMyProfile } = useAuth();
+  const { profile, organization, teams, signOut, updateMyProfile } = useAuth();
   const { themePref, setThemePref } = useThemePref();
   const { languagePref, setLanguagePref, needsRestartForDirection } = useLanguagePref();
   const [copied, setCopied] = useState(false);
-  const [recoveryEmail, setRecoveryEmail] = useState(profile?.recoveryEmail ?? '');
-  const [savingEmail, setSavingEmail] = useState(false);
-  const [emailNotice, setEmailNotice] = useState<string | null>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [nameText, setNameText] = useState(profile?.name ?? '');
   const [codeText, setCodeText] = useState(profile?.employeeCode ?? '');
@@ -51,22 +48,6 @@ export default function SettingsScreen() {
     await Clipboard.setStringAsync(organization.orgCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  };
-
-  const handleSaveEmail = async () => {
-    const trimmed = recoveryEmail.trim();
-    if (!trimmed || savingEmail) return;
-    setSavingEmail(true);
-    setEmailNotice(null);
-    setEmailError(null);
-    try {
-      await addRecoveryEmail(trimmed);
-      setEmailNotice(t('settings.emailSaved'));
-    } catch (e: any) {
-      setEmailError(e?.message ?? t('settings.emailFailed'));
-    } finally {
-      setSavingEmail(false);
-    }
   };
 
   const handlePickPhoto = async () => {
@@ -235,33 +216,7 @@ export default function SettingsScreen() {
 
         <PushCard />
 
-        <Card style={{ marginBottom: 14 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 8 }}>
-            {t('settings.recoveryEmail')}
-          </Text>
-          <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>
-            {t('settings.recoveryHint')}
-          </Text>
-          {emailError ? <ErrorBanner message={emailError} /> : null}
-          {emailNotice ? (
-            <View style={{ backgroundColor: c.brandSoft, borderRadius: 12, padding: 12, marginBottom: 14 }}>
-              <Text style={{ color: c.brand, fontSize: 13 }}>{emailNotice}</Text>
-            </View>
-          ) : null}
-          <FieldInput
-            placeholder="you@example.com"
-            value={recoveryEmail}
-            onChangeText={setRecoveryEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-          <PrimaryButton
-            title={t('settings.saveEmail')}
-            onPress={handleSaveEmail}
-            loading={savingEmail}
-            disabled={!recoveryEmail.trim() || recoveryEmail.trim() === (profile?.recoveryEmail ?? '')}
-          />
-        </Card>
+        <RecoveryEmailCard />
 
         <Card style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 10 }}>{t('settings.appearance')}</Text>

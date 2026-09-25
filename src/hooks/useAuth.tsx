@@ -47,7 +47,10 @@ interface AuthContextValue extends AuthState {
   removeProfileFromTeam: (profileId: string, teamId: string) => Promise<void>;
   /** Used by the forced-change screen; clears mustChangePassword on success. */
   changeOwnPassword: (newPassword: string) => Promise<void>;
-  addRecoveryEmail: (email: string) => Promise<void>;
+  /** Mails a 6-digit code to the address; it becomes the recovery email once confirmed. */
+  requestRecoveryEmail: (email: string) => Promise<void>;
+  /** True when the code was right and the address is now verified. */
+  confirmRecoveryEmail: (code: string) => Promise<boolean>;
   /** Anyone: their own display name, company ID code and photo. */
   updateMyProfile: (name: string, employeeCode: string, avatarUrl: string | null) => Promise<void>;
   /** Owner-only: what one penalty point is worth in IQD from now on. */
@@ -91,6 +94,7 @@ function mapProfile(
     active: boolean;
     is_super_admin?: boolean | null;
     recovery_email: string | null;
+    recovery_email_verified_at?: string | null;
     deleted_at?: string | null;
     avatar_url?: string | null;
     employee_code?: string | null;
@@ -112,6 +116,7 @@ function mapProfile(
     active: row.active,
     isSuperAdmin: row.is_super_admin ?? false,
     recoveryEmail: row.recovery_email,
+    recoveryEmailVerifiedAt: row.recovery_email_verified_at ?? null,
     deletedAt: row.deleted_at ?? null,
     avatarUrl: row.avatar_url ?? null,
     employeeCode: row.employee_code ?? null,
@@ -349,20 +354,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
-  const addRecoveryEmail: AuthContextValue['addRecoveryEmail'] = async (email) => {
-    const trimmed = email.trim();
-    // Moves the auth email off the synthetic address so Supabase's built-in
-    // password reset can reach a real mailbox.
-    const { error: updateError } = await supabase.auth.updateUser({ email: trimmed });
-    if (updateError) throw updateError;
+  // The sign-in address stays synthetic; the recovery email is proved with a
+  // mailed code and only then used for resets (2026-09-25-recovery-email.sql).
+  const requestRecoveryEmail: AuthContextValue['requestRecoveryEmail'] = async (email) => {
+    const { error } = await supabase.rpc('request_recovery_email', { p_email: email.trim() });
+    if (error) throw error;
+  };
 
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ recovery_email: trimmed })
-      .eq('id', state.profile?.id ?? '');
-    if (profileError) throw profileError;
-
+  const confirmRecoveryEmail: AuthContextValue['confirmRecoveryEmail'] = async (code) => {
+    const { data, error } = await supabase.rpc('confirm_recovery_email', { p_code: code.trim() });
+    if (error) throw error;
+    if (!data) return false;
     await refreshProfile();
+    return true;
   };
 
   const updateMyProfile: AuthContextValue['updateMyProfile'] = async (name, employeeCode, avatarUrl) => {
@@ -414,7 +418,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       addProfileToTeam,
       removeProfileFromTeam,
       changeOwnPassword,
-      addRecoveryEmail,
+      requestRecoveryEmail,
+      confirmRecoveryEmail,
       setIqdPerPoint,
       updateMyProfile,
       signOut,

@@ -34,6 +34,8 @@ export interface Profile {
   isSuperAdmin: boolean;
   /** Optional, added later by the user, only used for password recovery. */
   recoveryEmail: string | null;
+  /** Set once the person typed the code mailed to recoveryEmail. Only a verified address gets reset codes. */
+  recoveryEmailVerifiedAt: string | null;
   /** Set once an owner deletes this (already deactivated) person. Kept only so past audits keep their name. */
   deletedAt: string | null;
   /** Self-set profile photo. */

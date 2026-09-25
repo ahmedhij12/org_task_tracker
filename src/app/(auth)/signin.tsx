@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,6 +73,9 @@ export default function SignInScreen() {
 
           <View style={{ height: 8 }} />
           <PrimaryButton title={t('common.signIn')} onPress={handleSubmit} loading={loading} disabled={!canSubmit} />
+          <Pressable onPress={() => router.push('/(auth)/forgot')} style={{ alignItems: 'center', paddingVertical: 16 }} accessibilityRole="button">
+            <Text style={{ color: c.brand, fontWeight: '700', fontSize: 14 }}>{t('auth.signin.forgot')}</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
