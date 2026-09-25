@@ -1,7 +1,6 @@
-import { ScrollView, View, Text, Pressable, I18nManager } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Redirect, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Redirect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemeColors } from '@/components/ui';
@@ -32,21 +31,9 @@ export default function ControlPanelScreen() {
   // database refuses their writes anyway; this is about not showing the screen.
   if (profile.role !== 'owner') return <Redirect href="/(main)/settings" />;
 
-  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/(main)/settings'));
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-        <Pressable
-          onPress={goBack}
-          hitSlop={8}
-          accessibilityRole="button"
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginBottom: 12 }}
-        >
-          {/* Follows the layout's real direction, which only flips after a restart. */}
-          <Ionicons name={I18nManager.isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={c.textMuted} />
-          <Text style={{ color: c.textMuted, fontWeight: '600', fontSize: 14 }}>{t('control.back')}</Text>
-        </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <MenuButton />
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('control.title')}</Text>

@@ -1,6 +1,12 @@
-// Where a record was signed, measured against its branch's check-in circle.
-// A record outside the circle is FLAGGED with the distance, never blocked —
-// GPS indoors drifts 20-50 m. Each branch's circle is set in the control panel.
+// Where a record was signed, measured against its branch's check-in circle,
+// with three honest answers (his choice, 2026-09-25):
+//   in      — inside the circle: in the kitchen
+//   out     — outside the circle EVEN AFTER allowing for the phone's own GPS
+//             error: certainly not in the kitchen
+//   unclear — outside the circle, but the GPS reading is too loose to say
+// Indoor GPS drifts 20-50 m and the circle is often 15 m, so without the
+// "unclear" answer a man standing in the kitchen would be accused. Never
+// blocks anything. Each branch's circle is set in the control panel.
 //
 // No "@/..." imports here: scripts/test/checkIn.test.mjs loads this file
 // straight into Node.
@@ -14,7 +20,8 @@ export const DEFAULT_CHECK_IN_M = 15;
 export interface LatLng { lat: number; lng: number }
 /** Optional fields on purpose: the app's Team type declares them optional. */
 export interface BranchCircle { lat?: number | null; lng?: number | null; radiusM?: number }
-export interface CheckIn { meters: number; radiusM: number; outside: boolean }
+export type CheckInStatus = 'in' | 'out' | 'unclear';
+export interface CheckIn { meters: number; radiusM: number; accuracyM: number | null; status: CheckInStatus }
 
 /** Straight-line metres between two points (haversine) — the same formula as public.meters_between. */
 export function metersBetween(a: LatLng, b: LatLng): number {
@@ -28,15 +35,20 @@ export function metersBetween(a: LatLng, b: LatLng): number {
 
 /**
  * Null when there is nothing honest to say: no signing point, or the branch
- * has no pin yet. Exactly on the edge counts as inside.
+ * has no pin yet. Exactly on the edge counts as inside. Outside the circle is
+ * "out" only when even the closest point the GPS error allows is outside too;
+ * a reading with no accuracy at all cannot be sure, so it is "unclear".
  */
 export function checkInFor(
-  signed: { lat: number | null; lng: number | null },
+  signed: { lat: number | null; lng: number | null; accuracyM?: number | null },
   branch: BranchCircle | null | undefined,
 ): CheckIn | null {
   if (signed.lat == null || signed.lng == null) return null;
   if (!branch || branch.lat == null || branch.lng == null) return null;
   const radiusM = branch.radiusM ?? DEFAULT_CHECK_IN_M;
   const meters = Math.round(metersBetween({ lat: signed.lat, lng: signed.lng }, { lat: branch.lat, lng: branch.lng }));
-  return { meters, radiusM, outside: meters > radiusM };
+  const accuracyM = signed.accuracyM == null ? null : Math.round(signed.accuracyM);
+  const status: CheckInStatus =
+    meters <= radiusM ? 'in' : accuracyM != null && meters - accuracyM > radiusM ? 'out' : 'unclear';
+  return { meters, radiusM, accuracyM, status };
 }

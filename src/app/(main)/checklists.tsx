@@ -11,6 +11,7 @@ import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
 import { useChecklists } from '@/hooks/useChecklists';
+import { checkInFor } from '@/lib/checkIn';
 import { Card, useThemeColors } from '@/components/ui';
 import type { TaskCompletion } from '@/types';
 
@@ -108,6 +109,8 @@ export default function ChecklistsScreen() {
                       const showDay = day !== lastDay;
                       lastDay = day;
                       const verified = !!r.reviewedBy;
+                      // A daily checklist is measured against its own branch.
+                      const where = checkInFor({ lat: r.signedLat, lng: r.signedLng, accuracyM: r.signedAccuracyM }, team);
                       return (
                         <View key={r.id}>
                           {showDay ? (
@@ -150,6 +153,14 @@ export default function ChecklistsScreen() {
                                 {r.noCount != null ? ` · ${t('checklists.yesNo', { yes: r.yesCount ?? 0, no: r.noCount })}` : ''}
                                 {r.signedAddress ? ` · ${r.signedAddress}` : ''}
                               </Text>
+                              {where && where.status !== 'in' ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }} testID="check-in-badge">
+                                  <Ionicons name="location" size={12} color={where.status === 'out' ? c.rose : c.amber} />
+                                  <Text style={{ fontSize: 11, fontWeight: '800', color: where.status === 'out' ? c.rose : c.amber }}>
+                                    {where.status === 'out' ? t('checklists.notInKitchen') : t('checklists.locationUnclear')} · {where.meters} m
+                                  </Text>
+                                </View>
+                              ) : null}
                             </View>
                             <View
                               style={{

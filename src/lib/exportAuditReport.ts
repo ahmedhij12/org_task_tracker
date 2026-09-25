@@ -245,9 +245,11 @@ function proofHtml(completion: TaskCompletion, signerName: string, locale: strin
     // throughout ("Selfie", "Signed at"), so this line is too.
     const distance = !checkIn
       ? ''
-      : checkIn.outside
-        ? `<span style="color:#b45309;font-weight:700;">Outside the branch · ${checkIn.meters} m away (allowed ${checkIn.radiusM} m)</span>`
-        : `At the branch · ${checkIn.meters} m from the pin`;
+      : checkIn.status === 'out'
+        ? `<span style="color:#b91c1c;font-weight:700;">Not in the kitchen · ${checkIn.meters} m away (allowed ${checkIn.radiusM} m)</span>`
+        : checkIn.status === 'unclear'
+          ? `<span style="color:#b45309;font-weight:700;">Location unclear · weak GPS (±${checkIn.accuracyM ?? '?'} m) · ${checkIn.meters} m from the pin</span>`
+          : `In the kitchen · ${checkIn.meters} m from the pin`;
     cells.push(
       label('Signed at') +
         `<a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">` +

@@ -30,4 +30,10 @@ assert.equal(marinationStatus({ marinatedAt: at }, his, Date.parse(out(2))).stat
 assert.equal(marinationStatus({ marinatedAt: at }, his, Date.parse(out(2, 31))).state, 'overdue');
 assert.deepEqual(DEFAULT_MARINATION_RULES, { hours: 3, earlyGraceMin: 5, lateGraceMin: 5 });
 
+// A batch keeps the rule it was made under: frozen 3 h / 5 / 5 beats today's 4 h / 60.
+const frozen = { marinatedAt: at, dueAt: out(3), earlyGraceMin: 5, lateGraceMin: 5, unloadedAt: out(3) };
+assert.equal(marinationStatus(frozen, { hours: 4, earlyGraceMin: 10, lateGraceMin: 60 }, now).state, 'onTime');
+assert.equal(marinationStatus({ ...frozen, unloadedAt: out(3, 6) }, { hours: 4, earlyGraceMin: 10, lateGraceMin: 60 }, now).state, 'late');
+assert.equal(dueAt(frozen, { hours: 4, earlyGraceMin: 10, lateGraceMin: 60 }), Date.parse(out(3)));
+
 console.log('PASS: marination');

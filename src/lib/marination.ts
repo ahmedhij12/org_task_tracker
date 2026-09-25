@@ -11,7 +11,10 @@
  * of an hour would let chicken pulled at two hours count as on time.
  *
  * Mirrors the database: submit_chicken_marination sets remind_at to
- * marinated_at + marination_hours_for(org).
+ * marinated_at + marination_hours_for(org), and FREEZES the rule on the row
+ * (due_at and both graces), like a checklist's score — so changing the control
+ * panel never re-grades yesterday's batches. A row's frozen rule always wins;
+ * the control panel's rules only fill in for a row that has none.
  *
  * No "@/..." imports: scripts/test/marination.test.mjs loads this file
  * straight into Node.
@@ -33,17 +36,28 @@ export interface MarinationStatus {
   ms: number;
 }
 
-/** When this batch should be out of the vinegar. */
-export function dueAt(r: { marinatedAt: string }, rules: MarinationRules = DEFAULT_MARINATION_RULES): number {
+type Batch = {
+  marinatedAt: string;
+  unloadedAt?: string | null;
+  dueAt?: string | null;
+  earlyGraceMin?: number | null;
+  lateGraceMin?: number | null;
+};
+
+/** When this batch should be out of the vinegar: its own frozen time if it has one. */
+export function dueAt(r: Batch, rules: MarinationRules = DEFAULT_MARINATION_RULES): number {
+  if (r.dueAt) return new Date(r.dueAt).getTime();
   return new Date(r.marinatedAt).getTime() + rules.hours * 3600000;
 }
 
 export function marinationStatus(
-  r: { marinatedAt: string; unloadedAt?: string | null },
+  r: Batch,
   rules: MarinationRules = DEFAULT_MARINATION_RULES,
   now: number = Date.now()
 ): MarinationStatus {
   const due = dueAt(r, rules);
+  const earlyGraceMin = r.earlyGraceMin ?? rules.earlyGraceMin;
+  const lateGraceMin = r.lateGraceMin ?? rules.lateGraceMin;
   const out = r.unloadedAt ? new Date(r.unloadedAt).getTime() : null;
   // A removal time that has not arrived yet is not a removal. The sheet lets
   // the time be typed, so someone can enter "out at 4 PM" at 1:47 PM — and we
@@ -54,8 +68,8 @@ export function marinationStatus(
     return left < 0 ? { state: 'overdue', ms: -left } : { state: 'marinating', ms: left };
   }
   const over = out - due;
-  if (over < -rules.earlyGraceMin * 60000) return { state: 'early', ms: -over };
-  if (over > rules.lateGraceMin * 60000) return { state: 'late', ms: over };
+  if (over < -earlyGraceMin * 60000) return { state: 'early', ms: -over };
+  if (over > lateGraceMin * 60000) return { state: 'late', ms: over };
   return { state: 'onTime', ms: Math.abs(over) };
 }
 

@@ -13,7 +13,7 @@ import { SettingRow, parseSetting } from '@/components/control/SettingRow';
 export function PenaltyAmountsCard() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { settings, save } = useOrgSettings();
+  const { settings, save, loaded } = useOrgSettings();
   const [checklist, setChecklist] = useState<string | null>(null);
   const [marination, setMarination] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,10 @@ export function PenaltyAmountsCard() {
     setError(null);
     setNotice(null);
     try {
-      await save({ lateChecklistPenaltyIqd: a!, marinationPenaltyIqd: b! });
+      await save({
+        ...(checklist != null ? { lateChecklistPenaltyIqd: a! } : {}),
+        ...(marination != null ? { marinationPenaltyIqd: b! } : {}),
+      });
       setChecklist(null);
       setMarination(null);
       setNotice(t('control.saved'));
@@ -52,7 +55,7 @@ export function PenaltyAmountsCard() {
       {!valid && dirty ? <Text style={{ fontSize: 12, color: c.rose, marginTop: 8 }}>{t('control.invalidNumbers')}</Text> : null}
       {notice ? <Text style={{ fontSize: 12, color: c.brand, marginTop: 8 }}>{notice}</Text> : null}
       <View style={{ marginTop: 12 }}>
-        <PrimaryButton title={t('control.save')} onPress={onSave} loading={busy} disabled={!valid || !dirty} />
+        <PrimaryButton title={t('control.save')} onPress={onSave} loading={busy} disabled={!valid || !dirty || !loaded} />
       </View>
     </Card>
   );

@@ -3,7 +3,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/lib/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { PushCard } from '@/components/PushCard';
 import { RecoveryEmailCard } from '@/components/RecoveryEmailCard';
 import { Ionicons } from '@expo/vector-icons';
@@ -182,37 +181,6 @@ export default function SettingsScreen() {
             <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={c.textMuted} />
           </Pressable>
         </Card>
-
-        {profile?.role === 'owner' ? (
-          <Pressable onPress={() => router.push('/(main)/control-panel')} accessibilityRole="button" testID="open-control-panel">
-            <Card style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="options" size={22} color={c.brand} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{t('control.title')}</Text>
-                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('control.openHint')}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
-              </View>
-            </Card>
-          </Pressable>
-        ) : null}
-
-        {/* The super admin's alone — no admin ever sees this row. */}
-        {profile?.isSuperAdmin ? (
-          <Pressable onPress={() => router.push('/(main)/activity')} accessibilityRole="button" testID="open-activity">
-            <Card style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="footsteps" size={22} color={c.brand} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{t('activity.title')}</Text>
-                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('activity.rowHint')}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
-              </View>
-            </Card>
-          </Pressable>
-        ) : null}
 
         <PushCard />
 

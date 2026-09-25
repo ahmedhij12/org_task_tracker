@@ -378,6 +378,10 @@ export interface ChickenMarination {
   remindAt?: string | null;
   /** Photo taken when the vinegar was removed — the proof it happened. */
   unloadPhotoUrl?: string | null;
+  /** The rule this batch is graded by, frozen when it was recorded (null on very old rows). */
+  dueAt?: string | null;
+  earlyGraceMin?: number | null;
+  lateGraceMin?: number | null;
   /** Who emptied it — often a different shift from whoever marinated. */
   unloadedByName?: string | null;
 }

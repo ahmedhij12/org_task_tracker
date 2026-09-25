@@ -101,9 +101,10 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   // Measured against the branch the record is ABOUT — the same choice the
   // export makes for branchName below.
   const checkIn = checkInFor(
-    { lat: completion.signedLat, lng: completion.signedLng },
+    { lat: completion.signedLat, lng: completion.signedLng, accuracyM: completion.signedAccuracyM },
     isAudit ? subjectBranch : actorBranch,
   );
+  const checkInColor = checkIn?.status === 'out' ? c.rose : checkIn?.status === 'unclear' ? c.amber : c.emerald;
 
   const handleExport = async () => {
     setExporting(true);
@@ -299,7 +300,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                         </View>
                         {completion.signedLat != null ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
-                            <Ionicons name="location" size={16} color={checkIn?.outside ? c.amber : c.emerald} />
+                            <Ionicons name="location" size={16} color={checkIn ? checkInColor : c.emerald} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>
                                 {isSupervisorProof ? t('detail.submittedHere') : t('detail.signedHere')} · {when(completion.createdAt)}
@@ -309,10 +310,12 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                                 {completion.signedAccuracyM != null ? ` · ±${Math.round(completion.signedAccuracyM)} m` : ''}
                               </Text>
                               {checkIn ? (
-                                <Text style={{ fontSize: 12, fontWeight: '700', color: checkIn.outside ? c.amber : c.emerald, marginTop: 2 }}>
-                                  {checkIn.outside
-                                    ? t('detail.outsideBranch', { m: checkIn.meters, r: checkIn.radiusM })
-                                    : t('detail.atBranch', { m: checkIn.meters })}
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: checkInColor, marginTop: 2 }} testID="check-in-line">
+                                  {checkIn.status === 'out'
+                                    ? t('detail.notInKitchen', { m: checkIn.meters, r: checkIn.radiusM })
+                                    : checkIn.status === 'unclear'
+                                      ? t('detail.locationUnclear', { m: checkIn.meters, acc: checkIn.accuracyM ?? '?' })
+                                      : t('detail.inKitchen', { m: checkIn.meters })}
                                 </Text>
                               ) : null}
                             </View>

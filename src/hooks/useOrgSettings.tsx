@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { DEFAULT_MARINATION_RULES, type MarinationRules } from '@/lib/marination';
@@ -29,6 +30,8 @@ const DEFAULTS: OrgSettings = {
 
 interface Ctx {
   settings: OrgSettings;
+  /** False until the real row has loaded — the cards must not save defaults over it. */
+  loaded: boolean;
   marinationRules: MarinationRules;
   refresh: () => Promise<void>;
   save: (patch: Partial<OrgSettings>) => Promise<void>;
@@ -36,6 +39,7 @@ interface Ctx {
 
 const OrgSettingsContext = createContext<Ctx>({
   settings: DEFAULTS,
+  loaded: false,
   marinationRules: DEFAULT_MARINATION_RULES,
   refresh: async () => {},
   save: async () => {},
@@ -53,11 +57,12 @@ const toDb: Record<keyof OrgSettings, string> = {
 export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   const { organization } = useAuth();
   const [settings, setSettings] = useState<OrgSettings>(DEFAULTS);
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!organization) return;
-    const { data } = await supabase.from('org_settings').select('*').eq('org_id', organization.id).maybeSingle();
-    if (!data) return;
+    const { data, error } = await supabase.from('org_settings').select('*').eq('org_id', organization.id).maybeSingle();
+    if (error || !data) return;
     setSettings({
       marinationHours: Number(data.marination_hours),
       marinationEarlyGraceMin: data.marination_early_grace_min,
@@ -66,10 +71,16 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
       lateChecklistPenaltyIqd: data.late_checklist_penalty_iqd,
       marinationPenaltyIqd: data.marination_penalty_iqd,
     });
+    setLoaded(true);
   }, [organization?.id]);
 
   useEffect(() => {
     refresh();
+    // Coming back to the app picks up a change made on another phone.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => sub.remove();
   }, [refresh]);
 
   const save = useCallback(
@@ -86,6 +97,7 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       settings,
+      loaded,
       marinationRules: {
         hours: settings.marinationHours,
         earlyGraceMin: settings.marinationEarlyGraceMin,
@@ -94,7 +106,7 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
       refresh,
       save,
     }),
-    [settings, refresh, save],
+    [settings, loaded, refresh, save],
   );
 
   return <OrgSettingsContext.Provider value={value}>{children}</OrgSettingsContext.Provider>;

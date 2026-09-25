@@ -26,7 +26,7 @@ export function OilTimesCard() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { organization } = useAuth();
-  const { settings, save } = useOrgSettings();
+  const { settings, save, loaded } = useOrgSettings();
   const [slots, setSlots] = useState<Slot[]>([]);
   const [editing, setEditing] = useState<string | null>(null); // slot id, or 'new'
   const [draft, setDraft] = useState('');
@@ -146,7 +146,7 @@ export function OilTimesCard() {
       {notice ? <Text style={{ fontSize: 12, color: c.brand, marginTop: 8 }}>{notice}</Text> : null}
       {grace != null ? (
         <View style={{ marginTop: 12 }}>
-          <PrimaryButton title={t('control.save')} onPress={saveGrace} loading={busy} disabled={g == null} />
+          <PrimaryButton title={t('control.save')} onPress={saveGrace} loading={busy} disabled={g == null || !loaded} />
         </View>
       ) : null}
     </Card>

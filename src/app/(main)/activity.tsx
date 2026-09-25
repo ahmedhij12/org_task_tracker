@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Modal, RefreshControl, ActivityIndicator, I18nManager } from 'react-native';
+import { View, Text, ScrollView, Pressable, Modal, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Redirect, router } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabase';
@@ -97,15 +97,6 @@ export default function ActivityScreen() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading && rows.length > 0} onRefresh={() => load(false)} tintColor={c.brand} />}
       >
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(main)/settings'))}
-          hitSlop={8}
-          accessibilityRole="button"
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginBottom: 12 }}
-        >
-          <Ionicons name={I18nManager.isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={c.textMuted} />
-          <Text style={{ color: c.textMuted, fontWeight: '600', fontSize: 14 }}>{t('control.back')}</Text>
-        </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <MenuButton />
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('activity.title')}</Text>

@@ -13,7 +13,7 @@ import { SettingRow, parseSetting } from '@/components/control/SettingRow';
 export function MarinationRulesCard() {
   const c = useThemeColors();
   const { t } = useTranslation();
-  const { settings, save } = useOrgSettings();
+  const { settings, save, loaded } = useOrgSettings();
   const [hours, setHours] = useState<string | null>(null);
   const [early, setEarly] = useState<string | null>(null);
   const [late, setLate] = useState<string | null>(null);
@@ -33,7 +33,12 @@ export function MarinationRulesCard() {
     setError(null);
     setNotice(null);
     try {
-      await save({ marinationHours: h!, marinationEarlyGraceMin: e!, marinationLateGraceMin: l! });
+      // Only what was edited: a card never writes over a value it did not touch.
+      await save({
+        ...(hours != null ? { marinationHours: h! } : {}),
+        ...(early != null ? { marinationEarlyGraceMin: e! } : {}),
+        ...(late != null ? { marinationLateGraceMin: l! } : {}),
+      });
       setHours(null);
       setEarly(null);
       setLate(null);
@@ -60,7 +65,7 @@ export function MarinationRulesCard() {
       {!valid && dirty ? <Text style={{ fontSize: 12, color: c.rose, marginTop: 8 }}>{t('control.invalidNumbers')}</Text> : null}
       {notice ? <Text style={{ fontSize: 12, color: c.brand, marginTop: 8 }}>{notice}</Text> : null}
       <View style={{ marginTop: 12 }}>
-        <PrimaryButton title={t('control.save')} onPress={onSave} loading={busy} disabled={!valid || !dirty} />
+        <PrimaryButton title={t('control.save')} onPress={onSave} loading={busy} disabled={!valid || !dirty || !loaded} />
       </View>
     </Card>
   );
