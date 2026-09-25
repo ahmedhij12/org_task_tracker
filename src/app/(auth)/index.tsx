@@ -1,12 +1,22 @@
+import { useEffect } from 'react';
 import { View, Text, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { PrimaryButton, useThemeColors } from '@/components/ui';
+import { wasSignedOutElsewhere } from '@/hooks/useSingleDevice';
 
 export default function LandingScreen() {
   const c = useThemeColors();
   const { t } = useTranslation();
+
+  // A phone signed out because the account was opened on another one lands
+  // here; take it straight to sign-in, which says why.
+  useEffect(() => {
+    wasSignedOutElsewhere().then((yes) => {
+      if (yes) router.push('/(auth)/signin');
+    });
+  }, []);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top', 'bottom']}>

@@ -41,6 +41,15 @@ export function useSingleDevice() {
   }, [profile?.id]);
 }
 
+/** Whether the last sign-out was caused by another phone, without clearing it. */
+export async function wasSignedOutElsewhere(): Promise<boolean> {
+  try {
+    return !!(await AsyncStorage.getItem(SIGNED_OUT_ELSEWHERE));
+  } catch {
+    return false;
+  }
+}
+
 /** True once after a sign-out caused by another phone, so the sign-in screen can say why. */
 export async function takeSignedOutElsewhere(): Promise<boolean> {
   try {
