@@ -119,11 +119,17 @@ function mapProfile(
   };
 }
 
+// "basra delight" → "Basra Delight". Only a word that is entirely lower-case
+// Latin is touched, so "McDonald's", "BD" and Arabic names stay as typed.
+function displayOrgName(name: string): string {
+  return name.replace(/\b[a-z][a-z']*\b/g, (w) => w[0].toUpperCase() + w.slice(1));
+}
+
 function mapOrg(row: { id: string; org_code: string; name: string; owner_id: string; iqd_per_point: number; created_at: string }): Organization {
   return {
     id: row.id,
     orgCode: row.org_code,
-    name: row.name,
+    name: displayOrgName(row.name),
     ownerId: row.owner_id,
     iqdPerPoint: Number(row.iqd_per_point),
     createdAt: row.created_at,

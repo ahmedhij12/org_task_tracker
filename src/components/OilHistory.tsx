@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { exportOilTestReport, buildWebOilTestFile } from '@/lib/exportOilTestReport';
 import { shareOrDownloadFile } from '@/lib/webPdf';
 import { useThemeColors } from '@/components/ui';
+import { logActivity } from '@/lib/activityLog';
 import { BranchBackRow } from '@/components/BranchBackRow';
 import type { OilGrade, OilTest } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
@@ -39,6 +40,7 @@ export function OilHistory({ filter = 'all' }: { filter?: string } = {}) {
 
   const shareTest = async (x: OilTest) => {
     setSharingId(x.id);
+    logActivity(profile, 'export', 'oil_pdf', { oil_test_id: x.id, branch: teamName(x.teamId) });
     try {
       const data = {
         test: x,

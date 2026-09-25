@@ -61,6 +61,8 @@ export default {
     auditEdit: "Edit this checklist",
     auditStartFailed: "Could not start the audit. Please try again.",
     ownerBadge: 'ADMIN',
+    superAdminBadge: 'SUPER ADMIN',
+    employeeBadge: 'SUPERVISOR',
     teamAdminBadge: 'BRANCH MANAGER',
     statPending: 'pending',
     statOverdue: 'overdue',

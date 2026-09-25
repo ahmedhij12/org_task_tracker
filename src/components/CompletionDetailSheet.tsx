@@ -9,6 +9,7 @@ import { textAlignFor } from '@/lib/rtl';
 import { buildWebReportFile, exportAuditReport } from '@/lib/exportAuditReport';
 import { shareOrDownloadFile } from '@/lib/webPdf';
 import { checkInFor } from '@/lib/checkIn';
+import { logActivity } from '@/lib/activityLog';
 import { needsReview } from '@/types';
 import { ScoreRing } from '@/components/ScoreRing';
 import { LocationMap } from '@/components/LocationMap';
@@ -46,6 +47,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
 
   useEffect(() => {
     setWebPdf(null);
+    if (completion) logActivity(profile, 'view', 'record', { completion_id: completion.id, title: completion.taskTitle });
     if (!completion || !isChecklistCompletion) {
       setAnswers([]);
       setPhotos([]);
@@ -106,6 +108,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const handleExport = async () => {
     setExporting(true);
     setError(null);
+    logActivity(profile, 'export', 'record_pdf', { completion_id: completion.id, title: completion.taskTitle });
     try {
       const report = {
         kind: isAudit ? 'audit' : 'checklist',

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
@@ -70,13 +69,7 @@ function TeamAdminDashboard() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
-        <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-          <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: c.brand }}>{t('dashboard.teamAdminBadge')}</Text>
-          </View>
-          {myBranches ? <Text style={{ fontSize: 12, color: c.textMuted }}>{myBranches}</Text> : null}
-        </View>
+        <DashboardHeader badge={t('dashboard.teamAdminBadge')} subtitle={myBranches} />
 
         <ReinstallNotice />
         <OilAlert />
@@ -137,16 +130,8 @@ function OwnerDashboard() {
   const { profile, organization } = useAuth();
   const { currentSummary, loading, refresh, loadSupervisorStreaks } = useReports();
   const refreshAll = useRefreshAll(refresh);
-  const [copied, setCopied] = useState(false);
   const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
   const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
-
-  const handleCopy = async () => {
-    if (!organization) return;
-    await Clipboard.setStringAsync(organization.orgCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
 
   // Worst-to-best, both at the branch level and the supervisor level within
   // each branch — this is the "who needs attention right now" view, not a
@@ -182,23 +167,7 @@ function OwnerDashboard() {
         contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <View style={{ paddingTop: 1 }}>
-            <MenuButton />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: c.text }}>{organization?.name}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-              <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: c.brand }}>{t('dashboard.ownerBadge')}</Text>
-              </View>
-              <Pressable onPress={handleCopy} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ fontSize: 12, color: c.textMuted }}>{organization?.orgCode}</Text>
-                <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={c.textMuted} />
-              </Pressable>
-            </View>
-          </View>
-        </View>
+        <DashboardHeader badge={profile?.isSuperAdmin ? t('dashboard.superAdminBadge') : t('dashboard.ownerBadge')} />
 
         <ReinstallNotice />
         <OilAlert />
@@ -284,8 +253,9 @@ function EmployeeHome() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile, organization } = useAuth();
-  const { tasks, members, history, loading, refresh, setTaskCompletion } = useOrgData();
+  const { tasks, members, teams, history, loading, refresh, setTaskCompletion } = useOrgData();
   const refreshAll = useRefreshAll(refresh);
+  const myBranchNames = teams.filter((tm) => profile?.teamIds.includes(tm.id)).map((tm) => tm.name).join(', ');
   const [proofTask, setProofTask] = useState<OrgTask | null>(null);
   const [checklistTask, setChecklistTask] = useState<OrgTask | null>(null);
 
@@ -315,11 +285,7 @@ function EmployeeHome() {
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
-        <Text style={{ fontSize: 13, color: c.textFaint }}>
-          {new Date().toLocaleDateString(i18n.language, { weekday: 'long', month: 'long', day: 'numeric' })}
-        </Text>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text, marginTop: 2 }}>{t('dashboard.myTasksTitle')}</Text>
-        <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{organization?.name}</Text>
+        <DashboardHeader badge={t('dashboard.employeeBadge')} subtitle={myBranchNames} />
 
         <TodayChecklistCard />
         <OilTestCard />
@@ -442,6 +408,38 @@ function EmptyState({ text }: { text: string }) {
         <Ionicons name="checkbox-outline" size={28} color={c.brand} />
       </View>
       <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', lineHeight: 19 }}>{text}</Text>
+    </View>
+  );
+}
+
+/**
+ * The same top of the dashboard for everyone: today's date, the company, and
+ * who you are here — the role and, for branch staff, the branch. The org ID
+ * lives in Settings, not here.
+ */
+function DashboardHeader({ badge, subtitle }: { badge: string; subtitle?: string | null }) {
+  const c = useThemeColors();
+  const { i18n } = useTranslation();
+  const { organization } = useAuth();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
+      <View style={{ paddingTop: 20 }}>
+        <MenuButton />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, color: c.textFaint }}>
+          {new Date().toLocaleDateString(i18n.language, { weekday: 'long', month: 'long', day: 'numeric' })}
+        </Text>
+        <Text style={{ fontSize: 26, fontWeight: '800', color: c.text, marginTop: 2 }} numberOfLines={1}>
+          {organization?.name}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+          <View style={{ backgroundColor: c.brandSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.6, color: c.brand }}>{badge}</Text>
+          </View>
+          {subtitle ? <Text style={{ fontSize: 13, color: c.textMuted }}>{subtitle}</Text> : null}
+        </View>
+      </View>
     </View>
   );
 }

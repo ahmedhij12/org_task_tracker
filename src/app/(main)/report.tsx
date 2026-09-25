@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 import { exportReportToExcel } from '@/lib/exportReport';
+import { logActivity } from '@/lib/activityLog';
 import { groupBranchSummary } from '@/lib/branchSummary';
 import { AdjustPeriodPointsSheet } from '@/components/AdjustPeriodPointsSheet';
 import type { BranchSummaryRow, ReportPeriod } from '@/types';
@@ -69,6 +70,7 @@ export default function ReportScreen() {
 
   const handleExport = async () => {
     if (!selectedPeriod) return;
+    logActivity(profile, 'export', 'month_report', { period: selectedPeriod.id });
     await exportReportToExcel(selectedPeriod, rows, i18n.language);
   };
 

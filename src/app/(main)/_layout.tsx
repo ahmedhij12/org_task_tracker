@@ -10,6 +10,7 @@ import { ChickenProvider } from '@/hooks/useChicken';
 import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
 import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
 import { SideMenuProvider } from '@/components/SideMenu';
+import { useActivityTracking } from '@/hooks/useActivityTracking';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/components/ui';
@@ -37,6 +38,7 @@ export default function MainLayout() {
 // Inside the data providers so the Checklists tab can show a live badge.
 function MainTabs() {
   const { profile } = useAuth();
+  useActivityTracking();
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const isOwner = profile?.role === 'owner';

@@ -57,6 +57,8 @@ export default {
     auditEdit: "تعديل هذه القائمة",
     auditStartFailed: "تعذّر بدء التدقيق. حاول مرة أخرى.",
     ownerBadge: 'المدير',
+    superAdminBadge: 'مدير عام',
+    employeeBadge: 'مشرف',
     teamAdminBadge: 'مدير الفرع',
     statPending: 'قيد الانتظار',
     statOverdue: 'متأخر',
