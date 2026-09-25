@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
+import { ShiftsCard } from '@/components/ShiftsCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
 import { CreateUserSheet } from '@/components/CreateUserSheet';
@@ -108,6 +109,9 @@ export default function PeopleScreen() {
             {isOwner ? t('people.emptyState', { addStaff: t('people.addStaff') }) : t('people.emptyStateManager')}
           </Text>
         ) : null}
+
+        {/* The branch manager sets his supervisors' shifts here (spec section 3). */}
+        {profile?.role === 'team_admin' ? <ShiftsCard /> : null}
 
         {groups.map((group) => {
           const isOpen = expanded.has(group.id);
