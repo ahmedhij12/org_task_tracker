@@ -11,6 +11,7 @@ import { BranchBackRow } from '@/components/BranchBackRow';
 import type { ChickenMarination } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
 import { marinationStatus, humanSpan } from '@/lib/marination';
+import { useOrgSettings } from '@/hooks/useOrgSettings';
 
 /** Chicken marination history, all roles (RLS-scoped), built like the oil
  * section above it: with several branches in view it is one row per branch, and
@@ -23,6 +24,7 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   const { teams } = useOrgData();
   const { profile } = useAuth();
   const isOwner = profile?.role === 'owner';
+  const { marinationRules } = useOrgSettings();
   const [openDay, setOpenDay] = useState<string | null>(null);
   // The branch opened inside this section; the screen's own filter wins.
   const [picked, setPicked] = useState<string | null>(null);
@@ -113,15 +115,20 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
                     ) : null}
                   </View>
                   {x.unloadedAt ? (() => {
-                    // Proof for the admin: was the vinegar out within the 3 hours?
-                    const { state, ms } = marinationStatus(x);
-                    const late = state === 'late';
+                    // Proof for the admin: was the vinegar out on time — neither
+                    // pulled early (under-marinated) nor forgotten (late)?
+                    const { state, ms } = marinationStatus(x, marinationRules);
+                    const bad = state === 'late' || state === 'early';
                     const label = humanSpan(ms);
                     return (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                        <Ionicons name={late ? 'alert-circle' : 'checkmark-circle'} size={14} color={late ? c.rose : c.emerald} />
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: late ? c.rose : c.emerald }}>
-                          {late ? t('chicken.removedLate', { time: label }) : t('chicken.removedOnTime')}
+                        <Ionicons name={state === 'early' ? 'warning' : bad ? 'alert-circle' : 'checkmark-circle'} size={14} color={bad ? c.rose : c.emerald} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: bad ? c.rose : c.emerald }}>
+                          {state === 'late'
+                            ? t('chicken.removedLate', { time: label })
+                            : state === 'early'
+                              ? t('chicken.removedEarly', { time: label })
+                              : t('chicken.removedOnTime')}
                         </Text>
                       </View>
                     );

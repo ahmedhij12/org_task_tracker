@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { marinationStatus, humanSpan, type MarinationState } from '@/lib/marination';
+import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { timeOf, dayKey, todayKey } from '@/lib/time';
 import { useThemeColors } from '@/components/ui';
 
@@ -41,12 +42,15 @@ export function ChickenMonitor() {
     [teams, records]
   );
 
+  const { marinationRules } = useOrgSettings();
   if (teams.length === 0) return null;
 
   const meta: Record<MarinationState, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
     marinating: { icon: 'time-outline', color: c.brand },
     overdue: { icon: 'alarm', color: c.rose },
     onTime: { icon: 'checkmark-circle', color: c.emerald },
+    // Pulled before its time: under-marinated chicken — the serious one.
+    early: { icon: 'warning', color: c.rose },
     late: { icon: 'alert-circle', color: c.rose },
   };
 
@@ -54,6 +58,7 @@ export function ChickenMonitor() {
     state === 'marinating' ? t('chicken.dueIn', { time: humanSpan(ms) })
       : state === 'overdue' ? t('chicken.overdue', { time: humanSpan(ms) })
       : state === 'onTime' ? t('chicken.removedOnTime')
+      : state === 'early' ? t('chicken.removedEarly', { time: humanSpan(ms) })
       : t('chicken.removedLate', { time: humanSpan(ms) });
 
   return (
@@ -71,7 +76,7 @@ export function ChickenMonitor() {
             <Text style={{ fontSize: 12, color: c.textFaint }}>{t('chicken.noneToday')}</Text>
           ) : (
             rows.map((r) => {
-              const { state, ms } = marinationStatus(r);
+              const { state, ms } = marinationStatus(r, marinationRules);
               const m = meta[state];
               return (
                 <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>

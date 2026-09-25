@@ -4,34 +4,46 @@
  * this, so an admin can never be shown "on time" on one screen and "late" on
  * another.
  *
+ * The numbers are the control panel's (org_settings, via useOrgSettings): the
+ * marination hours, and two SEPARATE graces — a tight early one (pulled out
+ * before its time = under-marinated, a food-safety breach) and a looser late
+ * one (forgotten in the vinegar). One number cannot do both jobs: a late grace
+ * of an hour would let chicken pulled at two hours count as on time.
+ *
  * Mirrors the database: submit_chicken_marination sets remind_at to
- * marinated_at + marination_hours(), and set_chicken_unloaded clears it. We
- * measure against marinated_at + MARINATION_HOURS, which is defined for every
- * record whether or not a reminder was ever asked for.
+ * marinated_at + marination_hours_for(org).
+ *
+ * No "@/..." imports: scripts/test/marination.test.mjs loads this file
+ * straight into Node.
  */
-export const MARINATION_HOURS = 3;
+export interface MarinationRules {
+  hours: number;
+  earlyGraceMin: number;
+  lateGraceMin: number;
+}
 
-/** A removal a few minutes past the three hours is not worth flagging. */
-const GRACE_MS = 5 * 60000;
+/** What was live before the control panel: 3 h, a 5-minute late grace; the early grace is new. */
+export const DEFAULT_MARINATION_RULES: MarinationRules = { hours: 3, earlyGraceMin: 5, lateGraceMin: 5 };
 
-export type MarinationState = 'marinating' | 'overdue' | 'onTime' | 'late';
+export type MarinationState = 'marinating' | 'overdue' | 'onTime' | 'early' | 'late';
 
 export interface MarinationStatus {
   state: MarinationState;
-  /** Milliseconds left (still in) or past the deadline (out late / overdue). */
+  /** Milliseconds left (still in), past the deadline (overdue / out late), or short of it (out early). */
   ms: number;
 }
 
 /** When this batch should be out of the vinegar. */
-export function dueAt(r: { marinatedAt: string }): number {
-  return new Date(r.marinatedAt).getTime() + MARINATION_HOURS * 3600000;
+export function dueAt(r: { marinatedAt: string }, rules: MarinationRules = DEFAULT_MARINATION_RULES): number {
+  return new Date(r.marinatedAt).getTime() + rules.hours * 3600000;
 }
 
 export function marinationStatus(
   r: { marinatedAt: string; unloadedAt?: string | null },
+  rules: MarinationRules = DEFAULT_MARINATION_RULES,
   now: number = Date.now()
 ): MarinationStatus {
-  const due = dueAt(r);
+  const due = dueAt(r, rules);
   const out = r.unloadedAt ? new Date(r.unloadedAt).getTime() : null;
   // A removal time that has not arrived yet is not a removal. The sheet lets
   // the time be typed, so someone can enter "out at 4 PM" at 1:47 PM — and we
@@ -42,7 +54,9 @@ export function marinationStatus(
     return left < 0 ? { state: 'overdue', ms: -left } : { state: 'marinating', ms: left };
   }
   const over = out - due;
-  return over > GRACE_MS ? { state: 'late', ms: over } : { state: 'onTime', ms: Math.abs(over) };
+  if (over < -rules.earlyGraceMin * 60000) return { state: 'early', ms: -over };
+  if (over > rules.lateGraceMin * 60000) return { state: 'late', ms: over };
+  return { state: 'onTime', ms: Math.abs(over) };
 }
 
 /** "2h 15m" / "40m" — always a positive span, so pass an absolute value. */

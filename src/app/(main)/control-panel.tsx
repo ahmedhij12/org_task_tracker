@@ -9,6 +9,10 @@ import { PointValueCard } from '@/components/control/PointValueCard';
 import { FryersCard } from '@/components/control/FryersCard';
 import { CheckInDistanceCard } from '@/components/control/CheckInDistanceCard';
 import { MenuButton } from '@/components/SideMenu';
+import { OilTimesCard } from '@/components/control/OilTimesCard';
+import { MarinationRulesCard } from '@/components/control/MarinationRulesCard';
+import { PenaltyAmountsCard } from '@/components/control/PenaltyAmountsCard';
+import { PushTestCard } from '@/components/control/PushTestCard';
 
 /**
  * The control panel: every setting that decides how the app behaves for the
@@ -51,7 +55,11 @@ export default function ControlPanelScreen() {
 
         <PointValueCard />
         <CheckInDistanceCard />
+        <OilTimesCard />
+        <MarinationRulesCard />
+        <PenaltyAmountsCard />
         <FryersCard />
+        <PushTestCard />
       </ScrollView>
     </SafeAreaView>
   );

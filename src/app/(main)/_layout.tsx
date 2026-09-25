@@ -10,6 +10,7 @@ import { ChickenProvider } from '@/hooks/useChicken';
 import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
 import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
 import { SideMenuProvider } from '@/components/SideMenu';
+import { OrgSettingsProvider } from '@/hooks/useOrgSettings';
 import { useActivityTracking } from '@/hooks/useActivityTracking';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ export default function MainLayout() {
 
   return (
     <OrgDataProvider>
+      <OrgSettingsProvider>
       <ChecklistDataProvider>
         <OilTestsProvider>
           <ChickenProvider>
@@ -31,6 +33,7 @@ export default function MainLayout() {
           </ChickenProvider>
         </OilTestsProvider>
       </ChecklistDataProvider>
+      </OrgSettingsProvider>
     </OrgDataProvider>
   );
 }

@@ -11,6 +11,7 @@ import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { timeOf } from '@/lib/time';
 import { dueAt, humanSpan } from '@/lib/marination';
+import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { useThemeColors } from '@/components/ui';
 
 /** Batches still marinating: how long is left, and the photo-backed removal.
@@ -20,6 +21,7 @@ export function ChickenActive() {
   const { t, i18n } = useTranslation();
   const { records, markUnloaded } = useChicken();
   const { teams } = useOrgData();
+  const { marinationRules } = useOrgSettings();
   const { profile } = useAuth();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export function ChickenActive() {
       <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted, marginBottom: 8 }}>{t('chicken.activeTitle')}</Text>
       {error ? <Text style={{ fontSize: 12, color: c.rose, marginBottom: 8 }}>{error}</Text> : null}
       {active.map((r) => {
-        const left = dueAt(r) - Date.now();
+        const left = dueAt(r, marinationRules) - Date.now();
         const over = left < 0;
         return (
           <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 8, backgroundColor: over ? '#E8141A18' : c.bgSubtle, borderWidth: 1, borderColor: over ? '#E8141A55' : c.border }}>
