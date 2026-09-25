@@ -23,16 +23,13 @@ export function useSupervisorChecklists(): TaskCompletion[] {
 
 
 /**
- * How many daily checklists are still waiting for this reader's ✓. A branch
- * manager counts only their own branch, never their own checklist (the
- * admin verifies that one).
+ * How many daily checklists are still waiting for this reader's ✓. Only the
+ * people who verify count anything: the admin, and the hygiene auditor once
+ * that role exists. A branch manager no longer verifies, so he has no count.
  */
 export function useUnverifiedChecklistCount(): number {
   const rows = useSupervisorChecklists();
   const { profile } = useAuth();
-  return rows.filter(
-    (r) =>
-      !r.reviewedBy &&
-      (profile?.role === 'owner' || (r.actorId !== profile?.id && !!profile?.teamIds.includes(r.teamId)))
-  ).length;
+  const verifies = profile?.role === 'owner' || (profile?.role as string) === 'hygiene_auditor';
+  return verifies ? rows.filter((r) => !r.reviewedBy).length : 0;
 }

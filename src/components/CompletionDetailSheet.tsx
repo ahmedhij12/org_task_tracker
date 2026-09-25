@@ -66,12 +66,12 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   if (!completion) return null;
 
   const task = tasks.find((t) => t.id === completion.taskId);
-  const isManager = profile?.role === 'owner' || profile?.role === 'team_admin';
   const openViewer = (urls: string[], index: number) => setViewer({ urls, index });
-  // A branch manager never verifies their own checklist — the admin does.
+  // Verifying is the admin's job (and the hygiene auditor's, once that role
+  // exists) — no longer the branch manager's (spec 2026-09-24, section 1).
+  // He still sees and exports his branch's checklists.
   const canReview =
-    isManager &&
-    !(profile?.role === 'team_admin' && completion.actorId === profile?.id) &&
+    (profile?.role === 'owner' || (profile?.role as string) === 'hygiene_auditor') &&
     (needsReview(completion, task ?? { requiresReview: false }) ||
       (completion.action === 'completed' && !!completion.selfieUrl && !completion.reviewedBy));
   const reviewerName = members.find((m) => m.id === completion.reviewedBy)?.name ?? t('detail.admin');

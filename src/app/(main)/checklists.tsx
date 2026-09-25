@@ -54,7 +54,8 @@ export default function ChecklistsScreen() {
         const rows = submissions
           .filter((s) => s.teamId === team.id)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        return { team, rows, unverified: rows.filter((r) => !r.reviewedBy && (isOwner || r.actorId !== profile?.id)).length };
+        // Only the people who verify see a waiting count; the manager no longer verifies.
+        return { team, rows, unverified: isOwner ? rows.filter((r) => !r.reviewedBy).length : 0 };
       })
       .sort((a, b) => b.unverified - a.unverified || a.team.name.localeCompare(b.team.name));
   }, [teams, submissions, isOwner, profile?.id, profile?.teamIds]);
@@ -72,7 +73,7 @@ export default function ChecklistsScreen() {
           <MenuButton />
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('checklists.title')}</Text>
         </View>
-        <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 4, marginBottom: 18 }}>{t('checklists.subtitle')}</Text>
+        <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 4, marginBottom: 18 }}>{t(isOwner ? 'checklists.subtitle' : 'checklists.subtitleManager')}</Text>
 
         {branches.map(({ team, rows, unverified }) => {
           const open = expanded === team.id;

@@ -66,7 +66,9 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   // Ask the server which scheduled slot this moment belongs to, so the person
   // is told they're late before they fill anything in — not after.
   useEffect(() => {
-    if (!visible || !fryerId || isAudit) { setMinutesLate(null); return; }
+    // A branch manager tests any time, outside the supervisors' slots (the
+    // database agrees: submit_oil_test never makes his test late).
+    if (!visible || !fryerId || isAudit || profile?.role === 'team_admin') { setMinutesLate(null); return; }
     const fryer = fryers.find((f) => f.id === fryerId);
     if (!fryer) return;
     let cancelled = false;

@@ -58,6 +58,10 @@ export function BranchAudits() {
     })
     .sort((a, b) => (a.avg ?? 101) - (b.avg ?? 101));
 
+  // The branch's own number this month: every scored audit of its staff, averaged.
+  const scoredThisMonth = thisMonth.filter((a) => a.score != null);
+  const branchScore = scoredThisMonth.length ? scoredThisMonth.reduce((s, a) => s + (a.score ?? 0), 0) / scoredThisMonth.length : null;
+
   const nameOf = (id: string) => allMembers.find((m) => m.id === id)?.name ?? '—';
   const dateOf = (iso: string) => new Date(iso).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric' });
 
@@ -68,6 +72,12 @@ export function BranchAudits() {
       </Text>
 
       <Card style={{ marginBottom: 10 }}>
+        {branchScore != null ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: c.border }}>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }}>{t('branchAudits.branchScore')}</Text>
+            <ScorePill score={branchScore} />
+          </View>
+        ) : null}
         {perSupervisor.length === 0 ? (
           <Text style={{ fontSize: 13, color: c.textMuted }}>{t('branchAudits.noStaff')}</Text>
         ) : (

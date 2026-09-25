@@ -16,18 +16,23 @@ export function TodayChecklistCard() {
   const { profile } = useAuth();
   const { history, allMembers: members } = useOrgData();
 
-  const todaysChecklist = history.find(
+  // A branch manager can fill two today — his own and, when his supervisor
+  // cannot, the supervisors' — so every one of today's gets its own card.
+  const todays = history.filter(
     (h) =>
       h.actorId === profile?.id &&
       h.action === 'completed' &&
       !!h.selfieUrl &&
       new Date(h.createdAt).toDateString() === new Date().toDateString()
   );
-  const reviewer = todaysChecklist?.reviewedBy ? members.find((m) => m.id === todaysChecklist.reviewedBy) : null;
   const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <>
+      {todays.map((todaysChecklist) => {
+        const reviewer = todaysChecklist.reviewedBy ? members.find((m) => m.id === todaysChecklist.reviewedBy) : null;
+        return (
+          <View key={todaysChecklist.id}>
         {todaysChecklist ? (
           <View
             style={{
@@ -52,6 +57,7 @@ export function TodayChecklistCard() {
                   : t('checklists.waiting')}
               </Text>
               <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>
+                {todays.length > 1 ? `${todaysChecklist.taskTitle} · ` : ''}
                 {t('checklists.submittedAt', { time: timeOf(todaysChecklist.createdAt) })}
               </Text>
               {todaysChecklist.reviewNote ? (
@@ -60,6 +66,9 @@ export function TodayChecklistCard() {
             </View>
           </View>
         ) : null}
+          </View>
+        );
+      })}
     </>
   );
 }

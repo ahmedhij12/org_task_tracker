@@ -213,6 +213,7 @@ export default {
     submittedAt: 'Today\'s checklist submitted at {{time}}',
     title: 'Checklists',
     subtitle: 'Daily checklists by branch. Open one to check the answers, photos, selfie and location, then verify it.',
+    subtitleManager: "Your branch's daily checklists. Open one to see it, or share it as a PDF.",
     today: 'Today',
     yesterday: 'Yesterday',
     none: 'No checklists submitted yet.',
@@ -504,6 +505,7 @@ export default {
   },
   branchAudits: {
     heading: "My branch — audits this month",
+    branchScore: "Branch score this month",
     noStaff: "No supervisors in your branch yet.",
     noAuditThisMonth: "No audit yet this month",
     audits_one: "{{count}} audit",
