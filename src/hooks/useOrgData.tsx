@@ -59,6 +59,10 @@ function mapCompletion(row: any): TaskCompletion {
     signedAddress: row.signed_address ?? null,
     selfieUrl: row.selfie_url ?? null,
     signatureUrl: row.signature_url,
+    checklistSlot: row.checklist_slot ?? null,
+    lateExcusedBy: row.late_excused_by ?? null,
+    lateExcusedAt: row.late_excused_at ?? null,
+    lateExcuseReason: row.late_excuse_reason ?? null,
     createdAt: row.created_at,
   };
 }
@@ -84,6 +88,7 @@ function mapProfile(row: any, teamIds: string[], teamBrandIds: Record<string, st
     mustChangePassword: row.must_change_password,
     active: row.active,
     isSuperAdmin: row.is_super_admin ?? false,
+    permissions: null,
     recoveryEmail: row.recovery_email,
     recoveryEmailVerifiedAt: row.recovery_email_verified_at ?? null,
     deletedAt: row.deleted_at ?? null,

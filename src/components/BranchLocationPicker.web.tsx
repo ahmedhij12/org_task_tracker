@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, Pressable } from 'react-native';
+import { Modal, View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { PrimaryButton, SecondaryButton, useThemeColors } from '@/components/ui';
@@ -30,9 +30,10 @@ function loadLeaflet(): Promise<any> {
 }
 
 /**
- * Web branch-location picker: a real draggable OpenStreetMap; the pin stays in
- * the centre and the map moves under it. The admin pins a branch from head
- * office, so this never uses the device's own location.
+ * Web branch-location picker: a real draggable map; the pin stays in the
+ * centre and the map moves under it. Pinned from head office by moving the
+ * map, or — standing in the branch — with "My location" (his request,
+ * 2026-09-25: there was no way to use the phone's own position).
  */
 export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
   visible: boolean;
@@ -51,6 +52,28 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
   const [radius, setRadius] = useState(start.radiusM);
   const [ready, setReady] = useState(false);
   const [satellite, setSatellite] = useState(true);
+  const [locating, setLocating] = useState(false);
+  const [gpsNote, setGpsNote] = useState<string | null>(null);
+
+  // Standing in the branch: jump the map to where the phone is. The pin is
+  // the map's centre, so the branch is then one tap on Save away.
+  const locate = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setGpsNote(t('branchLoc.gpsFailed')); return; }
+    setLocating(true);
+    setGpsNote(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        mapRef.current?.setView([pos.coords.latitude, pos.coords.longitude], 18);
+        setGpsNote(t('branchLoc.gpsAccuracy', { m: Math.round(pos.coords.accuracy) }));
+      },
+      (err) => {
+        setLocating(false);
+        setGpsNote(err?.code === 1 ? t('branchLoc.gpsDenied') : t('branchLoc.gpsFailed'));
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+    );
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -66,12 +89,17 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
       const map = L.map(div, { zoomControl: true, attributionControl: true }).setView([start.lat, start.lng], 18);
       // Satellite by default: you can see the actual building, which makes
       // pinning a branch far more accurate than a sparse street map.
+      // Esri has photos down to zoom 18 in every branch town (checked
+      // 2026-09-26: Baghdad, Karbala, Samawah, Nasiriyah) but zoom 19 comes
+      // back as a grey "Map data not yet available" tile outside Baghdad (his
+      // screenshot). Past 18 Leaflet now stretches the zoom-18 photo instead of
+      // asking for tiles that do not exist.
       const satellite = L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        { maxZoom: 19, attribution: 'Esri' }
+        { maxZoom: 20, maxNativeZoom: 18, attribution: 'Esri' }
       );
       const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '© OpenStreetMap',
+        maxZoom: 20, maxNativeZoom: 19, attribution: '© OpenStreetMap',
       });
       satellite.addTo(map);
       layersRef.current = { satellite, street };
@@ -128,7 +156,17 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
               {satellite ? t('branchLoc.showStreet') : t('branchLoc.showSatellite')}
             </Text>
           </Pressable>
+          <Pressable
+            testID="branch-loc-gps"
+            onPress={locate}
+            disabled={locating || !ready}
+            style={{ position: 'absolute', bottom: 16, right: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.brand, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, opacity: locating || !ready ? 0.6 : 1 }}
+          >
+            {locating ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="locate" size={16} color="#fff" />}
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{t('branchLoc.myLocation')}</Text>
+          </Pressable>
         </View>
+        {gpsNote ? <Text style={{ fontSize: 12, color: c.textMuted, paddingHorizontal: 16, paddingTop: 8 }}>{gpsNote}</Text> : null}
 
         <View style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

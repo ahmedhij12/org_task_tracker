@@ -115,6 +115,7 @@ function mapProfile(
     mustChangePassword: row.must_change_password,
     active: row.active,
     isSuperAdmin: row.is_super_admin ?? false,
+    permissions: null,
     recoveryEmail: row.recovery_email,
     recoveryEmailVerifiedAt: row.recovery_email_verified_at ?? null,
     deletedAt: row.deleted_at ?? null,
@@ -190,12 +191,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
     const profile = mapProfile(profileRow, teamIds, teamBrandIds);
 
-    const [{ data: orgRow }, { data: teamRows }] = await Promise.all([
+    const [{ data: orgRow }, { data: teamRows }, { data: permRows, error: permError }] = await Promise.all([
       supabase.from('organizations').select('*').eq('id', profile.orgId).maybeSingle(),
       teamIds.length > 0
         ? supabase.from('teams').select('*').in('id', teamIds)
         : Promise.resolve({ data: [] as any[] }),
+      supabase.rpc('my_permissions'),
     ]);
+    // The super admin's switches; on a database without them the role defaults apply (lib/roles can()).
+    if (!permError && Array.isArray(permRows)) profile.permissions = permRows as string[];
 
     setState((s) => ({
       ...s,

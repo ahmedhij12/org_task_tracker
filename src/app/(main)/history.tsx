@@ -366,8 +366,9 @@ function HistoryRow({
               {isChecklist ? t('history.checklistSuffix', { yes: entry.yesCount, no: entry.noCount }) : ''}
             </Text>
             {entry.wasLate && entry.action === 'completed' ? (
-              <Text style={{ fontSize: 11, color: c.rose, marginTop: 2 }}>
+              <Text style={{ fontSize: 11, color: entry.lateExcusedAt ? c.textMuted : c.rose, marginTop: 2 }}>
                 {t('history.lateDeadline', { time: entry.dueAt ? when(entry.dueAt, i18n.language) : t('history.earlier') })}
+                {entry.lateExcusedAt ? ` · ${t('history.excused')}` : ''}
               </Text>
             ) : null}
             {isOffDuty ? (

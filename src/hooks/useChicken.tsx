@@ -23,6 +23,10 @@ function mapRow(row: any): ChickenMarination {
     unloadPhotoUrl: row.unload_photo_url ?? null,
     unloadedByName: row.unloader?.name ?? null,
     signatureUrl: row.signature_url,
+    originalMarinatedAt: row.original_marinated_at ?? null,
+    startEditedBy: row.start_edited_by ?? null,
+    startEditedAt: row.start_edited_at ?? null,
+    startEditReason: row.start_edit_reason ?? null,
   };
 }
 
@@ -47,6 +51,8 @@ interface ChickenContextValue {
   /** Record that a batch came out. The removal time is stamped by the server
    * (never the phone) and a photo is required as proof. */
   markUnloaded: (id: string, photoUrl: string, countOut?: number | null) => Promise<void>;
+  /** The branch manager corrects when a batch went in, with a reason (kept on record). */
+  editStart: (id: string, newStartIso: string, reason: string) => Promise<void>;
 }
 
 const ChickenContext = createContext<ChickenContextValue | undefined>(undefined);
@@ -112,7 +118,19 @@ export function ChickenProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
-  const value = useMemo(() => ({ records, loading, refresh, submit, markUnloaded }), [records, loading, refresh, submit, markUnloaded]);
+  const editStart = useCallback<ChickenContextValue['editStart']>(
+    async (id, newStartIso, reason) => {
+      const { error } = await supabase.rpc('edit_marination_start', { p_id: id, p_new_start: newStartIso, p_reason: reason });
+      if (error) throw error;
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const value = useMemo(
+    () => ({ records, loading, refresh, submit, markUnloaded, editStart }),
+    [records, loading, refresh, submit, markUnloaded, editStart]
+  );
   return <ChickenContext.Provider value={value}>{children}</ChickenContext.Provider>;
 }
 

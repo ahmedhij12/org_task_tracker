@@ -8,14 +8,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { seesAllBranches } from '@/lib/roles';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
-import { TimeField } from '@/components/TimeField';
-import { isoForBranchTime } from '@/lib/time';
+import { toNumber } from '@/lib/numbers';
+import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 
 const CHICKENS_PER_BUCKET = 8;
-
-const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const c = useThemeColors();
@@ -24,16 +22,14 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
   const { profile } = useAuth();
   const { teams } = useOrgData();
   const { submit } = useChicken();
-  const { width, height } = useWindowDimensions();
-  // Two number boxes side by side do not fit a narrow phone, and the whole
-  // sheet has to breathe less on a short one.
-  const narrow = width < 360;
+  const { marinationRules } = useOrgSettings();
+  const { height } = useWindowDimensions();
+  // The whole sheet has to breathe less on a short phone.
   const tight = height < 700;
   const gapY = tight ? 8 : 14;
 
   const myBranches = useMemo(() => (seesAllBranches(profile) ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id))), [teams, profile]);
   const [branchId, setBranchId] = useState<string | null>(myBranches[0]?.id ?? null);
-  const [marinTime, setMarinTime] = useState(hhmm(new Date()));
   const [countIn, setCountIn] = useState('');
   const [remind, setRemind] = useState(true);
   const [note, setNote] = useState('');
@@ -41,32 +37,31 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
-    setBranchId(myBranches[0]?.id ?? null); setMarinTime(hhmm(new Date())); setCountIn('');
+    setBranchId(myBranches[0]?.id ?? null); setCountIn('');
     setRemind(true); setNote(''); setError(null);
   };
   const handleClose = () => { if (submitting) return; reset(); onClose(); };
 
   // teams can arrive after this sheet mounts, so never trust the initial pick alone.
   const effectiveBranchId = branchId ?? myBranches[0]?.id ?? null;
-  const tz = teams.find((tm) => tm.id === effectiveBranchId)?.timezone ?? 'Asia/Baghdad';
 
-  // Both times are typed by hand, so both can describe something that has not
-  // happened. A batch recorded as "in at 1 PM, out at 4 PM" at 1:47 PM is not a
-  // record of anything — and the monitor used to call it "Removed on time".
-  const timeProblem = useMemo(() => {
-    const marinated = new Date(isoForBranchTime(marinTime, tz)).getTime();
-    return marinated > Date.now() ? t('chicken.errFutureMarinated') : null;
-  }, [marinTime, tz, t]);
+  // The start is the server's clock, like the removal (his rule, 2026-09-26):
+  // a typed time could be set 2.5 hours back and the chicken pulled 30 minutes
+  // later "on time". A batch recorded late is corrected by the branch manager,
+  // with a reason, on the batch itself.
+  // Buckets: an Arabic keyboard types ٣, which Number() cannot read.
+  const buckets = toNumber(countIn);
+  const countProblem = countIn.trim() !== '' && (buckets == null || buckets <= 0 || buckets > 200) ? t('chicken.errBuckets') : null;
 
-  const canSubmit = !!effectiveBranchId && !submitting && !timeProblem;
+  const canSubmit = !!effectiveBranchId && !submitting && !countProblem;
 
   const handleSubmit = async () => {
     if (!canSubmit || !effectiveBranchId) return;
-    const marinatedAt = isoForBranchTime(marinTime, tz);
     setError(null); setSubmitting(true);
     try {
       await submit({
-        teamId: effectiveBranchId, marinatedAt, countIn: countIn.trim() === '' ? null : Number(countIn),
+        // Ignored by the server, which stamps its own clock; kept for the signature.
+        teamId: effectiveBranchId, marinatedAt: new Date().toISOString(), countIn: buckets,
         unloadedAt: null, countOut: null,
         note: note.trim() || null, signatureUrl: null, remind,
       });
@@ -115,13 +110,18 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
               ) : null}
 
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.text, marginBottom: 8 }}>{t('chicken.marinationHeading')}</Text>
-              <View style={{ flexDirection: narrow ? 'column' : 'row', gap: narrow ? 10 : 12, marginBottom: 6 }}>
-                <TimeField label={t('chicken.time')} value={marinTime} onChange={setMarinTime} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.bgSubtle, borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                <Ionicons name="time-outline" size={18} color={c.brand} />
+                <Text style={{ flex: 1, fontSize: 12, color: c.text, lineHeight: 17 }}>{t('chicken.startsNow')}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', marginBottom: 6 }}>
                 {field(t('chicken.countIn'), countIn, setCountIn, 'num')}
               </View>
-              {Number(countIn) > 0 ? (
-                <Text style={{ fontSize: 12, color: c.brand, fontWeight: '700', marginBottom: 14 }}>
-                  {t('chicken.bucketMath', { buckets: Number(countIn), chickens: Number(countIn) * CHICKENS_PER_BUCKET })}
+              {countProblem ? (
+                <Text style={{ fontSize: 12, color: c.rose, fontWeight: '700', marginBottom: 14 }}>{countProblem}</Text>
+              ) : buckets != null && buckets > 0 ? (
+                <Text testID="bucket-math" style={{ fontSize: 14, color: c.brand, fontWeight: '800', marginBottom: 14 }}>
+                  {t('chicken.bucketMath', { buckets, chickens: Math.round(buckets * CHICKENS_PER_BUCKET) })}
                 </Text>
               ) : <View style={{ height: 12 }} />}
 
@@ -129,7 +129,7 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
                 <Ionicons name={remind ? 'notifications' : 'notifications-off-outline'} size={20} color={remind ? c.brand : c.textMuted} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{t('chicken.remindMe')}</Text>
-                  <Text style={{ fontSize: 12, color: c.textMuted }}>{t('chicken.remindHint')}</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>{t('chicken.remindHintHours', { hours: marinationRules.hours })}</Text>
                 </View>
                 <Ionicons name={remind ? 'checkbox' : 'square-outline'} size={22} color={remind ? c.brand : c.textMuted} />
               </Pressable>
@@ -140,13 +140,6 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
                 style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, marginBottom: gapY, minHeight: 44, textAlign: textAlignFor(note) }} />
 
             </ScrollView>
-
-            {timeProblem ? (
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
-                <Ionicons name="alert-circle" size={16} color={c.rose} style={{ marginTop: 1 }} />
-                <Text style={{ fontSize: 12, fontWeight: '600', color: c.rose, flex: 1 }}>{timeProblem}</Text>
-              </View>
-            ) : null}
 
             {submitting ? (
               <View style={{ paddingVertical: 14, alignItems: 'center' }}><ActivityIndicator color={c.brand} /></View>

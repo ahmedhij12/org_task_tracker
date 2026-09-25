@@ -11,6 +11,8 @@ import { shareOrDownloadFile } from '@/lib/webPdf';
 import { checkInFor } from '@/lib/checkIn';
 import { logActivity } from '@/lib/activityLog';
 import { needsReview } from '@/types';
+import { can } from '@/lib/roles';
+import { supabase } from '@/lib/supabase';
 import { ScoreRing } from '@/components/ScoreRing';
 import { LocationMap } from '@/components/LocationMap';
 import { PhotoViewer } from '@/components/PhotoViewer';
@@ -42,11 +44,17 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const [exporting, setExporting] = useState(false);
   // Web: the finished PDF, waiting for a second tap to open the share sheet.
   const [webPdf, setWebPdf] = useState<globalThis.File | null>(null);
+  // Excusing a late checklist: the reason being typed, and the result shown at once.
+  const [excuseText, setExcuseText] = useState('');
+  const [excusing, setExcusing] = useState(false);
+  const [excusedNow, setExcusedNow] = useState<{ by: string; at: string; reason: string } | null>(null);
 
   const isChecklistCompletion = completion?.action === 'completed' && completion.yesCount != null;
 
   useEffect(() => {
     setWebPdf(null);
+    setExcuseText('');
+    setExcusedNow(null);
     if (completion) logActivity(profile, 'view', 'record', { completion_id: completion.id, title: completion.taskTitle });
     if (!completion || !isChecklistCompletion) {
       setAnswers([]);
@@ -156,6 +164,27 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
     }
   };
 
+  // A supervisor checklist sent after its deadline (+ grace). The reason he
+  // typed is the note; an excuse keeps the lateness on record, with who and why.
+  const lateChecklist = completion.action === 'completed' && completion.wasLate && !!completion.checklistSlot;
+  const excuse = excusedNow ?? (completion.lateExcusedAt
+    ? {
+        by: members.find((m) => m.id === completion.lateExcusedBy)?.name ?? t('detail.admin'),
+        at: completion.lateExcusedAt,
+        reason: completion.lateExcuseReason ?? '',
+      }
+    : null);
+  const canExcuse = lateChecklist && !excuse && can(profile, 'excuse_late');
+  const handleExcuse = async () => {
+    if (!excuseText.trim() || excusing) return;
+    setExcusing(true);
+    setError(null);
+    const { error: e } = await supabase.rpc('excuse_checklist_late', { p_completion_id: completion.id, p_reason: excuseText.trim() });
+    if (e) setError(e.message ?? t('detail.excuseFailed'));
+    else setExcusedNow({ by: profile?.name ?? '', at: new Date().toISOString(), reason: excuseText.trim() });
+    setExcusing(false);
+  };
+
   const handleAcknowledge = async () => {
     setReviewing(true);
     setError(null);
@@ -216,6 +245,43 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
             ) : null}
 
             {error ? <ErrorBanner message={error} /> : null}
+
+            {lateChecklist ? (
+              <View testID="late-block" style={{ backgroundColor: excuse ? c.bgSubtle : c.roseSoft, borderRadius: 12, padding: 10, marginBottom: 12, gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="time" size={16} color={excuse ? c.textMuted : c.rose} />
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: excuse ? c.textMuted : c.rose }}>
+                    {t('detail.lateChecklist', { time: completion.dueAt ? when(completion.dueAt) : '' })}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, color: c.text }}>
+                  {completion.note ? t('detail.lateReason', { reason: completion.note }) : t('detail.noLateReason')}
+                </Text>
+                {excuse ? (
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.emerald }}>
+                    {t('detail.excusedBy', { name: excuse.by, time: when(excuse.at), reason: excuse.reason })}
+                  </Text>
+                ) : canExcuse ? (
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <TextInput
+                      value={excuseText}
+                      onChangeText={setExcuseText}
+                      placeholder={t('detail.excusePlaceholder')}
+                      placeholderTextColor={c.textFaint}
+                      style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.text, backgroundColor: c.bg, textAlign: textAlignFor(excuseText) }}
+                    />
+                    <Pressable
+                      testID="excuse-late"
+                      onPress={handleExcuse}
+                      disabled={!excuseText.trim() || excusing}
+                      style={{ justifyContent: 'center', backgroundColor: c.brand, borderRadius: 10, paddingHorizontal: 12, opacity: !excuseText.trim() || excusing ? 0.45 : 1 }}
+                    >
+                      {excusing ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t('detail.excuse')}</Text>}
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
 
             {completion.action === 'off_duty' ? (
               <View>

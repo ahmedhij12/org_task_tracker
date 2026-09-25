@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { can } from '@/lib/roles';
 import { useThemeColors } from '@/components/ui';
 import { PointValueCard } from '@/components/control/PointValueCard';
 import { FryersCard } from '@/components/control/FryersCard';
@@ -17,10 +18,11 @@ import { ChecklistDeadlinesCard } from '@/components/control/ChecklistDeadlinesC
 /**
  * The control panel: every setting that decides how the app behaves for the
  * whole company, in one place, so a change never needs a developer or a new
- * build. Admins only — in the database that is role 'owner' today (the super
- * admin is an owner with is_super_admin). Settings keeps only personal things.
- * Each setting is its own card in src/components/control/; later work adds
- * cards here.
+ * build. For whoever has the "Control panel" switch — admins by default; an
+ * admin turns it on for others in Staff → their sheet → Access (Fatima, the
+ * hygiene auditor, first). The database's has_permission('control_panel') is
+ * the real gate. Settings keeps only personal things. Each setting is its own
+ * card in src/components/control/.
  */
 export default function ControlPanelScreen() {
   const c = useThemeColors();
@@ -28,9 +30,10 @@ export default function ControlPanelScreen() {
   const { profile } = useAuth();
 
   if (!profile) return null;
-  // Direct URL on the web build: a non-admin lands back in Settings. The
-  // database refuses their writes anyway; this is about not showing the screen.
-  if (profile.role !== 'owner') return <Redirect href="/(main)/settings" />;
+  // Whoever has the control panel switch (admins by default). Anyone else —
+  // a direct URL on the web build — lands back in Settings; the database
+  // refuses their writes anyway, this is about not showing the screen.
+  if (!can(profile, 'control_panel')) return <Redirect href="/(main)/settings" />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={['top']}>

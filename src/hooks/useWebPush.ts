@@ -25,6 +25,27 @@ function isStandalone(): boolean {
   );
 }
 
+// What this phone last told the server, so several screens using this hook
+// do not repeat the same report on every mount.
+let lastReported = '';
+
+/** Tells the server this phone's notification state (push_status), so the
+ * control panel's push test shows who is reachable and why not — instead of
+ * a guess like "Fatima turned it on". Best effort: never throws. */
+function report(state: string, detail: string | null) {
+  const key = `${state}|${detail ?? ''}`;
+  if (key === lastReported) return;
+  lastReported = key;
+  supabase
+    .rpc('report_push_state', {
+      p_state: state,
+      p_detail: detail,
+      p_standalone: isStandalone(),
+      p_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    })
+    .then(() => {}, () => {});
+}
+
 /** Web-only push. Returns a state and an enable() that asks permission and
  * registers the browser's subscription. A no-op on native (that uses Expo push). */
 export function useWebPush() {
@@ -57,6 +78,7 @@ export function useWebPush() {
       p_auth: json.keys?.auth,
     });
     if (error) throw new Error(error.message);
+    report('registered', null);
   }, []);
 
   useEffect(() => {
@@ -67,7 +89,13 @@ export function useWebPush() {
     // Permission can already be granted while this browser was never actually
     // registered (it failed silently before). Repair that on load.
     if (next === 'granted') {
-      subscribeAndSave().catch((e) => setDetail(String(e?.message ?? e).slice(0, 140)));
+      subscribeAndSave().catch((e) => {
+        const msg = String(e?.message ?? e).slice(0, 140);
+        setDetail(msg);
+        report('error', msg);
+      });
+    } else {
+      report(next, null);
     }
   }, [compute, subscribeAndSave]);
 
@@ -76,12 +104,14 @@ export function useWebPush() {
     setDetail(null);
     try {
       const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { setState(perm as PushState); setDetail(`permission: ${perm}`); return; }
+      if (perm !== 'granted') { setState(perm as PushState); setDetail(`permission: ${perm}`); report(perm, null); return; }
       await subscribeAndSave();
       setState('granted');
     } catch (e: any) {
       // Surface it: a silent failure here is why nothing ever arrived.
-      setDetail(e?.message ? String(e.message).slice(0, 140) : 'subscribe failed');
+      const msg = e?.message ? String(e.message).slice(0, 140) : 'subscribe failed';
+      setDetail(msg);
+      report('error', msg);
       setState(compute());
     } finally {
       setBusy(false);

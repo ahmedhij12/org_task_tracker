@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Modal, View, Text, Pressable } from 'react-native';
+import { useRef, useState } from 'react';
+import { Modal, View, Text, Pressable, ActivityIndicator } from 'react-native';
 import MapView, { Circle } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { PrimaryButton, SecondaryButton, useThemeColors } from '@/components/ui';
@@ -11,8 +12,8 @@ const DEFAULT_CENTER = { lat: 33.3152, lng: 44.3661 }; // Baghdad
 
 /**
  * Native branch-location picker: move the map, the pin stays centred, tap save.
- * The admin pins a branch from wherever they are (head office), so this never
- * asks for the device's own location.
+ * Pinned from head office by moving the map, or — standing in the branch —
+ * with "My location".
  */
 export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
   visible: boolean;
@@ -25,6 +26,25 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
   const start = initial ?? { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, radiusM: 15 };
   const [center, setCenter] = useState({ lat: start.lat, lng: start.lng });
   const [radius, setRadius] = useState(start.radiusM);
+  const mapRef = useRef<MapView>(null);
+  const [locating, setLocating] = useState(false);
+  const [gpsNote, setGpsNote] = useState<string | null>(null);
+
+  const locate = async () => {
+    setLocating(true);
+    setGpsNote(null);
+    try {
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (!perm.granted) { setGpsNote(t('branchLoc.gpsDenied')); return; }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      mapRef.current?.animateToRegion({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, latitudeDelta: 0.002, longitudeDelta: 0.002 }, 400);
+      if (pos.coords.accuracy != null) setGpsNote(t('branchLoc.gpsAccuracy', { m: Math.round(pos.coords.accuracy) }));
+    } catch {
+      setGpsNote(t('branchLoc.gpsFailed'));
+    } finally {
+      setLocating(false);
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -37,6 +57,7 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
 
         <View style={{ flex: 1 }}>
           <MapView
+            ref={mapRef}
             style={{ flex: 1 }}
             initialRegion={{ latitude: start.lat, longitude: start.lng, latitudeDelta: 0.004, longitudeDelta: 0.004 }}
             onRegionChangeComplete={(r) => setCenter({ lat: r.latitude, lng: r.longitude })}
@@ -48,7 +69,16 @@ export function BranchLocationPicker({ visible, initial, onSave, onClose }: {
           <View pointerEvents="none" style={{ position: 'absolute', top: '50%', left: '50%', marginLeft: -16, marginTop: -34 }}>
             <Ionicons name="location" size={34} color="#E8141A" />
           </View>
+          <Pressable
+            onPress={locate}
+            disabled={locating}
+            style={{ position: 'absolute', bottom: 16, right: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.brand, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, opacity: locating ? 0.6 : 1 }}
+          >
+            {locating ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="locate" size={16} color="#fff" />}
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{t('branchLoc.myLocation')}</Text>
+          </Pressable>
         </View>
+        {gpsNote ? <Text style={{ fontSize: 12, color: c.textMuted, paddingHorizontal: 16, paddingTop: 8 }}>{gpsNote}</Text> : null}
 
         <View style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

@@ -32,6 +32,12 @@ export interface Profile {
    * the app can set it — it is granted in the database.
    */
   isSuperAdmin: boolean;
+  /**
+   * The super admin's switches this person has on (my_permissions()), or
+   * null until they load / on a database without them — lib/roles can()
+   * falls back to the role's default then.
+   */
+  permissions: string[] | null;
   /** Optional, added later by the user, only used for password recovery. */
   recoveryEmail: string | null;
   /** Set once the person typed the code mailed to recoveryEmail. Only a verified address gets reset codes. */
@@ -167,6 +173,12 @@ export interface TaskCompletion {
   selfieUrl: string | null;
   /** The auditor's signature. Only set on an is_audit completion. */
   signatureUrl: string | null;
+  /** The checklist deadline this answered (AM / PM / DAY), stamped by the server; null when none applied. */
+  checklistSlot: string | null;
+  /** A late checklist excused by an admin or the auditor — it stays late on record, with who, when and why. */
+  lateExcusedBy: string | null;
+  lateExcusedAt: string | null;
+  lateExcuseReason: string | null;
   createdAt: string;
 }
 
@@ -384,4 +396,10 @@ export interface ChickenMarination {
   lateGraceMin?: number | null;
   /** Who emptied it — often a different shift from whoever marinated. */
   unloadedByName?: string | null;
+  /** The server's time when it was recorded, kept when a manager corrects the start. */
+  originalMarinatedAt?: string | null;
+  /** The last correction of the start time: by whom (a profile id), when, why (edit_marination_start). */
+  startEditedBy?: string | null;
+  startEditedAt?: string | null;
+  startEditReason?: string | null;
 }

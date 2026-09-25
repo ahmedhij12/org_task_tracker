@@ -50,3 +50,29 @@ export function isoForBranchTime(time: string, tz: string = BAGHDAD): string {
   const off = offsetMinutes(new Date(guess), tz);
   return new Date(guess - off * 60000).toISOString();
 }
+
+/** "HH:MM at the branch" on a given branch day ("YYYY-MM-DD"), as a timestamp. */
+export function isoForBranchDayTime(day: string, time: string, tz: string = BAGHDAD): string | null {
+  const m = time.trim().match(/^(\d{1,2}):(\d{1,2})$/);
+  const dm = day.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m || !dm) return null;
+  const h = Number(m[1]); const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  const guess = Date.UTC(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), h, mi, 0, 0);
+  const off = offsetMinutes(new Date(guess), tz);
+  return new Date(guess - off * 60000).toISOString();
+}
+
+/**
+ * The moment a corrected start time means: that HH:MM on the day the batch
+ * was recorded — or the day before, when that would still be in the future
+ * (a batch recorded at 00:20 that really went in at 23:40).
+ */
+export function correctedStartIso(recordedIso: string, time: string, tz: string = BAGHDAD, now: number = Date.now()): string | null {
+  const day = dayKey(recordedIso, tz);
+  const same = isoForBranchDayTime(day, time, tz);
+  if (!same) return null;
+  if (new Date(same).getTime() <= now) return same;
+  const prev = new Date(Date.parse(day + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  return isoForBranchDayTime(prev, time, tz);
+}

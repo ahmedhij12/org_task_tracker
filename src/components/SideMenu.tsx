@@ -5,6 +5,7 @@ import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { can } from '@/lib/roles';
 import { useUnverifiedChecklistCount } from '@/hooks/useSupervisorChecklists';
 import { useThemeColors } from '@/components/ui';
 
@@ -28,14 +29,14 @@ export function SideMenuProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The ☰ next to a screen's title. Admins and the hygiene auditor only. */
+/** The ☰ next to a screen's title. Admins, the hygiene auditor, and anyone given the control panel. */
 export function MenuButton() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { profile } = useAuth();
   const { open } = useContext(SideMenuContext);
   const unverified = useUnverifiedChecklistCount();
-  if (profile?.role !== 'owner' && profile?.role !== 'hygiene_auditor') return null;
+  if (profile?.role !== 'owner' && profile?.role !== 'hygiene_auditor' && !can(profile, 'control_panel')) return null;
   return (
     <Pressable onPress={open} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('menu.open')} testID="open-side-menu">
       <Ionicons name="menu" size={26} color={c.text} />
@@ -58,11 +59,16 @@ function SideMenuPanel({ visible, onClose }: { visible: boolean; onClose: () => 
 
   // Everything this person can open that is NOT in their bottom bar. The
   // hygiene auditor has Checklists in her bar and no Staff or Control panel.
-  const items: Item[] = [
+  // Someone else given the control panel (a branch manager, say) gets only that.
+  const onlyControlPanel = profile?.role !== 'owner' && !isHygiene;
+  const items: Item[] = onlyControlPanel
+    ? [{ route: '/(main)/control-panel' as Href, label: t('control.title'), icon: 'options' as const }]
+    : [
     ...(isHygiene ? [] : [{ route: '/(main)/checklists' as Href, label: t('mainTabs.checklists'), icon: 'clipboard' as const, badge: unverified }]),
     { route: '/(main)/report', label: t('mainTabs.report'), icon: 'bar-chart' },
     ...(isSuperAdmin || isHygiene ? [] : [{ route: '/(main)/people' as Href, label: t('mainTabs.people'), icon: 'person-add' as const }]),
-    ...(isHygiene ? [] : [{ route: '/(main)/control-panel' as Href, label: t('control.title'), icon: 'options' as const }]),
+    // Whoever has the control panel switch (Staff → their sheet); admins by default.
+    ...(can(profile, 'control_panel') ? [{ route: '/(main)/control-panel' as Href, label: t('control.title'), icon: 'options' as const }] : []),
     // The super admin's alone — no admin ever sees this row.
     ...(isSuperAdmin ? [{ route: '/(main)/activity' as Href, label: t('activity.title'), icon: 'footsteps' as const }] : []),
   ];

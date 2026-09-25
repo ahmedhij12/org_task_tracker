@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal, Image } from 'react-native';
+import { View, Text, Pressable, ScrollView, Modal, Image, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useChicken } from '@/hooks/useChicken';
@@ -13,6 +13,13 @@ import type { ChickenMarination } from '@/types';
 import { timeOf, dayKey, dateOf } from '@/lib/time';
 import { marinationStatus, humanSpan } from '@/lib/marination';
 import { useOrgSettings } from '@/hooks/useOrgSettings';
+import { can } from '@/lib/roles';
+import { EditMarinationStartSheet } from '@/components/EditMarinationStartSheet';
+import { buildWebMarinationFile, exportMarinationReport } from '@/lib/exportMarinationReport';
+import { shareOrDownloadFile } from '@/lib/webPdf';
+import { logActivity } from '@/lib/activityLog';
+
+const CHICKENS_PER_BUCKET = 8;
 
 /** Chicken marination history, all roles (RLS-scoped), built like the oil
  * section above it: with several branches in view it is one row per branch, and
@@ -22,9 +29,16 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { records } = useChicken();
-  const { teams } = useOrgData();
+  const { teams, allMembers } = useOrgData();
   const { profile } = useAuth();
   const isOwner = seesAllBranches(profile);
+  const nameOf = (id: string | null | undefined) => allMembers.find((m) => m.id === id)?.name ?? '';
+  const [editing, setEditing] = useState<ChickenMarination | null>(null);
+  // The day's report: phones share in one tap; the web builds the PDF first and
+  // shares on a second tap (iPhone browsers open the share sheet only from a tap).
+  const [building, setBuilding] = useState(false);
+  const [webFile, setWebFile] = useState<globalThis.File | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const { marinationRules } = useOrgSettings();
   const [openDay, setOpenDay] = useState<string | null>(null);
   // The branch opened inside this section; the screen's own filter wins.
@@ -62,6 +76,29 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   }, [scoped]);
 
   const dayRecords = days.find(([k]) => k === openDay)?.[1] ?? [];
+  useEffect(() => { setWebFile(null); setReportError(null); }, [openDay]);
+
+  const exportDay = async () => {
+    if (!openDay || dayRecords.length === 0) return;
+    const teamId = dayRecords[0].teamId;
+    const data = {
+      branchName: teamName(teamId), day: openDay, records: dayRecords, rules: marinationRules,
+      tz: tzOf(teamId), locale: i18n.language, nameOf,
+    };
+    setBuilding(true);
+    setReportError(null);
+    logActivity(profile, 'export', 'marination_pdf', { branch: data.branchName, day: openDay });
+    try {
+      if (Platform.OS === 'web') setWebFile(await buildWebMarinationFile(data));
+      else await exportMarinationReport(data);
+    } catch (e: any) {
+      setReportError(e?.message ?? t('chicken.reportFailed'));
+    } finally {
+      setBuilding(false);
+    }
+  };
+  const canEditStart = (x: ChickenMarination) =>
+    can(profile, 'edit_marination_start') && (isOwner || !!profile?.teamIds.includes(x.teamId));
 
   if (scoped.length === 0) return null;
 
@@ -97,8 +134,31 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: c.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '85%' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text }}>{openDay ? dateOf(openDay + 'T12:00:00Z', i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: c.text, flex: 1 }}>{openDay ? dateOf(openDay + 'T12:00:00Z', i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</Text>
               <Pressable onPress={() => setOpenDay(null)} hitSlop={8}><Ionicons name="close" size={24} color={c.textMuted} /></Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              {webFile ? (
+                <Pressable
+                  testID="marination-share"
+                  onPress={() => shareOrDownloadFile(webFile).catch((e) => setReportError(e?.message ?? t('chicken.reportFailed')))}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.emerald, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}
+                >
+                  <Ionicons name="share-outline" size={16} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t('chicken.reportShare')}</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  testID="marination-export"
+                  onPress={exportDay}
+                  disabled={building}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.brand, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, opacity: building ? 0.6 : 1 }}
+                >
+                  {building ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="document-text-outline" size={16} color="#fff" />}
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{building ? t('chicken.reportBuilding') : t('chicken.reportExport')}</Text>
+                </Pressable>
+              )}
+              {reportError ? <Text style={{ flex: 1, fontSize: 12, color: c.rose }}>{reportError}</Text> : null}
             </View>
             <ScrollView style={{ maxHeight: 460 }}>
               {dayRecords.map((x) => (
@@ -106,7 +166,16 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Ionicons name="arrow-down-circle" size={16} color={c.emerald} />
                     <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{time(x.marinatedAt, x.teamId)}</Text>
-                    {x.countIn != null ? <Text style={{ fontSize: 13, color: c.textMuted }}>· {t('chicken.inN', { count: x.countIn })}</Text> : null}
+                    {canEditStart(x) ? (
+                      <Pressable onPress={() => setEditing(x)} hitSlop={8} accessibilityLabel={t('chicken.editStartTitle')}>
+                        <Ionicons name="create-outline" size={15} color={c.brand} />
+                      </Pressable>
+                    ) : null}
+                    {x.countIn != null ? (
+                      <Text style={{ fontSize: 13, color: c.textMuted }}>
+                        · {t('chicken.bucketsChickens', { buckets: x.countIn, chickens: Math.round(x.countIn * CHICKENS_PER_BUCKET) })}
+                      </Text>
+                    ) : null}
                     {x.unloadedAt ? (
                       <>
                         <Ionicons name="arrow-up-circle" size={16} color={c.amber} />
@@ -147,12 +216,23 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
                   ) : x.unloadedAt ? (
                     <Text style={{ fontSize: 11, color: c.textFaint, marginTop: 4 }}>{t('chicken.noRemovalPhoto')}</Text>
                   ) : null}
+                  {x.startEditedAt ? (
+                    <Text style={{ fontSize: 12, color: c.amber, marginTop: 3 }}>
+                      {t('chicken.startCorrectedFrom', {
+                        time: x.originalMarinatedAt ? time(x.originalMarinatedAt, x.teamId) : '',
+                        name: nameOf(x.startEditedBy),
+                        reason: x.startEditReason ?? '',
+                      })}
+                    </Text>
+                  ) : null}
                   {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}
                 </View>
               ))}
             </ScrollView>
           </View>
         </View>
+        {/* Inside the day sheet: iOS shows a second sheet only as a child of the first. */}
+        <EditMarinationStartSheet batch={editing} onClose={() => setEditing(null)} />
       </Modal>
 
       {viewer ? <PhotoViewer urls={viewer} index={0} onClose={() => setViewer(null)} /> : null}

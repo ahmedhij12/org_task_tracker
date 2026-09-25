@@ -6,6 +6,7 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { generatePassword } from '@/lib/password';
 import { FieldInput, FieldLabel, PrimaryButton, SecondaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import type { Profile } from '@/types';
+import { AccessSwitches } from '@/components/AccessSwitches';
 
 interface Props {
   member: Profile | null;
@@ -323,6 +324,8 @@ export function ManageUserSheet({ member, onClose }: Props) {
                 loading={loading}
                 disabled={password.length < 6}
               />
+
+              <AccessSwitches member={live} />
 
               {canDeactivate ? (
                 <>

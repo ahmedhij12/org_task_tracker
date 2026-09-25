@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -6,10 +6,13 @@ import { supabase } from '@/lib/supabase';
 import { useOrgData } from '@/hooks/useOrgData';
 import { Card, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 
+type Reach = { phones: number; state: string | null; detail: string | null; standalone: boolean | null };
+
 /**
  * "Did the notification reach them?" — a test sent to one branch, or to the
- * people ticked below. The answer counts devices, so 0 means nobody there has
- * notifications switched on yet.
+ * people ticked below. Each person shows whether their phone can be reached,
+ * and if not, why — from what the phone itself reported (push_status), so
+ * "she turned it on" can be checked instead of guessed.
  */
 export function PushTestCard() {
   const c = useThemeColors();
@@ -23,8 +26,31 @@ export function PushTestCard() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reach, setReach] = useState<Record<string, Reach>>({});
 
-  const branchPeople = allMembers.filter((m) => !m.deletedAt);
+  const loadReach = useCallback(async () => {
+    const { data } = await supabase.rpc('push_overview');
+    const next: Record<string, Reach> = {};
+    for (const r of (data as any[]) ?? []) next[r.profile_id] = { phones: r.phones, state: r.state, detail: r.detail, standalone: r.standalone };
+    setReach(next);
+  }, []);
+  useEffect(() => {
+    loadReach();
+  }, [loadReach]);
+
+  const branchPeople = allMembers.filter((m) => !m.deletedAt && m.active);
+  // One line per person: reachable, or the reason they are not.
+  const reachLine = (id: string): { text: string; color: string } => {
+    const r = reach[id];
+    if (r?.phones) return { text: t('control.reachOn'), color: c.emerald };
+    if (!r?.state) return { text: t('control.reachNoReport'), color: c.textFaint };
+    if (r.state === 'needs-install') return { text: t('control.reachInstall'), color: c.amber };
+    if (r.state === 'denied') return { text: t('control.reachDenied'), color: c.rose };
+    if (r.state === 'default') return { text: t('control.reachNotAsked'), color: c.amber };
+    if (r.state === 'unsupported') return { text: t('control.reachUnsupported'), color: c.textMuted };
+    if (r.state === 'error') return { text: t('control.reachError', { detail: r.detail ?? '' }), color: c.rose };
+    return { text: t('control.reachNotRegistered'), color: c.amber };
+  };
   const send = async () => {
     setBusy(true);
     setError(null);
@@ -36,6 +62,7 @@ export function PushTestCard() {
       });
       if (e) throw e;
       setResult(Number(data) > 0 ? t('control.pushSent', { count: Number(data) }) : t('control.pushNobody'));
+      loadReach();
     } catch (err: any) {
       setError(err?.message ?? t('control.saveFailed'));
     } finally {
@@ -69,7 +96,10 @@ export function PushTestCard() {
             return (
               <Pressable key={m.id} onPress={() => setPeople((p) => (on ? p.filter((x) => x !== m.id) : [...p, m.id]))} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
                 <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? c.brand : c.textMuted} />
-                <Text style={{ fontSize: 14, color: c.text }}>{m.name}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, color: c.text }}>{m.name}</Text>
+                  <Text testID={`reach-${m.name}`} style={{ fontSize: 11, color: reachLine(m.id).color, marginTop: 1 }}>{reachLine(m.id).text}</Text>
+                </View>
               </Pressable>
             );
           })}

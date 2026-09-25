@@ -9,6 +9,7 @@ import { OilTestsProvider } from '@/hooks/useOilTests';
 import { ChickenProvider } from '@/hooks/useChicken';
 import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
 import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
+import { UpdateBanner } from '@/components/UpdateBanner';
 import { SideMenuProvider } from '@/components/SideMenu';
 import { OrgSettingsProvider } from '@/hooks/useOrgSettings';
 import { useActivityTracking } from '@/hooks/useActivityTracking';
@@ -30,6 +31,8 @@ export default function MainLayout() {
               <MainTabs />
               <PermissionsOnboarding />
               <ConfirmBranchLocation />
+              {/* Over every screen: a new version is out, close and reopen. */}
+              <UpdateBanner />
             </SideMenuProvider>
           </ChickenProvider>
         </OilTestsProvider>

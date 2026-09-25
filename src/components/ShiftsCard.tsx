@@ -30,6 +30,9 @@ export function ShiftsCard() {
   // The admin schedules any branch — one without a manager has nobody else to do it.
   const myTeams = profile?.role === 'owner' ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id));
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // Folded by default (his call, 2026-09-26): one line with the Schedule
+  // button; the day-by-day list opens only when he taps it.
+  const [expanded, setExpanded] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
   const team = teamId ?? myTeams[0]?.id ?? null;
 
@@ -99,9 +102,21 @@ export function ShiftsCard() {
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase' }}>{t('shifts.title')}</Text>
-        {supervisors.length > 0 ? (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Pressable
+          testID="toggle-shifts"
+          onPress={() => setExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
+        >
+          <Ionicons name={expanded ? 'chevron-down' : i18n.dir?.() === 'rtl' ? 'chevron-back' : 'chevron-forward'} size={18} color={c.textMuted} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase' }}>{t('shifts.title')}</Text>
+            {!expanded ? <Text style={{ fontSize: 12, color: c.textFaint, marginTop: 2 }}>{t('shifts.tapToOpen')}</Text> : null}
+          </View>
+        </Pressable>
+        {myTeams.length > 0 ? (
           <Pressable
             testID="open-schedule"
             onPress={() => setScheduleOpen(true)}
@@ -113,7 +128,9 @@ export function ShiftsCard() {
           </Pressable>
         ) : null}
       </View>
-      <Text style={{ fontSize: 12, color: c.textMuted, marginBottom: 10 }}>{t('shifts.hint')}</Text>
+      {expanded ? (
+      <>
+      <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8, marginBottom: 10 }}>{t('shifts.hint')}</Text>
       {error ? <ErrorBanner message={error} /> : null}
 
       {myTeams.length > 1 ? (
@@ -147,13 +164,22 @@ export function ShiftsCard() {
       {supervisors.length > 0 && unset > 0 ? (
         <Text style={{ fontSize: 12, color: c.amber, marginTop: 8 }}>{t('shifts.unsetCount', { count: unset })}</Text>
       ) : null}
+      </>
+      ) : null}
       {scheduleOpen && team ? (
         <ScheduleSheet
           visible
-          teamId={team}
-          supervisors={supervisors.map((m) => ({ id: m.id, name: m.name }))}
+          branches={myTeams.map((tm) => ({ id: tm.id, name: tm.name }))}
+          initialTeamId={team}
+          supervisorsOf={(id) =>
+            members.filter((m) => m.role === 'employee' && m.teamIds.includes(id) && m.active).map((m) => ({ id: m.id, name: m.name }))
+          }
           onClose={() => setScheduleOpen(false)}
-          onSaved={load}
+          onSaved={(id) => {
+            setTeamId(id);
+            setExpanded(true);
+            load();
+          }}
         />
       ) : null}
     </Card>

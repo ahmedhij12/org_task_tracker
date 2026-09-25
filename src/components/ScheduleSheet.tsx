@@ -22,16 +22,19 @@ const LENGTHS = [1, 3, 7, 14, 30];
  */
 export function ScheduleSheet({
   visible,
-  teamId,
-  supervisors,
+  branches,
+  initialTeamId,
+  supervisorsOf,
   onClose,
   onSaved,
 }: {
   visible: boolean;
-  teamId: string;
-  supervisors: Person[];
+  /** The branches this person schedules (a manager: his; the admin: all). */
+  branches: { id: string; name: string }[];
+  initialTeamId: string;
+  supervisorsOf: (teamId: string) => Person[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (teamId: string) => void;
 }) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
@@ -39,6 +42,8 @@ export function ScheduleSheet({
     const d = new Date();
     return Array.from({ length: 8 }, (_, i) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + i));
   }, []);
+  const [teamId, setTeamId] = useState(initialTeamId);
+  const supervisors = supervisorsOf(teamId);
   const [who, setWho] = useState<string | null>(supervisors.length === 1 ? supervisors[0].id : null);
   const [shift, setShift] = useState<Shift>('AM');
   const [start, setStart] = useState(0);
@@ -68,7 +73,7 @@ export function ScheduleSheet({
         p_shift: shift,
       });
       if (e) throw e;
-      onSaved();
+      onSaved(teamId);
       onClose();
     } catch (e: any) {
       setError(e?.message ?? t('shifts.saveFailed'));
@@ -105,9 +110,25 @@ export function ScheduleSheet({
           <ScrollView keyboardShouldPersistTaps="handled">
             {error ? <View style={{ marginTop: 10 }}><ErrorBanner message={error} /></View> : null}
 
+            {branches.length > 1 ? (
+              <>
+                {label(t('schedule.branch'))}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {branches.map((b) =>
+                    chip(`branch-${b.name}`, b.name, teamId === b.id, () => {
+                      setTeamId(b.id);
+                      const next = supervisorsOf(b.id);
+                      setWho(next.length === 1 ? next[0].id : null);
+                    }),
+                  )}
+                </ScrollView>
+              </>
+            ) : null}
+
             {label(t('schedule.who'))}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {supervisors.map((s) => chip(`who-${s.name}`, s.name, who === s.id, () => setWho(s.id)))}
+              {supervisors.length === 0 ? <Text style={{ fontSize: 13, color: c.textFaint }}>{t('shifts.noSupervisors')}</Text> : null}
             </View>
 
             {label(t('schedule.shift'))}

@@ -13,6 +13,11 @@ import { timeOf } from '@/lib/time';
 import { dueAt, humanSpan } from '@/lib/marination';
 import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { useThemeColors } from '@/components/ui';
+import { can, seesAllBranches } from '@/lib/roles';
+import { EditMarinationStartSheet } from '@/components/EditMarinationStartSheet';
+import type { ChickenMarination } from '@/types';
+
+const CHICKENS_PER_BUCKET = 8;
 
 /** Batches still marinating: how long is left, and the photo-backed removal.
  * The removal time is stamped by the server, so it can't be back-dated. */
@@ -20,12 +25,13 @@ export function ChickenActive() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { records, markUnloaded } = useChicken();
-  const { teams } = useOrgData();
+  const { teams, allMembers } = useOrgData();
   const { marinationRules } = useOrgSettings();
   const { profile } = useAuth();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
+  const [editing, setEditing] = useState<ChickenMarination | null>(null);
 
   // Re-render each minute so the countdown stays honest.
   useEffect(() => {
@@ -40,6 +46,10 @@ export function ChickenActive() {
   if (active.length === 0) return null;
 
   const tzOf = (teamId: string) => teams.find((tm) => tm.id === teamId)?.timezone ?? 'Asia/Baghdad';
+  // The branch manager corrects a start the supervisor recorded late (his rule).
+  const canEditStart = (r: ChickenMarination) =>
+    can(profile, 'edit_marination_start') && (seesAllBranches(profile) || !!profile?.teamIds.includes(r.teamId));
+  const nameOf = (id: string | null | undefined) => allMembers.find((m) => m.id === id)?.name ?? '';
 
   const removeNow = async (id: string) => {
     setError(null);
@@ -76,10 +86,22 @@ export function ChickenActive() {
               <Text style={{ fontSize: 14, fontWeight: '800', color: over ? '#E8141A' : c.text }}>
                 {over ? t('chicken.overdue', { time: humanSpan(left) }) : t('chicken.dueIn', { time: humanSpan(left) })}
               </Text>
-              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
-                {timeOf(r.marinatedAt, i18n.language, tzOf(r.teamId))}
-                {r.countIn != null ? ` · ${t('chicken.inN', { count: r.countIn })}` : ''}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <Text style={{ fontSize: 12, color: c.textMuted, flexShrink: 1 }}>
+                  {timeOf(r.marinatedAt, i18n.language, tzOf(r.teamId))}
+                  {r.countIn != null ? ` · ${t('chicken.bucketsChickens', { buckets: r.countIn, chickens: Math.round(r.countIn * CHICKENS_PER_BUCKET) })}` : ''}
+                </Text>
+                {canEditStart(r) ? (
+                  <Pressable testID="edit-start" onPress={() => setEditing(r)} hitSlop={8} accessibilityLabel={t('chicken.editStartTitle')}>
+                    <Ionicons name="create-outline" size={16} color={c.brand} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {r.startEditedAt ? (
+                <Text style={{ fontSize: 11, color: c.amber, marginTop: 2 }} numberOfLines={2}>
+                  {t('chicken.startCorrected', { name: nameOf(r.startEditedBy), reason: r.startEditReason ?? '' })}
+                </Text>
+              ) : null}
             </View>
             {busyId === r.id ? <ActivityIndicator color={c.brand} /> : (
               <Pressable onPress={() => removeNow(r.id)}
@@ -92,6 +114,7 @@ export function ChickenActive() {
         );
       })}
       <Text style={{ fontSize: 11, color: c.textFaint }}>{t('chicken.removePhotoHint')}</Text>
+      <EditMarinationStartSheet batch={editing} onClose={() => setEditing(null)} />
     </View>
   );
 }

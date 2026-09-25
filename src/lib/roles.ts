@@ -8,6 +8,36 @@ import type { Profile } from '@/types';
  */
 type P = Pick<Profile, 'role' | 'isSuperAdmin'> | null | undefined;
 
+/**
+ * The switches the super admin flips per role (Roles & permissions screen,
+ * role_permissions in the database — has_permission() there is the real
+ * gate; this only decides what to show).
+ */
+export type Permission = 'control_panel' | 'excuse_late' | 'edit_marination_start' | 'checklist_alerts';
+export const PERMISSIONS: Permission[] = ['control_panel', 'excuse_late', 'edit_marination_start', 'checklist_alerts'];
+
+/** What each role had before anyone flipped a switch — mirrors permission_default(). */
+function permissionDefault(role: string | undefined, perm: Permission): boolean {
+  switch (perm) {
+    case 'control_panel':
+      return role === 'owner';
+    case 'excuse_late':
+      return role === 'owner' || role === 'hygiene_auditor';
+    case 'edit_marination_start':
+      return role === 'owner' || role === 'team_admin';
+    case 'checklist_alerts':
+      return role === 'hygiene_auditor';
+  }
+}
+
+/** Whether this person may do it: the server's answer when loaded, the role's default until then. */
+export function can(p: (Pick<Profile, 'role' | 'isSuperAdmin'> & { permissions?: string[] | null }) | null | undefined, perm: Permission): boolean {
+  if (!p) return false;
+  if (p.permissions) return p.permissions.includes(perm);
+  if (p.isSuperAdmin && perm !== 'checklist_alerts') return true;
+  return permissionDefault(p.role, perm);
+}
+
 export const isAdmin = (p: P) => p?.role === 'owner';
 export const isHygieneAuditor = (p: P) => p?.role === 'hygiene_auditor';
 /** Reads every branch: history, oil, marination, the report. */

@@ -39,6 +39,11 @@ export function usePushRegistration() {
   const { session } = useAuth();
 
   useEffect(() => {
+    // The web app registers through useWebPush (from a tap). Here, on web, this
+    // asked the browser for permission on every open with no tap — iPhone
+    // refuses that, and Chrome on Android penalises it by quieting the site's
+    // later prompts. Native builds only.
+    if (Platform.OS === 'web') return;
     if (!session || !Device.isDevice) return;
 
     (async () => {
