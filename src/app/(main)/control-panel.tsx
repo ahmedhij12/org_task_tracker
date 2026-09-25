@@ -1,4 +1,4 @@
-import { ScrollView, Text, Pressable, I18nManager } from 'react-native';
+import { ScrollView, View, Text, Pressable, I18nManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useThemeColors } from '@/components/ui';
 import { PointValueCard } from '@/components/control/PointValueCard';
 import { FryersCard } from '@/components/control/FryersCard';
+import { CheckInDistanceCard } from '@/components/control/CheckInDistanceCard';
+import { MenuButton } from '@/components/SideMenu';
 
 /**
  * The control panel: every setting that decides how the app behaves for the
@@ -41,10 +43,14 @@ export default function ControlPanelScreen() {
           <Ionicons name={I18nManager.isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={c.textMuted} />
           <Text style={{ color: c.textMuted, fontWeight: '600', fontSize: 14 }}>{t('control.back')}</Text>
         </Pressable>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('control.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <MenuButton />
+          <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('control.title')}</Text>
+        </View>
         <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 4, marginBottom: 20 }}>{t('control.subtitle')}</Text>
 
         <PointValueCard />
+        <CheckInDistanceCard />
         <FryersCard />
       </ScrollView>
     </SafeAreaView>
