@@ -25,7 +25,7 @@ import { OilAlert } from '@/components/OilAlert';
 import { ReinstallNotice } from '@/components/ReinstallNotice';
 import { ChickenCard } from '@/components/ChickenCard';
 import { BranchAudits } from '@/components/BranchAudits';
-import { AuditCard } from '@/components/AuditCard';
+import { AuditCards } from '@/components/AuditCard';
 import type { BranchSummaryRow, OrgTask } from '@/types';
 
 export default function MainIndex() {
@@ -203,8 +203,8 @@ function OwnerDashboard() {
         <ReinstallNotice />
         <OilAlert />
         <OilTestCard isAudit />
-        {/* Replaces the "+" screen: an audit starts here. Checklist templates are edited in Checklists. */}
-        <AuditCard />
+        {/* Replaces the "+" screen: each audit checklist lives here for good — tap to start, pencil to edit. */}
+        <AuditCards />
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}

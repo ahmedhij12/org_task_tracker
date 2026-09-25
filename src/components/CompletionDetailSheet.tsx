@@ -8,6 +8,7 @@ import { SecondaryButton, PrimaryButton, ErrorBanner, useThemeColors } from '@/c
 import { textAlignFor } from '@/lib/rtl';
 import { buildWebReportFile, exportAuditReport } from '@/lib/exportAuditReport';
 import { shareOrDownloadFile } from '@/lib/webPdf';
+import { checkInFor } from '@/lib/checkIn';
 import { needsReview } from '@/types';
 import { ScoreRing } from '@/components/ScoreRing';
 import { LocationMap } from '@/components/LocationMap';
@@ -89,11 +90,18 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   // team_id (the audit task's team, which can differ) — same attribution
   // gotcha already documented on task_completions and handled in the
   // reporting RPCs.
-  const subjectBranchName = teams.find((t) => t.id === subjectProfile?.teamIds[0])?.name ?? '—';
-  const actorBranchName =
-    teams.find((t) => t.id === completion.teamId)?.name ??
-    teams.find((t) => t.id === members.find((m) => m.id === completion.actorId)?.teamIds[0])?.name ??
-    '—';
+  const subjectBranch = teams.find((t) => t.id === subjectProfile?.teamIds[0]);
+  const actorBranch =
+    teams.find((t) => t.id === completion.teamId) ??
+    teams.find((t) => t.id === members.find((m) => m.id === completion.actorId)?.teamIds[0]);
+  const subjectBranchName = subjectBranch?.name ?? '—';
+  const actorBranchName = actorBranch?.name ?? '—';
+  // Measured against the branch the record is ABOUT — the same choice the
+  // export makes for branchName below.
+  const checkIn = checkInFor(
+    { lat: completion.signedLat, lng: completion.signedLng },
+    isAudit ? subjectBranch : actorBranch,
+  );
 
   const handleExport = async () => {
     setExporting(true);
@@ -104,6 +112,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
         completion,
         // A checklist is about the person who filled it, at their own branch.
         branchName: isAudit ? subjectBranchName : actorBranchName,
+        checkIn,
         subjectName: isAudit ? subjectProfile?.name ?? 'Someone' : actorName,
         auditorName: actorName,
         verifiedByName: completion.reviewedBy ? reviewerName : null,
@@ -287,7 +296,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                         </View>
                         {completion.signedLat != null ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 }}>
-                            <Ionicons name="location" size={16} color={c.emerald} />
+                            <Ionicons name="location" size={16} color={checkIn?.outside ? c.amber : c.emerald} />
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>
                                 {isSupervisorProof ? t('detail.submittedHere') : t('detail.signedHere')} · {when(completion.createdAt)}
@@ -296,6 +305,13 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                                 {completion.signedAddress ?? t('detail.tapMap')}
                                 {completion.signedAccuracyM != null ? ` · ±${Math.round(completion.signedAccuracyM)} m` : ''}
                               </Text>
+                              {checkIn ? (
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: checkIn.outside ? c.amber : c.emerald, marginTop: 2 }}>
+                                  {checkIn.outside
+                                    ? t('detail.outsideBranch', { m: checkIn.meters, r: checkIn.radiusM })
+                                    : t('detail.atBranch', { m: checkIn.meters })}
+                                </Text>
+                              ) : null}
                             </View>
                           </View>
                         ) : null}

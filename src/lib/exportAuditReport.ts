@@ -9,6 +9,7 @@ import { GRADE_HEX, formatScore, gradeOf, type ScoreGrade } from '@/lib/score';
 
 const GRADE_LABEL: Record<ScoreGrade, string> = { excellent: 'Excellent', good: 'Good', needsWork: 'Needs work', critical: 'Critical' };
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
+import type { CheckIn } from '@/lib/checkIn';
 
 // Embedded as a data URI (via a real file read, not a hardcoded base64
 // string in source) so the logo renders identically regardless of asset
@@ -47,10 +48,12 @@ export interface AuditReportData {
   answers: ChecklistAnswer[];
   photos: ChecklistSectionPhoto[];
   locale: string;
+  /** How far from its branch this was signed; null when either point is missing. */
+  checkIn?: CheckIn | null;
 }
 
 function buildHtml(data: AuditReportData, logoDataUri: string): string {
-  const { kind, completion, branchName, subjectName, auditorName, verifiedByName, answers, photos, locale } = data;
+  const { kind, completion, branchName, subjectName, auditorName, verifiedByName, answers, photos, locale, checkIn } = data;
   const points = completion.pointsAwarded ?? 0;
   const iqd = Math.abs(points * completion.iqdPerPoint).toLocaleString(locale);
   const score = completion.score;
@@ -141,7 +144,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   ${sectionsHtml}
 
 
-  ${proofHtml(completion, kind === 'audit' ? auditorName : subjectName, locale)}
+  ${proofHtml(completion, kind === 'audit' ? auditorName : subjectName, locale, checkIn ?? null)}
 </body>
 </html>`;
 }
@@ -193,7 +196,7 @@ function miniMapHtml(lat: number, lng: number, width: number, height: number): s
  * Every cell is the same size and framed the same way, and each carries a
  * caption, so the block reads as a record rather than three loose pictures.
  */
-function proofHtml(completion: TaskCompletion, signerName: string, locale: string): string {
+function proofHtml(completion: TaskCompletion, signerName: string, locale: string, checkIn: CheckIn | null): string {
   const hasSelfie = !!completion.selfieUrl;
   const hasSig = !!completion.signatureUrl;
   const hasLoc = completion.signedLat != null && completion.signedLng != null;
@@ -238,11 +241,18 @@ function proofHtml(completion: TaskCompletion, signerName: string, locale: strin
   }
   if (hasLoc) {
     const accuracy = completion.signedAccuracyM != null ? `±${Math.round(completion.signedAccuracyM)} m` : '';
+    // Numbers only, so nothing here needs escaping. The PDF is English-labelled
+    // throughout ("Selfie", "Signed at"), so this line is too.
+    const distance = !checkIn
+      ? ''
+      : checkIn.outside
+        ? `<span style="color:#b45309;font-weight:700;">Outside the branch · ${checkIn.meters} m away (allowed ${checkIn.radiusM} m)</span>`
+        : `At the branch · ${checkIn.meters} m from the pin`;
     cells.push(
       label('Signed at') +
         `<a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">` +
         frame(miniMapHtml(completion.signedLat!, completion.signedLng!, cellW, BOX_H)) +
-        caption(escapeHtml(completion.signedAddress ?? 'Open in Maps'), accuracy) +
+        caption(escapeHtml(completion.signedAddress ?? 'Open in Maps'), [accuracy, distance].filter(Boolean).join('<br />')) +
         '</a>'
     );
   }
