@@ -3,7 +3,7 @@
     "name": "BD Audit",
     "//slug": "Stuck as the old name on purpose. Expo project slugs are immutable — the API exposes only displayName (already set to Rungs on expo.dev), and this must match EAS project 530bebab... or every EAS command fails. Changing it costs a brand-new Expo project and a new OTA update URL. Cosmetic only: it never appears in the built app.",
     "slug": "org_task_tracker",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "rungs",
