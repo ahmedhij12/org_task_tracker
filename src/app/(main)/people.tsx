@@ -17,6 +17,7 @@ function roleLabel(member: Profile, t: (key: string) => string): string {
   if (member.isSuperAdmin) return t('people.roleSuperAdmin');
   if (member.role === 'owner') return t('people.roleOwner');
   if (member.role === 'team_admin') return t('people.roleTeamAdmin');
+  if (member.role === 'hygiene_auditor') return t('people.roleHygieneAuditor');
   return t('people.roleEmployee');
 }
 

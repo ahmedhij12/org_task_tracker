@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
+import { auditsAndVerifies } from '@/lib/roles';
 import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
@@ -28,7 +29,8 @@ export default function ChecklistsScreen() {
   const { t, i18n } = useTranslation();
   const { teams, allMembers, loading, refresh } = useOrgData();
   const { profile } = useAuth();
-  const isOwner = profile?.role === 'owner';
+  // Verifies and edits the templates: the admin and the hygiene auditor.
+  const isOwner = auditsAndVerifies(profile);
   const submissions = useSupervisorChecklists();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<TaskCompletion | null>(null);

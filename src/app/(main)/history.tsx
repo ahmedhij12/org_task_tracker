@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
+import { seesAllBranches } from '@/lib/roles';
 import { useRefreshAll } from '@/hooks/useRefreshAll';
 import { useOrgData } from '@/hooks/useOrgData';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
@@ -47,7 +48,8 @@ export default function HistoryScreen() {
   const [openEntry, setOpenEntry] = useState<TaskCompletion | null>(null);
   const [pointsEntry, setPointsEntry] = useState<TaskCompletion | null>(null);
 
-  const isOwner = profile?.role === 'owner';
+  // Reads every branch: the admin and the hygiene auditor.
+  const isOwner = seesAllBranches(profile);
   const isLeader = profile?.role === 'team_admin';
 
   // An admin's daily checklists live in the Checklists tab, where they are

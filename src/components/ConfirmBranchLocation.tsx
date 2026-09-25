@@ -27,7 +27,7 @@ export function ConfirmBranchLocation() {
   const [dismissed, setDismissed] = useState(false);
 
   const load = useCallback(async () => {
-    if (!profile || profile.role === 'owner') return;
+    if (!profile || profile.role === 'owner' || profile.role === 'hygiene_auditor') return;
     const { data } = await supabase.rpc('my_branches_needing_location');
     setPending(Array.isArray(data) ? data : []);
   }, [profile]);

@@ -78,6 +78,7 @@ export function FillChecklistSheet({ task, orgId, visible, onClose }: Props) {
     (m) =>
       m.id !== profile?.id &&
       m.role !== 'owner' &&
+      m.role !== 'hygiene_auditor' &&
       auditBranchId != null &&
       m.teamIds.includes(auditBranchId) &&
       (auditBrandId == null

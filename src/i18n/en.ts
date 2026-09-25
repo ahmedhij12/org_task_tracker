@@ -61,6 +61,7 @@ export default {
     auditEdit: "Edit this checklist",
     auditStartFailed: "Could not start the audit. Please try again.",
     ownerBadge: 'ADMIN',
+    hygieneBadge: 'HYGIENE AUDITOR',
     superAdminBadge: 'SUPER ADMIN',
     employeeBadge: 'SUPERVISOR',
     teamAdminBadge: 'BRANCH MANAGER',
@@ -173,6 +174,7 @@ export default {
     roleSuperAdmin: "Super admin",
     roleOwner: 'Admin',
     roleTeamAdmin: 'Branch manager',
+    roleHygieneAuditor: 'Hygiene auditor',
     roleEmployee: 'Supervisor',
     inactiveBadge: 'INACTIVE',
     newBadge: 'NEW',
@@ -326,6 +328,7 @@ export default {
   settings: {
     roleAdmin: "Admin",
     roleManager: "Branch manager",
+    roleHygieneAuditor: "Hygiene auditor",
     roleSupervisor: "Supervisor",
     emailSaved: "Saved. You can use this address to reset your password if you forget it.",
     emailFailed: "Could not save that email. Please try again.",

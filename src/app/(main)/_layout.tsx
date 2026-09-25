@@ -48,6 +48,7 @@ function MainTabs() {
   const isEmployee = profile?.role === 'employee';
   const isManager = profile?.role === 'team_admin';
   const isSuperAdmin = isOwner && !!profile?.isSuperAdmin;
+  const isHygiene = profile?.role === 'hygiene_auditor';
   // His choice (2026-09-25): an admin's bar keeps what they open all day —
   // Dashboard, Branches, History, Settings; the super admin also keeps Staff.
   // Everything else is in the side menu (components/SideMenu.tsx). A hidden
@@ -105,7 +106,7 @@ function MainTabs() {
           name="checklists"
           options={{
             title: t('mainTabs.checklists'),
-            href: isManager ? undefined : null, // admins: side menu
+            href: isManager || isHygiene ? undefined : null, // admins: side menu; verifying is the hygiene auditor's job
             tabBarBadge: !isEmployee && unverified > 0 ? unverified : undefined,
             tabBarIcon: ({ color, size }) => <Ionicons name="clipboard" size={size} color={color} />,
           }}

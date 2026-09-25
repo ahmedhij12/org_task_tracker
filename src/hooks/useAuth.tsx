@@ -33,7 +33,7 @@ interface AuthContextValue extends AuthState {
     name: string;
     username: string;
     password: string;
-    role: 'employee' | 'team_admin' | 'owner';
+    role: 'employee' | 'team_admin' | 'owner' | 'hygiene_auditor';
     teamId: string | null;
     title?: string;
     brandId?: string | null;

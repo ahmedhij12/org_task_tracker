@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { seesAllBranches } from '@/lib/roles';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { TimeField } from '@/components/TimeField';
@@ -30,7 +31,7 @@ export function ChickenSheet({ visible, onClose }: { visible: boolean; onClose: 
   const tight = height < 700;
   const gapY = tight ? 8 : 14;
 
-  const myBranches = useMemo(() => (profile?.role === 'owner' ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id))), [teams, profile]);
+  const myBranches = useMemo(() => (seesAllBranches(profile) ? teams : teams.filter((tm) => profile?.teamIds.includes(tm.id))), [teams, profile]);
   const [branchId, setBranchId] = useState<string | null>(myBranches[0]?.id ?? null);
   const [marinTime, setMarinTime] = useState(hhmm(new Date()));
   const [countIn, setCountIn] = useState('');

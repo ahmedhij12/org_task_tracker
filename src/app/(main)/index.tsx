@@ -30,7 +30,8 @@ import type { BranchSummaryRow, OrgTask } from '@/types';
 export default function MainIndex() {
   const { profile } = useAuth();
   if (profile?.role === 'employee') return <EmployeeHome />;
-  if (profile?.role === 'owner') return <OwnerDashboard />;
+  // The hygiene auditor audits every branch, so she gets the admin's dashboard.
+  if (profile?.role === 'owner' || profile?.role === 'hygiene_auditor') return <OwnerDashboard />;
   return <TeamAdminDashboard />;
 }
 
@@ -167,7 +168,9 @@ function OwnerDashboard() {
         contentContainerStyle={{ padding: 20, paddingBottom: 110 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAll} tintColor={c.brand} />}
       >
-        <DashboardHeader badge={profile?.isSuperAdmin ? t('dashboard.superAdminBadge') : t('dashboard.ownerBadge')} />
+        <DashboardHeader
+          badge={profile?.isSuperAdmin ? t('dashboard.superAdminBadge') : profile?.role === 'hygiene_auditor' ? t('dashboard.hygieneBadge') : t('dashboard.ownerBadge')}
+        />
 
         <ReinstallNotice />
         <OilAlert />

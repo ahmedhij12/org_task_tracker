@@ -135,7 +135,7 @@ begin
   v_teams := public.my_team_ids();
   select * into v_fryer from public.oil_fryers where id = p_fryer_id and org_id = v_org and not archived;
   if v_fryer.id is null then raise exception 'fryer not found'; end if;
-  if not (v_role = 'owner' or v_fryer.team_id = any(v_teams)) then
+  if not (v_role in ('owner', 'hygiene_auditor') or v_fryer.team_id = any(v_teams)) then
     raise exception 'you can only test fryers at your own branch'; end if;
   if p_tpm is null then raise exception 'the TPM reading is required'; end if;
   if coalesce(trim(p_photo_url), '') = '' then raise exception 'a photo of the tester is required'; end if;

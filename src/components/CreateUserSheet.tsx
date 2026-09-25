@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { Modal, View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const c = useThemeColors();
   const { profile, organization, adminCreateUser } = useAuth();
   const { teams, brands, branchBrandIds, refresh } = useOrgData();
+  const { t } = useTranslation();
 
   const isOwner = profile?.role === 'owner';
 
@@ -32,7 +34,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState(DEFAULT_TEMP_PASSWORD);
-  const [role, setRole] = useState<'employee' | 'team_admin' | 'owner'>('employee');
+  const [role, setRole] = useState<'employee' | 'team_admin' | 'owner' | 'hygiene_auditor'>('employee');
   const [teamId, setTeamId] = useState<string | null>(null);
   const [brandId, setBrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -211,13 +213,15 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                 {isOwner ? (
                   <>
                     <FieldLabel>Role</FieldLabel>
-                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                       {(
                         [
-                          { key: 'employee', label: 'Supervisor' },
-                          { key: 'team_admin', label: 'Branch manager' },
-                          { key: 'owner', label: 'Admin' },
-                        ] as { key: 'employee' | 'team_admin' | 'owner'; label: string }[]
+                          { key: 'employee', label: t('people.roleEmployee') },
+                          { key: 'team_admin', label: t('people.roleTeamAdmin') },
+                          { key: 'hygiene_auditor', label: t('people.roleHygieneAuditor') },
+                          // Only the super admin creates admins (the database agrees).
+                          ...(profile?.isSuperAdmin ? [{ key: 'owner', label: t('people.roleOwner') }] : []),
+                        ] as { key: 'employee' | 'team_admin' | 'owner' | 'hygiene_auditor'; label: string }[]
                       ).map((opt) => {
                         const active = role === opt.key;
                         return (
@@ -225,13 +229,14 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                             key={opt.key}
                             onPress={() => {
                               setRole(opt.key);
-                              // An admin is org-wide, not tied to one branch —
-                              // matches how existing admin accounts never show
-                              // branch controls in ManageUserSheet either.
-                              if (opt.key === 'owner') setTeamId(null);
+                              // An admin or hygiene auditor is org-wide, not tied to
+                              // one branch — matches how existing admin accounts
+                              // never show branch controls in ManageUserSheet either.
+                              if (opt.key === 'owner' || opt.key === 'hygiene_auditor') setTeamId(null);
                             }}
                             style={{
-                              flex: 1,
+                              flexBasis: '47%',
+                              flexGrow: 1,
                               alignItems: 'center',
                               paddingVertical: 12,
                               borderRadius: 12,
@@ -248,7 +253,7 @@ export function CreateUserSheet({ visible, onClose }: Props) {
                       })}
                     </View>
 
-                    {role !== 'owner' ? (
+                    {role !== 'owner' && role !== 'hygiene_auditor' ? (
                       <>
                         <FieldLabel>Branch</FieldLabel>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>

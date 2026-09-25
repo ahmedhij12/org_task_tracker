@@ -57,6 +57,7 @@ export default {
     auditEdit: "تعديل هذه القائمة",
     auditStartFailed: "تعذّر بدء التدقيق. حاول مرة أخرى.",
     ownerBadge: 'المدير',
+    hygieneBadge: 'مدقق النظافة',
     superAdminBadge: 'مدير عام',
     employeeBadge: 'مشرف',
     teamAdminBadge: 'مدير الفرع',
@@ -175,6 +176,7 @@ export default {
     roleSuperAdmin: "مدير عام",
     roleOwner: 'المدير',
     roleTeamAdmin: 'مدير الفرع',
+    roleHygieneAuditor: 'مدقق النظافة',
     roleEmployee: 'مشرف',
     inactiveBadge: 'غير نشط',
     newBadge: 'جديد',
@@ -335,6 +337,7 @@ export default {
   settings: {
     roleAdmin: "المدير",
     roleManager: "مدير الفرع",
+    roleHygieneAuditor: "مدقق النظافة",
     roleSupervisor: "مشرف",
     emailSaved: "تم الحفظ. يمكنك استخدام هذا البريد لإعادة تعيين كلمة المرور إذا نسيتها.",
     emailFailed: "تعذر حفظ البريد. حاول مرة أخرى.",

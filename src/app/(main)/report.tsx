@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
 import { useAuth } from '@/hooks/useAuth';
+import { seesAllBranches } from '@/lib/roles';
 import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 import { exportReportToExcel } from '@/lib/exportReport';
@@ -33,7 +34,8 @@ export default function ReportScreen() {
   const [closeError, setCloseError] = useState<string | null>(null);
   const [adjustRow, setAdjustRow] = useState<BranchSummaryRow | null>(null);
 
-  const isOwner = profile?.role === 'owner';
+  // The admin and the hygiene auditor work the monthly report.
+  const isOwner = seesAllBranches(profile);
   const selectedPeriod = periods.find((p) => p.id === selectedPeriodId) ?? periods[0] ?? null;
 
   const reloadRows = () => {

@@ -59,7 +59,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
   // An owner can add anyone (branch manager or supervisor) to any branch; a
   // branch manager can only add a supervisor, and only to their own branch.
   const addableTeams =
-    live.role === 'owner'
+    live.role === 'owner' || live.role === 'hygiene_auditor'
       ? []
       : teams.filter((t) => {
           if (live.teamIds.includes(t.id)) return false;
@@ -182,7 +182,7 @@ export function ManageUserSheet({ member, onClose }: Props) {
                 </View>
               ) : null}
 
-              {live.role !== 'owner' ? (
+              {live.role !== 'owner' && live.role !== 'hygiene_auditor' ? (
                 <View style={{ marginBottom: 18 }}>
                   <FieldLabel>Branches</FieldLabel>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: memberTeams.length > 0 ? 10 : 0 }}>

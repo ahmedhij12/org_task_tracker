@@ -1,6 +1,6 @@
 export type Priority = 'low' | 'medium' | 'high';
 
-export type Role = 'owner' | 'team_admin' | 'employee';
+export type Role = 'owner' | 'team_admin' | 'employee' | 'hygiene_auditor';
 
 export interface Profile {
   id: string; // auth.users.id

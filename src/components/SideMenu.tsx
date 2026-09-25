@@ -28,14 +28,14 @@ export function SideMenuProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The ☰ next to a screen's title. Renders nothing for anyone who is not an admin. */
+/** The ☰ next to a screen's title. Admins and the hygiene auditor only. */
 export function MenuButton() {
   const c = useThemeColors();
   const { t } = useTranslation();
   const { profile } = useAuth();
   const { open } = useContext(SideMenuContext);
   const unverified = useUnverifiedChecklistCount();
-  if (profile?.role !== 'owner') return null;
+  if (profile?.role !== 'owner' && profile?.role !== 'hygiene_auditor') return null;
   return (
     <Pressable onPress={open} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('menu.open')} testID="open-side-menu">
       <Ionicons name="menu" size={26} color={c.text} />
@@ -54,13 +54,15 @@ function SideMenuPanel({ visible, onClose }: { visible: boolean; onClose: () => 
   const insets = useSafeAreaInsets();
   const unverified = useUnverifiedChecklistCount();
   const isSuperAdmin = !!profile?.isSuperAdmin;
+  const isHygiene = profile?.role === 'hygiene_auditor';
 
-  // Everything an admin can open that is NOT in their bottom bar.
+  // Everything this person can open that is NOT in their bottom bar. The
+  // hygiene auditor has Checklists in her bar and no Staff or Control panel.
   const items: Item[] = [
-    { route: '/(main)/checklists', label: t('mainTabs.checklists'), icon: 'clipboard', badge: unverified },
+    ...(isHygiene ? [] : [{ route: '/(main)/checklists' as Href, label: t('mainTabs.checklists'), icon: 'clipboard' as const, badge: unverified }]),
     { route: '/(main)/report', label: t('mainTabs.report'), icon: 'bar-chart' },
-    ...(isSuperAdmin ? [] : [{ route: '/(main)/people' as Href, label: t('mainTabs.people'), icon: 'person-add' as const }]),
-    { route: '/(main)/control-panel', label: t('control.title'), icon: 'options' },
+    ...(isSuperAdmin || isHygiene ? [] : [{ route: '/(main)/people' as Href, label: t('mainTabs.people'), icon: 'person-add' as const }]),
+    ...(isHygiene ? [] : [{ route: '/(main)/control-panel' as Href, label: t('control.title'), icon: 'options' as const }]),
     // The super admin's alone — no admin ever sees this row.
     ...(isSuperAdmin ? [{ route: '/(main)/activity' as Href, label: t('activity.title'), icon: 'footsteps' as const }] : []),
   ];

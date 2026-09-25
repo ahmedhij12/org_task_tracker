@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useChicken } from '@/hooks/useChicken';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
+import { seesAllBranches } from '@/lib/roles';
 import { PhotoViewer } from '@/components/PhotoViewer';
 import { useThemeColors } from '@/components/ui';
 import { BranchBackRow } from '@/components/BranchBackRow';
@@ -23,7 +24,7 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
   const { records } = useChicken();
   const { teams } = useOrgData();
   const { profile } = useAuth();
-  const isOwner = profile?.role === 'owner';
+  const isOwner = seesAllBranches(profile);
   const { marinationRules } = useOrgSettings();
   const [openDay, setOpenDay] = useState<string | null>(null);
   // The branch opened inside this section; the screen's own filter wins.

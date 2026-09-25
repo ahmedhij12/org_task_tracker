@@ -37,7 +37,14 @@ export default function SettingsScreen() {
   // with buttons, so the callback never fires and sign-out silently did nothing.
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
-  const roleLabel = profile?.role === 'owner' ? t('settings.roleAdmin') : profile?.role === 'team_admin' ? t('settings.roleManager') : t('settings.roleSupervisor');
+  const roleLabel =
+    profile?.role === 'owner'
+      ? t('settings.roleAdmin')
+      : profile?.role === 'hygiene_auditor'
+        ? t('settings.roleHygieneAuditor')
+        : profile?.role === 'team_admin'
+          ? t('settings.roleManager')
+          : t('settings.roleSupervisor');
 
   const handleCopy = async () => {
     if (!organization) return;
