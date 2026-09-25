@@ -210,6 +210,22 @@ export default function SettingsScreen() {
           </Pressable>
         ) : null}
 
+        {/* The super admin's alone — no admin ever sees this row. */}
+        {profile?.isSuperAdmin ? (
+          <Pressable onPress={() => router.push('/(main)/activity')} accessibilityRole="button" testID="open-activity">
+            <Card style={{ marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Ionicons name="footsteps" size={22} color={c.brand} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>{t('activity.title')}</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('activity.rowHint')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
+              </View>
+            </Card>
+          </Pressable>
+        ) : null}
+
         <PushCard />
 
         <Card style={{ marginBottom: 14 }}>

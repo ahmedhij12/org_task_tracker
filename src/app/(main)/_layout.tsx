@@ -131,6 +131,12 @@ function MainTabs() {
           }}
         />
         <Tabs.Screen
+          name="activity"
+          options={{
+            href: null, // the super admin's alone, reached from Settings or the menu
+          }}
+        />
+        <Tabs.Screen
           name="settings"
           options={{
             title: t('mainTabs.settings'),

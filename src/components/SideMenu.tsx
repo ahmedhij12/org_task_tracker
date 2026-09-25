@@ -61,6 +61,8 @@ function SideMenuPanel({ visible, onClose }: { visible: boolean; onClose: () => 
     { route: '/(main)/report', label: t('mainTabs.report'), icon: 'bar-chart' },
     ...(isSuperAdmin ? [] : [{ route: '/(main)/people' as Href, label: t('mainTabs.people'), icon: 'person-add' as const }]),
     { route: '/(main)/control-panel', label: t('control.title'), icon: 'options' },
+    // The super admin's alone — no admin ever sees this row.
+    ...(isSuperAdmin ? [{ route: '/(main)/activity' as Href, label: t('activity.title'), icon: 'footsteps' as const }] : []),
   ];
 
   const go = (route: Href) => {
