@@ -119,7 +119,7 @@ export function OilHistory({ filter = 'all' }: { filter?: string } = {}) {
       {picked && inView.length > 1 ? <BranchBackRow name={teamName(picked)} onBack={() => setPicked(null)} /> : null}
       {collapsed
         ? scoped.map((b) => (
-            <Pressable key={b.teamId} onPress={() => setPicked(b.teamId)}
+            <Pressable key={b.teamId} testID={`oil-branch-${b.name}`} onPress={() => setPicked(b.teamId)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
               <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: b.worst ? GRADE_HEX[b.worst] : c.border }} />
               <View style={{ flex: 1 }}>
@@ -135,7 +135,7 @@ export function OilHistory({ filter = 'all' }: { filter?: string } = {}) {
           ))
         : scoped.map((b) =>
             b.rows.map((f) => (
-              <Pressable key={f.id} onPress={() => { setOpenFryer({ id: f.id, name: f.name, branch: b.name }); setDay(null); }}
+              <Pressable key={f.id} testID={`oil-fryer-${f.name}`} onPress={() => { setOpenFryer({ id: f.id, name: f.name, branch: b.name }); setDay(null); }}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
                 <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: f.grade ? GRADE_HEX[f.grade] : c.border }} />
                 <View style={{ flex: 1 }}>
@@ -200,7 +200,7 @@ export function OilHistory({ filter = 'all' }: { filter?: string } = {}) {
                     {x.lateReason ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>“{x.lateReason}”</Text> : null}
                     {x.note ? <Text style={{ fontSize: 12, color: c.text, marginTop: 2 }}>“{x.note}”</Text> : null}
                   </View>
-                  <Pressable onPress={() => shareTest(x)} hitSlop={10} disabled={sharingId === x.id} style={{ padding: 6 }}>
+                  <Pressable testID={`oil-share-${x.id}`} onPress={() => shareTest(x)} hitSlop={10} disabled={sharingId === x.id} style={{ padding: 6 }}>
                     {sharingId === x.id
                       ? <ActivityIndicator size="small" color={c.brand} />
                       : <Ionicons name="share-outline" size={20} color={c.brand} />}

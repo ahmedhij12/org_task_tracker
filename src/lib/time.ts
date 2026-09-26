@@ -12,6 +12,13 @@ export function timeOf(iso: string, locale?: string, tz: string = BAGHDAD): stri
   });
 }
 
+/** A clock time with no date — "19:00", or "19:00:00" as a Postgres `time`
+ * arrives — as "7:00 PM". Already the branch's own clock, so no zone. */
+export function clockLabel(at: string, locale?: string): string {
+  const [h, m] = at.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
 /** A date label in Baghdad time, e.g. "Tue, 22 Sep". */
 export function dateOf(iso: string | Date, locale?: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }, tz: string = BAGHDAD): string {
   return new Date(iso).toLocaleDateString(locale, { timeZone: tz, ...opts });

@@ -5,6 +5,7 @@ import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { htmlToPdfFile } from '@/lib/webPdf';
 import { bdi as isolate, pdfLanguage, type PdfLanguage } from '@/lib/pdfText';
+import { clockLabel } from '@/lib/time';
 import type { OilGrade, OilTest } from '@/types';
 
 /**
@@ -91,7 +92,8 @@ function slotLine(test: OilTest, locale: string, L: PdfLanguage): string {
     // the same slot is never counted late twice. Neither is a failing.
     return `<span style="color:#767676;font-weight:400;">${L.t(test.isAudit ? 'spotCheck' : 'extraCheck')}</span>`;
   }
-  const slot = new Date(test.slotTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
+  // A Postgres `time` ("19:00:00"): new Date() of it is Invalid Date.
+  const slot = clockLabel(test.slotTime, locale);
   if (test.minutesLate != null && test.minutesLate > 0) {
     return `${slot} <span style="font-weight:400;color:#B91C1C;">&mdash; ${L.t('minutesLate', { n: test.minutesLate })}</span>`;
   }

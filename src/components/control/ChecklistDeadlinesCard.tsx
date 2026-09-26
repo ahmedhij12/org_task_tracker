@@ -7,18 +7,13 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { TimeField } from '@/components/TimeField';
 import { Card, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { parseSetting } from '@/components/control/SettingRow';
+import { clockLabel } from '@/lib/time';
 
 type Mode = 'shift' | 'day' | 'off';
 type Rule = { mode: 'shift' | 'day'; am: string | null; pm: string | null; day: string | null; grace: number };
 
 const hhmm = (v: unknown) => (v ? String(v).slice(0, 5) : null);
 const validTime = (v: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
-
-/** "19:00" → "7:00 PM" (branch time — every branch keeps its own clock). */
-export function timeLabel(at: string, locale: string): string {
-  const [h, m] = at.split(':').map(Number);
-  return new Date(2000, 0, 1, h, m).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
-}
 
 /**
  * The checklist deadlines, per branch (his call: "I will control it"). Per
@@ -98,8 +93,8 @@ export function ChecklistDeadlinesCard() {
     if (!r) return t('control.deadlineNone');
     const times =
       r.mode === 'shift'
-        ? t('control.deadlineShiftSummary', { am: timeLabel(r.am!, i18n.language), pm: timeLabel(r.pm!, i18n.language) })
-        : t('control.deadlineDaySummary', { time: timeLabel(r.day!, i18n.language) });
+        ? t('control.deadlineShiftSummary', { am: clockLabel(r.am!, i18n.language), pm: clockLabel(r.pm!, i18n.language) })
+        : t('control.deadlineDaySummary', { time: clockLabel(r.day!, i18n.language) });
     return `${times} · ${t('control.deadlineGraceSummary', { min: r.grace })}`;
   };
 

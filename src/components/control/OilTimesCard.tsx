@@ -8,14 +8,9 @@ import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { TimeField } from '@/components/TimeField';
 import { Card, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { SettingRow, parseSetting } from '@/components/control/SettingRow';
+import { clockLabel } from '@/lib/time';
 
 type Slot = { id: string; at: string }; // at = 'HH:MM'
-
-/** "14:00" → "2:00 PM" (branch time — every branch keeps its own clock). */
-function label(at: string, locale: string): string {
-  const [h, m] = at.split(':').map(Number);
-  return new Date(2000, 0, 1, h, m).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
-}
 
 /**
  * The oil test times, company-wide, and the grace after each. A change
@@ -66,9 +61,9 @@ export function OilTimesCard() {
   const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(draft);
   const saveTime = () => {
     if (!validTime) return;
-    run(() => supabase.rpc('set_oil_slot', { p_slot_id: editing === 'new' ? null : editing, p_at_time: draft }), t('control.oilTimeSaved', { time: label(draft, i18n.language) }));
+    run(() => supabase.rpc('set_oil_slot', { p_slot_id: editing === 'new' ? null : editing, p_at_time: draft }), t('control.oilTimeSaved', { time: clockLabel(draft, i18n.language) }));
   };
-  const remove = (s: Slot) => run(() => supabase.rpc('remove_oil_slot', { p_slot_id: s.id }), t('control.oilTimeRemoved', { time: label(s.at, i18n.language) }));
+  const remove = (s: Slot) => run(() => supabase.rpc('remove_oil_slot', { p_slot_id: s.id }), t('control.oilTimeRemoved', { time: clockLabel(s.at, i18n.language) }));
 
   const g = grace == null ? settings.oilGraceMin : parseSetting(grace, 0, 180);
   const saveGrace = async () => {
@@ -106,7 +101,7 @@ export function OilTimesCard() {
         ) : (
           <View key={s.id} testID={`oil-slot-${s.at}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
             <Ionicons name="thermometer-outline" size={18} color={c.brand} />
-            <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: c.text }}>{label(s.at, i18n.language)}</Text>
+            <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: c.text }}>{clockLabel(s.at, i18n.language)}</Text>
             {confirmRemove === s.id ? (
               <Pressable onPress={() => remove(s)} disabled={busy} style={{ backgroundColor: c.rose, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{t('control.oilTimeConfirmRemove')}</Text>
