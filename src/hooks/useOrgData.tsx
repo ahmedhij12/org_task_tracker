@@ -63,6 +63,8 @@ function mapCompletion(row: any): TaskCompletion {
     lateExcusedBy: row.late_excused_by ?? null,
     lateExcusedAt: row.late_excused_at ?? null,
     lateExcuseReason: row.late_excuse_reason ?? null,
+    lateOutcome: row.late_outcome ?? null,
+    latePenaltyIqd: row.late_penalty_iqd ?? null,
     createdAt: row.created_at,
   };
 }

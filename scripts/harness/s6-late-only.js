@@ -1,6 +1,6 @@
-// Admin dashboard shows only LATE checklists (not every branch's "Done"),
-// the supervisor still sees their own branch's deadlines, and Settings can
-// remove a profile photo.
+// The admin dashboard has no deadline card (late checklists live in the
+// Checklists section — s7), the supervisor still sees their own branch's
+// deadlines, and Settings can remove a profile photo.
 const { open, snap } = require('./harness');
 const OUT = require('path').join(__dirname, '..', '..', '.dev-session', 'harness');
 
@@ -11,10 +11,6 @@ const mixed = {
   Karbala: [row('AM', -300, { done_at: at(-200), done_by: 'Mohamad', was_late: true, excused: false }), row('PM', -90, { on_shift: ['Oday'] })],
   Samawah: [row('AM', -300, { done_at: at(-320), done_by: 'Hamdan', was_late: true, excused: true }), row('PM', 240)],
 };
-const allGood = {
-  Baghdad: mixed.Baghdad,
-  Karbala: [row('AM', -300, { done_at: at(-310), done_by: 'Mohamad', was_late: false })],
-};
 const todayFrom = (table) => (body) => {
   const name = snap.teams.find((t) => t.id === body.p_team)?.name;
   return table[name] ?? [];
@@ -24,26 +20,12 @@ const todayFrom = (table) => (body) => {
   const results = [];
   const check = (name, ok, detail = '') => results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
 
-  // A. admin, mixed day: only Karbala's two late rows
+  // A. admin: no deadline card on the dashboard at all (late checklists live in Checklists — s7)
   let s = await open('hijazi12', { rpc: { checklist_today: todayFrom(mixed) } });
-  let card = s.page.getByTestId('checklist-deadlines');
-  await card.scrollIntoViewIfNeeded();
-  await card.screenshot({ path: `${OUT}/s6-a-admin-late-only.png` });
-  const text = await card.innerText();
-  check('title is "Late checklists"', /late checklists/i.test(text), text.split('\n')[0]);
-  check('Karbala shown', text.includes('Karbala'));
-  check('Baghdad hidden (all fine)', !text.includes('Baghdad'));
-  check('Samawah hidden (excused + not yet due)', !text.includes('Samawah'));
-  check('sent-late row shown', text.includes('Sent late'));
-  check('missing-late row shown with Remind', text.includes('Late') && text.includes('Remind them now'));
-  check('no "Done" rows', !/\bDone\b/.test(text) && !text.includes('On time'));
+  check('admin dashboard has no deadline card', (await s.page.getByTestId('checklist-deadlines').count()) === 0);
   await s.browser.close();
 
-  // B. admin, nothing late: the card is gone
-  s = await open('hijazi12', { rpc: { checklist_today: todayFrom(allGood) } });
-  check('card gone when nothing is late', (await s.page.getByTestId('checklist-deadlines').count()) === 0);
-  await s.browser.close();
-
+  let card;
   // C. supervisor: still sees their own branch in full
   s = await open('karam12', { rpc: { checklist_today: todayFrom(mixed) } });
   card = s.page.getByTestId('checklist-deadlines');

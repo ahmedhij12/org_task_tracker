@@ -22,8 +22,23 @@ export interface ActivityRow {
   detail: Record<string, any> | null;
   ip: string | null;
   user_agent: string | null;
+  /** Where the phone was, when location was already allowed (2026-09-26-activity-location.sql); null on older lines. */
+  geo: Geo | null;
   txid: number;
   created_at: string;
+}
+
+export interface Geo {
+  /** ok = a reading; denied = location blocked; ask = not allowed for the app yet; none = no reading. */
+  s: 'ok' | 'denied' | 'ask' | 'none';
+  lat?: number;
+  lng?: number;
+  acc?: number;
+  place?: string;
+  at?: string;
+  /** Screen width × height in points, portrait. */
+  sw?: number;
+  sh?: number;
 }
 
 export interface Summary {
@@ -38,6 +53,7 @@ export interface ActivityGroup {
   at: string;
   ip: string | null;
   device: string | null;
+  geo: Geo | null;
   rows: ActivityRow[];
   summary: Summary;
   /** How many more rows the same action wrote, beyond the one described. */
@@ -65,7 +81,34 @@ const PRIORITY = [
   'report_periods', 'brands', 'branch_brands', 'profile_teams', 'oil_slots', 'checklist_template_items',
 ];
 
-export function deviceOf(ua: string | null | undefined): string | null {
+// Which size of iPhone, from the screen in points. The web is never told the
+// model itself, so this is the honest best: the screen class.
+const IPHONE_SCREENS: Record<string, string> = {
+  '440x956': '6.9″',
+  '430x932': '6.7″',
+  '428x926': '6.7″',
+  '420x912': '6.5″',
+  '414x896': '6.1–6.5″',
+  '402x874': '6.3″',
+  '393x852': '6.1″',
+  '390x844': '6.1″',
+  '375x812': '5.4–5.8″',
+  '375x667': '4.7″',
+  '320x568': '4″',
+};
+
+export function screenLabel(geo: Pick<Geo, 'sw' | 'sh'> | null | undefined): string | null {
+  if (!geo?.sw || !geo?.sh) return null;
+  return IPHONE_SCREENS[`${geo.sw}x${geo.sh}`] ?? `${geo.sw}×${geo.sh}`;
+}
+
+export function deviceOf(ua: string | null | undefined, geo?: Geo | null): string | null {
+  const kind = deviceKind(ua);
+  const screen = screenLabel(geo);
+  return kind && screen ? `${kind} · ${screen}` : kind;
+}
+
+function deviceKind(ua: string | null | undefined): string | null {
   if (!ua) return null;
   if (/iPhone/i.test(ua)) return 'iPhone';
   if (/iPad/i.test(ua)) return 'iPad';
@@ -185,7 +228,8 @@ export function groupActivity(rows: ActivityRow[]): ActivityGroup[] {
       actorName: row.actor_name ?? '',
       at: row.created_at,
       ip: row.ip,
-      device: deviceOf(row.user_agent),
+      device: deviceOf(row.user_agent, row.geo),
+      geo: row.geo ?? null,
       rows: [row],
       summary: { key: '', params: {} },
       more: 0,

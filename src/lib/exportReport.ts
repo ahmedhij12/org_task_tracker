@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import type { BranchSummaryRow, ReportPeriod } from '@/types';
+import { totalIqdOf } from '@/lib/branchSummary';
 
 // expo-file-system's legacy string/base64 API (FileSystem.writeAsStringAsync,
 // EncodingType.Base64) throws at runtime on this SDK — it's been replaced by
@@ -20,6 +21,8 @@ export async function exportReportToExcel(period: ReportPeriod, rows: BranchSumm
     Brand: r.brandName ?? 'Unassigned',
     Points: r.totalPoints,
     'Amount (IQD)': r.iqdAmount,
+    'Late checklist penalties (IQD)': -r.latePenaltyIqd,
+    'Total (IQD)': totalIqdOf(r),
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(sheetData);

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgData } from '@/hooks/useOrgData';
+import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { SecondaryButton, PrimaryButton, ErrorBanner, useThemeColors } from '@/components/ui';
 import { textAlignFor } from '@/lib/rtl';
 import { buildWebReportFile, exportAuditReport } from '@/lib/exportAuditReport';
@@ -32,7 +33,8 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
-  const { allMembers: members, teams, tasks, loadCompletionDetail, reviewOffDuty, reviewTaskCompletion } = useOrgData();
+  const { allMembers: members, teams, tasks, history, loadCompletionDetail, reviewOffDuty, reviewTaskCompletion, refresh } = useOrgData();
+  const { settings } = useOrgSettings();
 
   const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
   const [photos, setPhotos] = useState<ChecklistSectionPhoto[]>([]);
@@ -44,17 +46,20 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   const [exporting, setExporting] = useState(false);
   // Web: the finished PDF, waiting for a second tap to open the share sheet.
   const [webPdf, setWebPdf] = useState<globalThis.File | null>(null);
-  // Excusing a late checklist: the reason being typed, and the result shown at once.
-  const [excuseText, setExcuseText] = useState('');
-  const [excusing, setExcusing] = useState(false);
-  const [excusedNow, setExcusedNow] = useState<{ by: string; at: string; reason: string } | null>(null);
+  // Deciding a late checklist: the optional note, the penalty's second tap,
+  // and the decision shown at once.
+  const [decisionNote, setDecisionNote] = useState('');
+  const [deciding, setDeciding] = useState(false);
+  const [confirmPenalty, setConfirmPenalty] = useState(false);
+  const [decidedNow, setDecidedNow] = useState<{ outcome: 'penalty' | 'warning' | 'none'; amount: number | null; at: string } | null>(null);
 
   const isChecklistCompletion = completion?.action === 'completed' && completion.yesCount != null;
 
   useEffect(() => {
     setWebPdf(null);
-    setExcuseText('');
-    setExcusedNow(null);
+    setDecisionNote('');
+    setConfirmPenalty(false);
+    setDecidedNow(null);
     if (completion) logActivity(profile, 'view', 'record', { completion_id: completion.id, title: completion.taskTitle });
     if (!completion || !isChecklistCompletion) {
       setAnswers([]);
@@ -165,25 +170,55 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
   };
 
   // A supervisor checklist sent after its deadline (+ grace). The reason he
-  // typed is the note; an excuse keeps the lateness on record, with who and why.
+  // typed is the note. The auditor verifies it one of three ways — penalty,
+  // warning, or as usual (decide_late_checklist); the lateness stays on record.
   const lateChecklist = completion.action === 'completed' && completion.wasLate && !!completion.checklistSlot;
-  const excuse = excusedNow ?? (completion.lateExcusedAt
+  // Excused under the old one-button flow (before 2026-09-26).
+  const oldExcuse = completion.lateExcusedAt
     ? {
         by: members.find((m) => m.id === completion.lateExcusedBy)?.name ?? t('detail.admin'),
         at: completion.lateExcusedAt,
         reason: completion.lateExcuseReason ?? '',
       }
-    : null);
-  const canExcuse = lateChecklist && !excuse && can(profile, 'excuse_late');
-  const handleExcuse = async () => {
-    if (!excuseText.trim() || excusing) return;
-    setExcusing(true);
+    : null;
+  const decision = decidedNow
+    ? { ...decidedNow, by: profile?.name ?? '' }
+    : completion.lateOutcome
+      ? {
+          outcome: completion.lateOutcome,
+          amount: completion.latePenaltyIqd,
+          at: completion.reviewedAt ?? completion.createdAt,
+          by: reviewerName,
+        }
+      : null;
+  const canDecide = lateChecklist && !decision && !oldExcuse && completion.actorId !== profile?.id && can(profile, 'excuse_late');
+  const penaltyAmount = settings.lateChecklistPenaltyIqd;
+  // What he has had before — the auditor decides knowing it.
+  const earlier = history.filter((h) => h.actorId === completion.actorId && h.id !== completion.id && h.lateOutcome);
+  const lastWarning = earlier.find((h) => h.lateOutcome === 'warning');
+  const penaltiesBefore = earlier.filter((h) => h.lateOutcome === 'penalty').length;
+  const handleDecide = async (outcome: 'penalty' | 'warning' | 'none') => {
+    if (deciding) return;
+    if (outcome === 'penalty' && !confirmPenalty) {
+      setConfirmPenalty(true);
+      return;
+    }
+    setDeciding(true);
     setError(null);
-    const { error: e } = await supabase.rpc('excuse_checklist_late', { p_completion_id: completion.id, p_reason: excuseText.trim() });
-    if (e) setError(e.message ?? t('detail.excuseFailed'));
-    else setExcusedNow({ by: profile?.name ?? '', at: new Date().toISOString(), reason: excuseText.trim() });
-    setExcusing(false);
+    const { error: e } = await supabase.rpc('decide_late_checklist', {
+      p_completion_id: completion.id,
+      p_outcome: outcome,
+      p_note: decisionNote.trim() || null,
+    });
+    if (e) setError(e.message ?? t('detail.decideFailed'));
+    else {
+      setDecidedNow({ outcome, amount: outcome === 'penalty' ? penaltyAmount : null, at: new Date().toISOString() });
+      refresh().catch(() => {});
+    }
+    setConfirmPenalty(false);
+    setDeciding(false);
   };
+  const money = (n: number | null) => (n ?? 0).toLocaleString(i18n.language);
 
   const handleAcknowledge = async () => {
     setReviewing(true);
@@ -247,36 +282,75 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
             {error ? <ErrorBanner message={error} /> : null}
 
             {lateChecklist ? (
-              <View testID="late-block" style={{ backgroundColor: excuse ? c.bgSubtle : c.roseSoft, borderRadius: 12, padding: 10, marginBottom: 12, gap: 4 }}>
+              <View testID="late-block" style={{ backgroundColor: decision || oldExcuse ? c.bgSubtle : c.roseSoft, borderRadius: 12, padding: 10, marginBottom: 12, gap: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="time" size={16} color={excuse ? c.textMuted : c.rose} />
-                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: excuse ? c.textMuted : c.rose }}>
+                  <Ionicons name="time" size={16} color={decision || oldExcuse ? c.textMuted : c.rose} />
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: decision || oldExcuse ? c.textMuted : c.rose }}>
                     {t('detail.lateChecklist', { time: completion.dueAt ? when(completion.dueAt) : '' })}
                   </Text>
                 </View>
                 <Text style={{ fontSize: 12, color: c.text }}>
                   {completion.note ? t('detail.lateReason', { reason: completion.note }) : t('detail.noLateReason')}
                 </Text>
-                {excuse ? (
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.emerald }}>
-                    {t('detail.excusedBy', { name: excuse.by, time: when(excuse.at), reason: excuse.reason })}
+                {decision ? (
+                  <Text
+                    testID="late-outcome"
+                    style={{ fontSize: 12, fontWeight: '800', color: decision.outcome === 'penalty' ? c.rose : decision.outcome === 'warning' ? c.amber : c.emerald }}
+                  >
+                    {decision.outcome === 'penalty'
+                      ? t('detail.outcomePenalty', { amount: money(decision.amount), name: decision.by, time: when(decision.at) })
+                      : decision.outcome === 'warning'
+                        ? t('detail.outcomeWarning', { name: decision.by, time: when(decision.at) })
+                        : t('detail.outcomeNone', { name: decision.by, time: when(decision.at) })}
                   </Text>
-                ) : canExcuse ? (
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                ) : oldExcuse ? (
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.emerald }}>
+                    {t('detail.excusedBy', { name: oldExcuse.by, time: when(oldExcuse.at), reason: oldExcuse.reason })}
+                  </Text>
+                ) : null}
+                {canDecide ? (
+                  <View testID="late-decide" style={{ marginTop: 6, gap: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: lastWarning ? c.amber : c.textMuted }}>
+                      {lastWarning ? t('detail.warnedBefore', { date: when(lastWarning.reviewedAt ?? lastWarning.createdAt) }) : t('detail.noWarningBefore')}
+                      {penaltiesBefore > 0 ? ` · ${t('detail.penaltiesBefore', { count: penaltiesBefore })}` : ''}
+                    </Text>
                     <TextInput
-                      value={excuseText}
-                      onChangeText={setExcuseText}
-                      placeholder={t('detail.excusePlaceholder')}
+                      value={decisionNote}
+                      onChangeText={setDecisionNote}
+                      placeholder={t('detail.decisionNote')}
                       placeholderTextColor={c.textFaint}
-                      style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.text, backgroundColor: c.bg, textAlign: textAlignFor(excuseText) }}
+                      style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.text, backgroundColor: c.bg, textAlign: textAlignFor(decisionNote) }}
                     />
                     <Pressable
-                      testID="excuse-late"
-                      onPress={handleExcuse}
-                      disabled={!excuseText.trim() || excusing}
-                      style={{ justifyContent: 'center', backgroundColor: c.brand, borderRadius: 10, paddingHorizontal: 12, opacity: !excuseText.trim() || excusing ? 0.45 : 1 }}
+                      testID="decide-penalty"
+                      onPress={() => handleDecide('penalty')}
+                      disabled={deciding || penaltyAmount <= 0}
+                      style={{ alignItems: 'center', backgroundColor: c.rose, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 10, opacity: deciding || penaltyAmount <= 0 ? 0.45 : 1 }}
                     >
-                      {excusing ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t('detail.excuse')}</Text>}
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, textAlign: 'center' }}>
+                        {penaltyAmount <= 0
+                          ? t('detail.penaltyNoAmount')
+                          : confirmPenalty
+                            ? t('detail.penaltyConfirm', { amount: money(penaltyAmount) })
+                            : t('detail.penaltyButton', { amount: money(penaltyAmount) })}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      testID="decide-warning"
+                      onPress={() => handleDecide('warning')}
+                      disabled={deciding}
+                      style={{ alignItems: 'center', backgroundColor: c.amber, borderRadius: 12, paddingVertical: 12, opacity: deciding ? 0.45 : 1 }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{t('detail.warningButton')}</Text>
+                      <Text style={{ color: '#fff', fontSize: 11, marginTop: 2 }}>{t('detail.warningHint', { name: actorName })}</Text>
+                    </Pressable>
+                    <Pressable
+                      testID="decide-none"
+                      onPress={() => handleDecide('none')}
+                      disabled={deciding}
+                      style={{ alignItems: 'center', borderWidth: 1, borderColor: c.emerald, borderRadius: 12, paddingVertical: 12, opacity: deciding ? 0.45 : 1 }}
+                    >
+                      {deciding ? <ActivityIndicator color={c.emerald} /> : <Text style={{ color: c.emerald, fontWeight: '800', fontSize: 14 }}>{t('detail.noneButton')}</Text>}
                     </Pressable>
                   </View>
                 ) : null}
@@ -471,7 +545,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                   </ScrollView>
                 )}
 
-                {canReview ? (
+                {canReview && !canDecide && !decidedNow ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: 12, marginTop: 12 }}>
                     <Text style={{ fontSize: 12, color: c.amber, fontWeight: '700', marginBottom: 8 }}>
                       {isSupervisorProof ? t('detail.checkThenVerify') : t('detail.needsReview')}

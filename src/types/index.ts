@@ -179,6 +179,10 @@ export interface TaskCompletion {
   lateExcusedBy: string | null;
   lateExcusedAt: string | null;
   lateExcuseReason: string | null;
+  /** How the auditor verified a late checklist (decide_late_checklist); null = not decided yet. */
+  lateOutcome: 'penalty' | 'warning' | 'none' | null;
+  /** The penalty charged, stamped when given — only with lateOutcome 'penalty'. */
+  latePenaltyIqd: number | null;
   createdAt: string;
 }
 
@@ -317,6 +321,8 @@ export interface BranchSummaryRow {
   /** Only set by get_current_branch_summary: sum and count of this month's audit scores. */
   scoreSum?: number;
   scoreCount?: number;
+  /** Late-checklist penalties that month, a positive amount owed — separate from the audit money above. */
+  latePenaltyIqd: number;
 }
 
 /** One entry in the append-only trail of a whole period's total being adjusted for one supervisor at once. */

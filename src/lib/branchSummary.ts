@@ -1,5 +1,9 @@
 import type { BranchSummaryRow } from '@/types';
 
+/** What a person owes that month: the audit money plus late-checklist
+ * penalties (points are negative, a penalty is a positive amount owed). */
+export const totalIqdOf = (row: Pick<BranchSummaryRow, 'iqdAmount' | 'latePenaltyIqd'>) => row.iqdAmount - (row.latePenaltyIqd ?? 0);
+
 export interface BrandGroup {
   brandKey: string;
   /** Null means "no brand" (brandKey === '__unassigned__') — presentation-agnostic,
@@ -35,7 +39,7 @@ export function groupBranchSummary(rows: BranchSummaryRow[]): BranchGroup[] {
       branches.set(row.branchId, branch);
     }
     branch.totalPoints += row.totalPoints;
-    branch.iqdAmount += row.iqdAmount;
+    branch.iqdAmount += totalIqdOf(row);
     if (row.scoreCount) {
       branch.scoreCount += row.scoreCount;
       scoreSums.set(row.branchId, (scoreSums.get(row.branchId) ?? 0) + (row.scoreSum ?? 0));
@@ -49,7 +53,7 @@ export function groupBranchSummary(rows: BranchSummaryRow[]): BranchGroup[] {
       branch.brandGroups.push(brandGroup);
     }
     brandGroup.totalPoints += row.totalPoints;
-    brandGroup.iqdAmount += row.iqdAmount;
+    brandGroup.iqdAmount += totalIqdOf(row);
     brandGroup.rows.push(row);
   }
   return Array.from(branches.values()).sort((a, b) => a.branchName.localeCompare(b.branchName));

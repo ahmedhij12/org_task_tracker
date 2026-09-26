@@ -14,7 +14,7 @@ import { Section } from '@/components/Section';
 import { CompleteTaskSheet } from '@/components/CompleteTaskSheet';
 import { FillChecklistSheet } from '@/components/FillChecklistSheet';
 import { bucketTasks, effectiveTaskCompleted } from '@/lib/taskUtils';
-import { groupBranchSummary, type BranchGroup } from '@/lib/branchSummary';
+import { groupBranchSummary, totalIqdOf, type BranchGroup } from '@/lib/branchSummary';
 import { ScorePill } from '@/components/ScoreRing';
 import { formatScore, gradeColors, gradeOf } from '@/lib/score';
 import { MyAuditScore } from '@/components/MyAuditScore';
@@ -179,7 +179,6 @@ function OwnerDashboard() {
         <OilTestCard isAudit />
         {/* Replaces the "+" screen: each audit checklist lives here for good — tap to start, pencil to edit. */}
         <AuditCards />
-        <ChecklistDeadlines lateOnly />
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}
@@ -361,9 +360,14 @@ function SupervisorSummaryRow({ row, locale, streak }: { row: BranchSummaryRow; 
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         {row.scoreCount ? <ScorePill score={(row.scoreSum ?? 0) / row.scoreCount} showGrade={false} /> : null}
-        <Text style={{ fontSize: 13, fontWeight: '600', color: row.totalPoints < 0 ? c.rose : c.emerald }}>
-          {row.totalPoints} · {row.iqdAmount.toLocaleString(locale)} {t('dashboard.iqdSuffix')}
-        </Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: row.totalPoints < 0 || totalIqdOf(row) < 0 ? c.rose : c.emerald }}>
+            {row.totalPoints} · {totalIqdOf(row).toLocaleString(locale)} {t('dashboard.iqdSuffix')}
+          </Text>
+          {row.latePenaltyIqd > 0 ? (
+            <Text style={{ fontSize: 11, color: c.rose }}>{t('report.lateIncluded', { amount: row.latePenaltyIqd.toLocaleString(locale) })}</Text>
+          ) : null}
+        </View>
       </View>
     </View>
   );

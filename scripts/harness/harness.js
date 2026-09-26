@@ -93,7 +93,7 @@ async function open(username, opts = {}) {
   await context.addInitScript(([key, value, lang]) => {
     localStorage.setItem(key, value);
     localStorage.setItem('rungs.permissionsAsked', '1');
-    if (lang) localStorage.setItem('rungs.language', lang);
+    if (lang) localStorage.setItem('rungs.languagePref', lang);
   }, [`sb-${REF}-auth-token`, JSON.stringify(session), opts.lang || null]);
 
   const rpc = opts.rpc || {};
@@ -158,6 +158,10 @@ async function open(username, opts = {}) {
   });
   // Realtime: closed locally, never connects to the project.
   await context.routeWebSocket(/supabase\.co/, (ws) => ws.close());
+  // Street names: answered locally too, never the real OpenStreetMap service.
+  await context.route(/nominatim\.openstreetmap\.org/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ address: { road: 'Test Street', suburb: 'Karrada', city: 'Baghdad' } }) }),
+  );
   if (opts.liveBundle) {
     await context.route(/\/\?update-check=/, (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: `<script src="/_expo/static/js/web/entry-${opts.liveBundle}.js" defer></script>` }),

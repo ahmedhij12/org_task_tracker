@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, RefreshControl, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
+import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { MenuButton } from '@/components/SideMenu';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
-import { auditsAndVerifies } from '@/lib/roles';
+import { auditsAndVerifies, can } from '@/lib/roles';
 import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
@@ -14,6 +16,43 @@ import { useChecklists } from '@/hooks/useChecklists';
 import { checkInFor } from '@/lib/checkIn';
 import { Card, useThemeColors } from '@/components/ui';
 import type { TaskCompletion } from '@/types';
+
+type Missing = { slot: 'AM' | 'PM' | 'DAY'; dueAt: string; who: string[] };
+
+/**
+ * Per branch: today's checklists past their deadline + grace and still not
+ * sent (checklist_today). Only shown, never chased from here — the reminders
+ * go out on their own, and he types the reason when he sends it.
+ */
+function useLateNotSent(teamIds: string[]): Record<string, Missing[]> {
+  const key = teamIds.join(',');
+  const [late, setLate] = useState<Record<string, Missing[]>>({});
+  const load = useCallback(async () => {
+    const now = Date.now();
+    const next: Record<string, Missing[]> = {};
+    await Promise.all(
+      teamIds.map(async (id) => {
+        const { data } = await supabase.rpc('checklist_today', { p_team: id });
+        const rows = (Array.isArray(data) ? data : [])
+          .filter((r: any) => !r.done_at && now > new Date(r.due_at).getTime() + (r.grace_min ?? 0) * 60000)
+          .map((r: any) => ({ slot: r.slot, dueAt: r.due_at, who: r.on_shift ?? [] }));
+        if (rows.length) next[id] = rows;
+      }),
+    );
+    setLate(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+  useEffect(() => {
+    const timer = setInterval(load, 60000);
+    return () => clearInterval(timer);
+  }, [load]);
+  return late;
+}
 
 function dayLabel(iso: string, locale: string, t: (k: string) => string): string {
   const d = new Date(iso);
@@ -63,6 +102,9 @@ export default function ChecklistsScreen() {
       .sort((a, b) => b.unverified - a.unverified || a.team.name.localeCompare(b.team.name));
   }, [teams, submissions, isOwner, profile?.id, profile?.teamIds]);
 
+  const lateNotSent = useLateNotSent(branches.map((b) => b.team.id));
+  // Only the people who decide late checklists are told to decide.
+  const canDecide = can(profile, 'excuse_late');
   const nameOf = (id: string) => allMembers.find((m) => m.id === id)?.name ?? t('history.someone');
   const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
 
@@ -88,7 +130,14 @@ export default function ChecklistsScreen() {
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
               >
                 <Ionicons name="business-outline" size={20} color={c.brand} />
-                <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: c.text }}>{team.name}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>{team.name}</Text>
+                  {lateNotSent[team.id]?.map((m) => (
+                    <Text key={m.slot} testID={`late-missing-${team.name}-${m.slot}`} style={{ fontSize: 12, fontWeight: '700', color: c.rose, marginTop: 2 }}>
+                      {t('checklists.lateNotSent', { slot: t(`deadlines.slot${m.slot}`), time: time(m.dueAt), who: m.who.length ? m.who.join(', ') : t('deadlines.anyone') })}
+                    </Text>
+                  ))}
+                </View>
                 {unverified > 0 ? (
                   <View style={{ minWidth: 24, height: 24, borderRadius: 12, backgroundColor: c.rose, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
                     <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>{unverified}</Text>
@@ -109,6 +158,18 @@ export default function ChecklistsScreen() {
                       const showDay = day !== lastDay;
                       lastDay = day;
                       const verified = !!r.reviewedBy;
+                      const late = r.wasLate && !!r.checklistSlot;
+                      // A late one waits on the auditor's decision; once decided, the badge says which.
+                      const badge =
+                        r.lateOutcome === 'penalty'
+                          ? { text: t('checklists.outcomePenalty'), fg: c.rose, bg: c.roseSoft }
+                          : r.lateOutcome === 'warning'
+                            ? { text: t('checklists.outcomeWarning'), fg: c.amber, bg: c.amberSoft }
+                            : verified
+                              ? { text: `✓ ${t('checklists.verified')}`, fg: c.emerald, bg: c.emeraldSoft }
+                              : late && !r.lateExcusedAt && canDecide
+                                ? { text: t('checklists.lateDecide'), fg: c.rose, bg: c.roseSoft }
+                                : { text: t('checklists.new'), fg: c.rose, bg: c.roseSoft };
                       // A daily checklist is measured against its own branch.
                       const where = checkInFor({ lat: r.signedLat, lng: r.signedLng, accuracyM: r.signedAccuracyM }, team);
                       return (
@@ -147,6 +208,11 @@ export default function ChecklistsScreen() {
                                     <Text style={{ fontSize: 9, fontWeight: '800', color: c.brand }}>{t('checklists.manager')}</Text>
                                   </View>
                                 ) : null}
+                                {late ? (
+                                  <View testID={`late-tag-${r.id}`} style={{ backgroundColor: c.roseSoft, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: c.rose }}>{t('checklists.late')}</Text>
+                                  </View>
+                                ) : null}
                               </View>
                               <Text style={{ fontSize: 12, color: c.textMuted }}>
                                 {time(r.createdAt)}
@@ -162,17 +228,8 @@ export default function ChecklistsScreen() {
                                 </View>
                               ) : null}
                             </View>
-                            <View
-                              style={{
-                                backgroundColor: verified ? c.emeraldSoft : c.roseSoft,
-                                borderRadius: 999,
-                                paddingHorizontal: 8,
-                                paddingVertical: 3,
-                              }}
-                            >
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: verified ? c.emerald : c.rose }}>
-                                {verified ? `✓ ${t('checklists.verified')}` : t('checklists.new')}
-                              </Text>
+                            <View testID={`badge-${r.id}`} style={{ backgroundColor: badge.bg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: badge.fg }}>{badge.text}</Text>
                             </View>
                           </Pressable>
                         </View>

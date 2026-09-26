@@ -6,9 +6,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useOrgData } from '@/hooks/useOrgData';
+import { checkInFor } from '@/lib/checkIn';
 import { Card, ErrorBanner, useThemeColors } from '@/components/ui';
 import { MenuButton } from '@/components/SideMenu';
-import { groupActivity, changedFields, type ActivityGroup, type ActivityRow, type Summary } from '@/lib/describeActivity';
+import { groupActivity, changedFields, type ActivityGroup, type ActivityRow, type Geo, type Summary } from '@/lib/describeActivity';
 
 const PAGE = 300;
 
@@ -21,6 +23,7 @@ export default function ActivityScreen() {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
+  const { teams } = useOrgData();
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -81,6 +84,25 @@ export default function ActivityScreen() {
   const say = (s: Summary) =>
     t(s.key, { ...s.params, screen: s.params.screenKey ? t(String(s.params.screenKey)) : undefined });
   const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
+  // Where the phone was: the street, or why there is none.
+  const placeOf = (geo: Geo | null): string | null => {
+    if (!geo) return null;
+    if (geo.s !== 'ok' || geo.lat == null || geo.lng == null) return t(`activity.loc_${geo.s}`);
+    return geo.place ?? `${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}`;
+  };
+  // The closest branch with a pin: "at Baghdad branch" inside its circle, else how far.
+  const nearestOf = (geo: Geo | null): string | null => {
+    if (!geo || geo.s !== 'ok' || geo.lat == null || geo.lng == null) return null;
+    let best: { name: string; meters: number; inside: boolean } | null = null;
+    for (const team of teams) {
+      const ci = checkInFor({ lat: geo.lat, lng: geo.lng, accuracyM: geo.acc ?? null }, team);
+      if (ci && (!best || ci.meters < best.meters)) best = { name: team.name, meters: ci.meters, inside: ci.status === 'in' };
+    }
+    if (!best) return null;
+    if (best.inside) return t('activity.atBranch', { name: best.name });
+    const distance = best.meters < 1000 ? `${best.meters} m` : `${(best.meters / 1000).toFixed(1)} km`;
+    return t('activity.fromBranch', { distance, name: best.name });
+  };
   const chip = (label: string, active: boolean, onPress: () => void) => (
     <Pressable
       key={label}
@@ -131,7 +153,7 @@ export default function ActivityScreen() {
                       </Text>
                       {g.more > 0 ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{t('activity.more', { count: g.more })}</Text> : null}
                       <Text style={{ fontSize: 11, color: c.textFaint, marginTop: 3 }}>
-                        {[time(g.at), g.device, g.ip].filter(Boolean).join(' · ')}
+                        {[time(g.at), g.device, placeOf(g.geo) ?? g.ip].filter(Boolean).join(' · ')}
                       </Text>
                     </View>
                   </View>
@@ -164,6 +186,14 @@ export default function ActivityScreen() {
                 </View>
                 <Fact label={t('activity.when')} value={new Date(open.at).toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'medium' })} />
                 <Fact label={t('activity.device')} value={open.device ?? '—'} />
+                <Fact
+                  label={t('activity.location')}
+                  value={
+                    (placeOf(open.geo) ?? '—') +
+                    (open.geo?.s === 'ok' && open.geo.acc != null ? ` · ±${open.geo.acc} m` : '')
+                  }
+                />
+                {nearestOf(open.geo) ? <Fact label={t('activity.nearest')} value={nearestOf(open.geo)!} /> : null}
                 <Fact label={t('activity.ip')} value={open.ip ?? '—'} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 14, marginBottom: 6 }}>{t('activity.details')}</Text>
                 <ScrollView style={{ maxHeight: 420 }}>

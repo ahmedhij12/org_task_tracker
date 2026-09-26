@@ -10,7 +10,7 @@ import { useReports } from '@/hooks/useReports';
 import { Card, PrimaryButton, useThemeColors } from '@/components/ui';
 import { exportReportToExcel } from '@/lib/exportReport';
 import { logActivity } from '@/lib/activityLog';
-import { groupBranchSummary } from '@/lib/branchSummary';
+import { groupBranchSummary, totalIqdOf } from '@/lib/branchSummary';
 import { AdjustPeriodPointsSheet } from '@/components/AdjustPeriodPointsSheet';
 import type { BranchSummaryRow, ReportPeriod } from '@/types';
 
@@ -77,7 +77,7 @@ export default function ReportScreen() {
   };
 
   const totalPoints = rows.reduce((sum, r) => sum + r.totalPoints, 0);
-  const totalIqd = rows.reduce((sum, r) => sum + r.iqdAmount, 0);
+  const totalIqd = rows.reduce((sum, r) => sum + totalIqdOf(r), 0);
   const groups = useMemo(() => groupBranchSummary(rows), [rows]);
 
   return (
@@ -195,6 +195,7 @@ function SupervisorRow({
   onAdjust: () => void;
 }) {
   const c = useThemeColors();
+  const { t } = useTranslation();
   return (
     <View
       style={{
@@ -208,9 +209,14 @@ function SupervisorRow({
     >
       <Text style={{ fontSize: 14, color: c.text }}>{row.subjectName}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 14, fontWeight: '700', color: row.totalPoints < 0 ? c.rose : c.emerald }}>
-          {row.totalPoints} · {row.iqdAmount.toLocaleString(locale)}
-        </Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: row.totalPoints < 0 || totalIqdOf(row) < 0 ? c.rose : c.emerald }}>
+            {row.totalPoints} · {totalIqdOf(row).toLocaleString(locale)}
+          </Text>
+          {row.latePenaltyIqd > 0 ? (
+            <Text style={{ fontSize: 11, color: c.rose }}>{t('report.lateIncluded', { amount: row.latePenaltyIqd.toLocaleString(locale) })}</Text>
+          ) : null}
+        </View>
         {canAdjust ? (
           <Pressable onPress={onAdjust} hitSlop={8}>
             <Ionicons name="pencil" size={14} color={c.textMuted} />
