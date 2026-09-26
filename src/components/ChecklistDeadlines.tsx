@@ -32,8 +32,12 @@ type State = 'done' | 'onTime' | 'doneLate' | 'excused' | 'late' | 'soon' | 'lat
  * them now" to the admin, the auditor and the branch's manager. Supervisors and
  * managers see their branch; the admin and the auditor every branch. Nothing
  * shows for a branch with no deadline.
+ *
+ * `lateOnly` (the admin/auditor dashboard): only the exceptions — missing past
+ * the grace, or sent late and not yet excused. Across every branch a full list
+ * would be dozens of "Done" rows; with nothing late the card disappears.
  */
-export function ChecklistDeadlines() {
+export function ChecklistDeadlines({ lateOnly = false }: { lateOnly?: boolean }) {
   const c = useThemeColors();
   const { t, i18n } = useTranslation();
   const { profile } = useAuth();
@@ -76,16 +80,17 @@ export function ChecklistDeadlines() {
     return () => clearInterval(timer);
   }, [load]);
 
-  const shown = branches.filter((b) => rows[b.id]);
-  if (shown.length === 0) return null;
-  const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
-
   const stateOf = (r: Row): State => {
     if (r.done_at) return r.was_late == null ? 'done' : !r.was_late ? 'onTime' : r.excused ? 'excused' : 'doneLate';
     const due = new Date(r.due_at).getTime();
     if (now > due + r.grace_min * 60000) return 'late';
     return now > due - 60 * 60000 ? 'soon' : 'later';
   };
+  const visible = (b: { id: string }) => (rows[b.id] ?? []).filter((r) => !lateOnly || ['late', 'doneLate'].includes(stateOf(r)));
+
+  const shown = branches.filter((b) => visible(b).length);
+  if (shown.length === 0) return null;
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit', hour12: true });
 
   const nudge = async (teamId: string, slot: Row['slot']) => {
     const key = `${teamId}|${slot}`;
@@ -100,11 +105,11 @@ export function ChecklistDeadlines() {
 
   return (
     <View testID="checklist-deadlines" style={{ marginTop: 16, padding: 14, borderRadius: 16, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border }}>
-      <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>{t('deadlines.title')}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>{t(lateOnly ? 'deadlines.lateTitle' : 'deadlines.title')}</Text>
       {shown.map((b) => (
         <View key={b.id} style={{ marginTop: 4 }}>
           {shown.length > 1 || seesAll ? <Text style={{ fontSize: 14, fontWeight: '800', color: c.text, marginTop: 6 }}>{b.name}</Text> : null}
-          {rows[b.id].map((r) => {
+          {visible(b).map((r) => {
             const state = stateOf(r);
             const color =
               state === 'done' || state === 'onTime' ? c.emerald
@@ -156,7 +161,15 @@ export function ChecklistDeadlines() {
           })}
         </View>
       ))}
-      {open ? <CompletionDetailSheet completion={open} onClose={() => setOpen(null)} /> : null}
+      {open ? (
+        <CompletionDetailSheet
+          completion={open}
+          onClose={() => {
+            setOpen(null);
+            load(); // an excuse just given clears the row now, not at the next minute
+          }}
+        />
+      ) : null}
     </View>
   );
 }

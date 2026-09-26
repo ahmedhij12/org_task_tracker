@@ -372,6 +372,7 @@ export default {
     rateFailed: "Could not save the rate. Please try again.",
     title: "Settings",
     changePhoto: "Change photo",
+    removePhoto: "Remove photo",
     editProfile: "Edit profile",
     companyId: "Company ID",
     name: "Name",
@@ -495,6 +496,7 @@ export default {
   },
   deadlines: {
     title: "Checklist today",
+    lateTitle: "Late checklists",
     slotAM: "AM",
     slotPM: "PM",
     slotDAY: "Today",

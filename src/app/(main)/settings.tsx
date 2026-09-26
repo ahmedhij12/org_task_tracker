@@ -76,6 +76,19 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleRemovePhoto = async () => {
+    if (!profile || uploadingPhoto) return;
+    setProfileError(null);
+    setUploadingPhoto(true);
+    try {
+      await updateMyProfile(profile.name, profile.employeeCode ?? '', null);
+    } catch (e: any) {
+      setProfileError(e?.message ?? t('settings.photoFailed'));
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!profile || savingProfile) return;
     setSavingProfile(true);
@@ -161,6 +174,17 @@ export default function SettingsScreen() {
 
           {editingProfile ? (
             <View style={{ marginTop: 14 }}>
+              {profile?.avatarUrl ? (
+                <Pressable
+                  testID="remove-photo"
+                  onPress={handleRemovePhoto}
+                  disabled={uploadingPhoto}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 6, marginBottom: 10, opacity: uploadingPhoto ? 0.5 : 1 }}
+                >
+                  <Ionicons name="trash-outline" size={16} color={c.rose} />
+                  <Text style={{ color: c.rose, fontWeight: '700', fontSize: 14 }}>{t('settings.removePhoto')}</Text>
+                </Pressable>
+              ) : null}
               <Text style={{ fontSize: 12, fontWeight: '600', color: c.textMuted, marginBottom: 4 }}>{t('settings.name')}</Text>
               <FieldInput value={nameText} onChangeText={setNameText} placeholder={t('settings.namePlaceholder')} />
               <Text style={{ fontSize: 12, fontWeight: '600', color: c.textMuted, marginBottom: 4 }}>{t('settings.companyIdLabel')}</Text>

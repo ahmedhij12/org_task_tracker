@@ -381,6 +381,7 @@ export default {
     rateFailed: "تعذر حفظ القيمة. حاول مرة أخرى.",
     title: "الإعدادات",
     changePhoto: "تغيير الصورة",
+    removePhoto: "إزالة الصورة",
     editProfile: "تعديل الملف الشخصي",
     companyId: "الرقم الوظيفي",
     name: "الاسم",
@@ -511,6 +512,7 @@ export default {
   },
   deadlines: {
     title: "قائمة الفحص اليوم",
+    lateTitle: "قوائم فحص متأخرة",
     slotAM: "الصباحي",
     slotPM: "المسائي",
     slotDAY: "اليوم",

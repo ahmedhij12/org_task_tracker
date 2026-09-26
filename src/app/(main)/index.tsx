@@ -179,7 +179,7 @@ function OwnerDashboard() {
         <OilTestCard isAudit />
         {/* Replaces the "+" screen: each audit checklist lives here for good — tap to start, pencil to edit. */}
         <AuditCards />
-        <ChecklistDeadlines />
+        <ChecklistDeadlines lateOnly />
 
         <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', marginTop: 24, marginBottom: 8 }}>
           {t('dashboard.branchesHeading')}
