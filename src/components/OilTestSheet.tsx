@@ -63,8 +63,9 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
   const needsBranch = branches.length > 1;
   const visibleFryers = needsBranch ? fryers.filter((f) => f.teamId === branchId) : fryers;
 
-  // Ask the server which scheduled slot this moment belongs to, so the person
-  // is told they're late before they fill anything in — not after.
+  // Ask the server which scheduled slot this moment belongs to FOR THIS FRYER
+  // (each fryer keeps its own slot), so the person is told they're late
+  // before they fill anything in — not after.
   useEffect(() => {
     // A branch manager tests any time, outside the supervisors' slots (the
     // database agrees: submit_oil_test never makes his test late).
@@ -73,7 +74,7 @@ export function OilTestSheet({ visible, isAudit, onClose }: { visible: boolean; 
     if (!fryer) return;
     let cancelled = false;
     supabase
-      .rpc('oil_slot_for', { p_team_id: fryer.teamId, p_at: new Date().toISOString() })
+      .rpc('oil_slot_for', { p_team_id: fryer.teamId, p_at: new Date().toISOString(), p_fryer_id: fryer.id })
       .then(({ data }) => {
         if (cancelled) return;
         const row = Array.isArray(data) ? data[0] : data;
