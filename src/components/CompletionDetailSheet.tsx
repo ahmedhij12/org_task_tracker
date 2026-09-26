@@ -585,6 +585,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                   </View>
                 ) : webPdf ? (
                   <Pressable
+                    testID="record-share"
                     onPress={handleSendWebPdf}
                     style={{
                       flexDirection: 'row',
@@ -601,6 +602,7 @@ export function CompletionDetailSheet({ completion, onClose }: Props) {
                   </Pressable>
                 ) : (
                   <Pressable
+                    testID="record-export"
                     onPress={handleExport}
                     style={{
                       flexDirection: 'row',

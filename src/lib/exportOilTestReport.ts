@@ -4,6 +4,7 @@ import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { htmlToPdfFile } from '@/lib/webPdf';
+import { bdi as isolate, pdfLanguage, type PdfLanguage } from '@/lib/pdfText';
 import type { OilGrade, OilTest } from '@/types';
 
 /**
@@ -20,10 +21,11 @@ const TPM_CHANGE = 22;
 /** The scale the strip is drawn against. */
 const TPM_SCALE_MAX = 30;
 
+// The words are in the i18n files (pdf.oilGood / oilGoodVerdict, …).
 const GRADE: Record<OilGrade, { label: string; verdict: string; ink: string; wash: string; bar: string }> = {
   good: {
-    label: 'Good',
-    verdict: 'The oil is within range. Keep frying and test again at the next slot.',
+    label: 'oilGood',
+    verdict: 'oilGoodVerdict',
     // Darker than the app's #10B981 on purpose: this has to hold up as text on
     // white paper, and in grayscale.
     ink: '#047857',
@@ -31,15 +33,15 @@ const GRADE: Record<OilGrade, { label: string; verdict: string; ink: string; was
     bar: '#10B981',
   },
   watch: {
-    label: 'Watch',
-    verdict: 'Close to the limit. Plan the change now rather than being caught mid-service.',
+    label: 'oilWatch',
+    verdict: 'oilWatchVerdict',
     ink: '#B45309',
     wash: '#FFFBEB',
     bar: '#F59E0B',
   },
   change: {
-    label: 'Change now',
-    verdict: 'Past the limit. This oil must be changed before the next batch goes in.',
+    label: 'oilChange',
+    verdict: 'oilChangeVerdict',
     ink: '#B91C1C',
     wash: '#FEF2F2',
     bar: '#E8141A',
@@ -77,30 +79,30 @@ export interface OilTestReportData {
   locale: string;
 }
 
-/** Arabic names inside an otherwise left-to-right line need isolating, or the
- *  surrounding punctuation jumps to the wrong end. */
+/** A name or note in the other script, isolated so its punctuation stays put. */
 function bidi(s: string): string {
-  return `<span style="direction:rtl;unicode-bidi:isolate;">${escapeHtml(s)}</span>`;
+  return isolate(escapeHtml(s));
 }
 
-function slotLine(test: OilTest, locale: string): string {
+function slotLine(test: OilTest, locale: string, L: PdfLanguage): string {
   if (!test.slotTime) {
     // oil_slot_for returns no slot for an auditor's spot check, and for a
     // SECOND test in a slot another test already covered — deliberately, so
     // the same slot is never counted late twice. Neither is a failing.
-    return test.isAudit
-      ? '<span style="color:#767676;font-weight:400;">Spot check by the auditor</span>'
-      : '<span style="color:#767676;font-weight:400;">Extra check &mdash; not one of the scheduled tests</span>';
+    return `<span style="color:#767676;font-weight:400;">${L.t(test.isAudit ? 'spotCheck' : 'extraCheck')}</span>`;
   }
   const slot = new Date(test.slotTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
   if (test.minutesLate != null && test.minutesLate > 0) {
-    return `${slot} <span style="font-weight:400;color:#B91C1C;">&mdash; ${test.minutesLate} minutes late</span>`;
+    return `${slot} <span style="font-weight:400;color:#B91C1C;">&mdash; ${L.t('minutesLate', { n: test.minutesLate })}</span>`;
   }
-  return `${slot} <span style="font-weight:400;color:#047857;">&mdash; on time</span>`;
+  return `${slot} <span style="font-weight:400;color:#047857;">&mdash; ${L.t('onTimeLower')}</span>`;
 }
 
 function buildHtml(data: OilTestReportData, logoDataUri: string): string {
-  const { test, branchName, fryerName, testerName, locale } = data;
+  const { test, branchName, fryerName, testerName } = data;
+  // In the app's language: Arabic right to left, English left to right.
+  const L = pdfLanguage(data.locale);
+  const locale = L.locale;
   const g = GRADE[test.grade];
   const when = new Date(test.testedAt);
   const dateLabel = when.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -113,38 +115,40 @@ function buildHtml(data: OilTestReportData, logoDataUri: string): string {
 
   const row = (label: string, value: string, last = false) =>
     `<tr>
-      <td style="padding:9px 0;color:#767676;width:165px;${last ? '' : 'border-bottom:1px solid #e5e7eb;'}">${label}</td>
+      <td style="padding:9px 0;padding-inline-end:10px;color:#767676;width:165px;${last ? '' : 'border-bottom:1px solid #e5e7eb;'}">${label}</td>
       <td style="padding:9px 0;font-weight:700;${last ? '' : 'border-bottom:1px solid #e5e7eb;'}">${value}</td>
     </tr>`;
 
   return `<!DOCTYPE html>
-<html>
+<html dir="${L.dir}" lang="${L.lang}">
 <head><meta charset="utf-8" /></head>
 <body style="font-family:-apple-system,'Helvetica Neue',Helvetica,Arial,sans-serif;margin:0;padding:48px 56px;color:#111827;background:#ffffff;">
 
   <div style="text-align:center;">
     <img src="${logoDataUri}" style="height:52px;" />
-    <h1 style="margin:14px 0 2px;font-size:25px;font-weight:700;">Oil Test Report</h1>
+    <h1 style="margin:14px 0 2px;font-size:25px;font-weight:700;">${L.t('oilTitle')}</h1>
     <p style="margin:0;font-size:12px;color:#767676;">${dateLabel} &middot; ${timeLabel}</p>
   </div>
 
   <table style="width:100%;margin-top:24px;border:1px solid #e5e7eb;border-radius:14px;background:${g.wash};border-collapse:separate;">
     <tr>
-      <td style="width:130px;padding:20px 0 20px 22px;">
+      <td style="width:130px;padding:20px 0;padding-inline-start:22px;">
         <div style="width:104px;height:104px;border:5px solid ${g.ink};border-radius:999px;box-sizing:border-box;text-align:center;padding-top:26px;">
           <div style="font-size:30px;font-weight:700;color:#111827;line-height:1;">${test.tpm}</div>
           <div style="font-size:11px;color:#767676;margin-top:3px;">TPM %</div>
         </div>
       </td>
-      <td style="padding:20px 22px 20px 0;vertical-align:middle;">
-        <div style="font-size:20px;font-weight:700;color:${g.ink};">${g.label}</div>
-        <div style="font-size:13px;color:#374151;margin-top:5px;line-height:1.5;">${g.verdict}</div>
+      <td style="padding:20px 0;padding-inline-end:22px;vertical-align:middle;">
+        <div style="font-size:20px;font-weight:700;color:${g.ink};">${L.t(g.label)}</div>
+        <div style="font-size:13px;color:#374151;margin-top:5px;line-height:1.5;">${L.t(g.verdict)}</div>
       </td>
     </tr>
   </table>
 
   <div style="margin-top:22px;">
-    <div style="font-size:11px;font-weight:700;color:#767676;text-transform:uppercase;letter-spacing:0.6px;">Where this reading sits</div>
+    <div style="font-size:11px;font-weight:700;color:#767676;text-transform:uppercase;letter-spacing:${L.ar ? 0 : 0.6}px;">${L.t('oilScale')}</div>
+    <!-- The scale reads 0 → 30 left to right in both languages, so the marker's left:% stays true. -->
+    <div dir="ltr">
     <table style="width:100%;margin-top:12px;border-collapse:collapse;table-layout:fixed;">
       <tr style="height:15px;">
         <td style="width:${goodWidth}%;background:#10B981;"></td>
@@ -160,29 +164,30 @@ function buildHtml(data: OilTestReportData, logoDataUri: string): string {
     </div>
     <table style="width:100%;font-size:11px;color:#767676;border-collapse:collapse;">
       <tr>
-        <td style="text-align:left;">0 &middot; fresh</td>
-        <td style="text-align:center;">${TPM_WATCH} &middot; watch</td>
-        <td style="text-align:center;">${TPM_CHANGE} &middot; change</td>
+        <td style="text-align:left;">0 &middot; ${L.t('oilFresh')}</td>
+        <td style="text-align:center;">${TPM_WATCH} &middot; ${L.t('oilWatchMark')}</td>
+        <td style="text-align:center;">${TPM_CHANGE} &middot; ${L.t('oilChangeMark')}</td>
         <td style="text-align:right;">${TPM_SCALE_MAX}</td>
       </tr>
     </table>
+    </div>
   </div>
 
   <table style="width:100%;margin-top:24px;border-collapse:collapse;font-size:13px;">
-    ${row('Branch', escapeHtml(branchName))}
-    ${row('Fryer', bidi(fryerName))}
-    ${row(test.isAudit ? 'Tested by (auditor)' : 'Tested by', escapeHtml(testerName))}
-    ${row('Scheduled slot', slotLine(test, locale))}
-    ${row('Oil temperature', test.tempC != null ? `${test.tempC} &deg;C` : '&mdash;')}
-    ${row('Filtered', test.filtered ? 'Yes' : 'No')}
-    ${row('Note', test.note ? `<span style="font-weight:400;color:#374151;">${escapeHtml(test.note)}</span>` : '&mdash;', true)}
+    ${row(L.t('branch'), bidi(branchName))}
+    ${row(L.t('fryer'), bidi(fryerName))}
+    ${row(L.t(test.isAudit ? 'testedByAuditor' : 'testedBy'), bidi(testerName))}
+    ${row(L.t('slot'), slotLine(test, locale, L))}
+    ${row(L.t('temperature'), test.tempC != null ? `<bdi>${test.tempC} &deg;C</bdi>` : '&mdash;')}
+    ${row(L.t('filtered'), L.t(test.filtered ? 'yes' : 'no'))}
+    ${row(L.t('note'), test.note ? `<span style="font-weight:400;color:#374151;">${bidi(test.note)}</span>` : '&mdash;', true)}
   </table>
 
   ${
     test.lateReason
       ? `<div style="margin-top:14px;padding:12px 14px;border:1px solid #FCA5A5;border-radius:10px;background:#FEF2F2;">
-    <div style="font-size:11px;font-weight:700;color:#B91C1C;text-transform:uppercase;letter-spacing:0.6px;">Why it was late</div>
-    <div style="font-size:12.5px;color:#374151;margin-top:5px;line-height:1.5;">${escapeHtml(test.lateReason)}</div>
+    <div style="font-size:11px;font-weight:700;color:#B91C1C;text-transform:uppercase;letter-spacing:${L.ar ? 0 : 0.6}px;">${L.t('whyLate')}</div>
+    <div style="font-size:12.5px;color:#374151;margin-top:5px;line-height:1.5;">${bidi(test.lateReason)}</div>
   </div>`
       : ''
   }
@@ -192,17 +197,17 @@ function buildHtml(data: OilTestReportData, logoDataUri: string): string {
       <td style="width:178px;vertical-align:top;">
         <img src="${test.photoUrl}" style="width:178px;height:178px;object-fit:cover;border:1px solid #d1d5db;border-radius:10px;display:block;" />
       </td>
-      <td style="padding-left:18px;vertical-align:top;">
-        <div style="font-size:11px;font-weight:700;color:#767676;text-transform:uppercase;letter-spacing:0.6px;">Proof</div>
-        <p style="margin:8px 0 0;font-size:12.5px;color:#374151;line-height:1.6;">The tester screen photographed at the fryer. The number above is what was saved after ${escapeHtml(testerName)} confirmed the reading.</p>
+      <td style="padding-inline-start:18px;vertical-align:top;">
+        <div style="font-size:11px;font-weight:700;color:#767676;text-transform:uppercase;letter-spacing:${L.ar ? 0 : 0.6}px;">${L.t('proof')}</div>
+        <p style="margin:8px 0 0;font-size:12.5px;color:#374151;line-height:1.6;">${L.t('oilProof', { name: bidi(testerName) })}</p>
       </td>
     </tr>
   </table>
 
   <table style="width:100%;margin-top:28px;border-top:1px solid #e5e7eb;font-size:10.5px;color:#767676;">
     <tr>
-      <td style="padding-top:12px;text-align:left;">Basra Delight &middot; BD Audit</td>
-      <td style="padding-top:12px;text-align:right;">Good below ${TPM_WATCH} &middot; Watch ${TPM_WATCH}&ndash;${TPM_CHANGE - 0.1} &middot; Change at ${TPM_CHANGE} and above</td>
+      <td style="padding-top:12px;text-align:${L.start};">${L.t('footer')}</td>
+      <td style="padding-top:12px;text-align:${L.end};">${L.t('oilFooter', { watch: TPM_WATCH, top: TPM_CHANGE - 0.1, change: TPM_CHANGE })}</td>
     </tr>
   </table>
 

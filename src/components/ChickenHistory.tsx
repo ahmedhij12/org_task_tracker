@@ -108,7 +108,7 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
       {picked && inViewBranchCount > 1 ? <BranchBackRow name={teamName(picked)} onBack={() => setPicked(null)} /> : null}
       {collapsed
         ? branches.map((b) => (
-            <Pressable key={b.teamId} onPress={() => setPicked(b.teamId)}
+            <Pressable key={b.teamId} testID={`marination-branch-${b.name}`} onPress={() => setPicked(b.teamId)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
               <Ionicons name="restaurant-outline" size={20} color={c.brand} />
               <View style={{ flex: 1 }}>
@@ -119,7 +119,7 @@ export function ChickenHistory({ filter = 'all' }: { filter?: string } = {}) {
             </Pressable>
           ))
         : days.slice(0, 30).map(([k, list]) => (
-        <Pressable key={k} onPress={() => setOpenDay(k)}
+        <Pressable key={k} testID="marination-day" onPress={() => setOpenDay(k)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: c.bgSubtle, borderWidth: 1, borderColor: c.border, marginBottom: 8 }}>
           <Ionicons name="restaurant-outline" size={20} color={c.brand} />
           <View style={{ flex: 1 }}>

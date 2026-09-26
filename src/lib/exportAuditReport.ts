@@ -5,9 +5,8 @@ import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { tileGrid } from '@/lib/maps';
 import { htmlToPdfFile } from '@/lib/webPdf';
-import { GRADE_HEX, formatScore, gradeOf, type ScoreGrade } from '@/lib/score';
-
-const GRADE_LABEL: Record<ScoreGrade, string> = { excellent: 'Excellent', good: 'Good', needsWork: 'Needs work', critical: 'Critical' };
+import { GRADE_HEX, formatScore, gradeOf } from '@/lib/score';
+import { bdi, pdfLanguage, type PdfLanguage } from '@/lib/pdfText';
 import type { ChecklistAnswer, ChecklistSectionPhoto, TaskCompletion } from '@/types';
 import type { CheckIn } from '@/lib/checkIn';
 
@@ -53,11 +52,13 @@ export interface AuditReportData {
 }
 
 function buildHtml(data: AuditReportData, logoDataUri: string): string {
-  const { kind, completion, branchName, subjectName, auditorName, verifiedByName, answers, photos, locale, checkIn } = data;
+  const { kind, completion, branchName, subjectName, auditorName, verifiedByName, answers, photos, checkIn } = data;
+  const L = pdfLanguage(data.locale);
+  const locale = L.locale;
   const points = completion.pointsAwarded ?? 0;
   const iqd = Math.abs(points * completion.iqdPerPoint).toLocaleString(locale);
   const score = completion.score;
-  const shiftLabel = completion.shift === 'morning' ? 'AM' : completion.shift === 'evening' ? 'PM' : '—';
+  const shiftLabel = completion.shift === 'morning' ? L.t('slot_AM') : completion.shift === 'evening' ? L.t('slot_PM') : '—';
   const dateLabel = new Date(completion.createdAt).toLocaleString(locale, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
   const bySection = new Map<string, ChecklistAnswer[]>();
@@ -66,11 +67,11 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
   const photosBySection = new Map<string, ChecklistSectionPhoto[]>();
   for (const p of photos) photosBySection.set(p.sectionTitle, [...(photosBySection.get(p.sectionTitle) ?? []), p]);
 
-  // Left-to-right, per explicit user feedback: an initial RTL version (the
-  // Question column flipped to the right, matching the Arabic content)
-  // tested as more confusing than familiar left-to-right, not less. Fixed
-  // column widths (kept from that attempt) still keep Answer legible
-  // regardless of how long a question runs.
+  // In the app's language (pdfLanguage): an English report is left to right —
+  // his earlier feedback: an English report with the Question column flipped
+  // right was more confusing, not less — and an Arabic one is right to left
+  // throughout (his request, 2026-09-26). Fixed column widths keep Answer
+  // legible however long a question runs.
   const sectionsHtml = Array.from(bySection.entries())
     .map(([title, items]) => {
       const rows = items
@@ -80,7 +81,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${escapeHtml(a.question)}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700;color:${
             a.answer == null ? '#9ca3af' : a.answer ? '#059669' : '#dc2626'
-          };">${a.answer == null ? 'N/A' : a.answer ? 'Yes' : 'No'}</td>
+          };">${a.answer == null ? L.t('na') : a.answer ? L.t('yes') : L.t('no')}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${a.note ? escapeHtml(a.note) : ''}</td>
         </tr>`
         )
@@ -89,7 +90,7 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
         .map((p) => `<img src="${p.photoUrl}" style="width:110px;height:110px;object-fit:cover;border-radius:8px;margin:4px;" />`)
         .join('');
       return `
-        <h3 style="margin:18px 0 6px;color:#1f2937;font-size:14px;">${title ? escapeHtml(title) : 'General'}</h3>
+        <h3 style="margin:18px 0 6px;color:#1f2937;font-size:14px;">${title ? escapeHtml(title) : L.t('general')}</h3>
         <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;">
           <colgroup>
             <col style="width:55%;" />
@@ -98,9 +99,9 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
           </colgroup>
           <thead>
             <tr style="background:#f3f4f6;">
-              <th style="text-align:left;padding:6px 8px;">Question</th>
-              <th style="padding:6px 8px;">Answer</th>
-              <th style="text-align:left;padding:6px 8px;">Note</th>
+              <th style="text-align:${L.start};padding:6px 8px;">${L.t('question')}</th>
+              <th style="padding:6px 8px;">${L.t('answer')}</th>
+              <th style="text-align:${L.start};padding:6px 8px;">${L.t('note')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -111,13 +112,13 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
     .join('');
 
   return `<!DOCTYPE html>
-<html>
+<html dir="${L.dir}" lang="${L.lang}">
 <head><meta charset="utf-8" /></head>
 <body style="font-family: -apple-system, Helvetica, Arial, sans-serif; padding:28px; color:#111827;">
   <div style="text-align:center;margin-bottom:20px;">
     <img src="${logoDataUri}" style="height:56px;" />
   </div>
-  <h1 style="font-size:19px;margin:0 0 2px;text-align:center;">${kind === 'audit' ? 'Branch Audit Report' : escapeHtml(completion.taskTitle)}</h1>
+  <h1 style="font-size:19px;margin:0 0 2px;text-align:center;">${kind === 'audit' ? L.t('auditTitle') : escapeHtml(completion.taskTitle)}</h1>
   <p style="color:#6b7280;font-size:12px;margin:0 0 20px;text-align:center;">${dateLabel}</p>
   ${
     score != null
@@ -126,39 +127,82 @@ function buildHtml(data: AuditReportData, logoDataUri: string): string {
       <div style="font-size:30px;font-weight:800;color:#111827;">${formatScore(score)}</div>
       <div style="font-size:11px;color:#6b7280;margin-top:3px;">/ 100</div>
     </div>
-    <div style="font-size:13px;font-weight:700;color:${GRADE_HEX[gradeOf(score)]};margin-top:6px;">${GRADE_LABEL[gradeOf(score)]}</div>
+    <div style="font-size:13px;font-weight:700;color:${GRADE_HEX[gradeOf(score)]};margin-top:6px;">${L.t(`grade_${gradeOf(score)}`)}</div>
   </div>`
       : ''
   }
 
-  ${kind === 'audit' ? '' : checklistInfoHtml(completion, branchName, subjectName, verifiedByName ?? null)}
+  ${kind === 'audit' ? '' : checklistInfoHtml(completion, branchName, subjectName, verifiedByName ?? null, L, locale)}
   ${kind === 'audit' ? `<table style="width:100%;font-size:13px;margin-bottom:18px;border-collapse:collapse;">
-    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Branch</td><td style="font-weight:700;">${escapeHtml(branchName)}</td></tr>
-    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Subject</td><td style="font-weight:700;">${escapeHtml(subjectName)}</td></tr>
-    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Auditor</td><td style="font-weight:700;">${escapeHtml(auditorName)}</td></tr>
-    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Shift</td><td style="font-weight:700;">${shiftLabel}</td></tr>
-    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Penalty</td><td style="font-weight:700;color:${points < 0 ? '#dc2626' : '#111827'};">${points} pts</td></tr>
-    <tr><td style="padding:4px 8px 4px 0;color:#6b7280;">Amount</td><td style="font-weight:700;color:${points < 0 ? '#dc2626' : '#111827'};">${iqd} IQD</td></tr>
+    ${infoRow(L.t('branch'), bdi(escapeHtml(branchName)))}
+    ${infoRow(L.t('subject'), bdi(escapeHtml(subjectName)))}
+    ${infoRow(L.t('auditor'), bdi(escapeHtml(auditorName)))}
+    ${infoRow(L.t('shift'), shiftLabel)}
+    ${infoRow(L.t('penalty'), L.t('pts', { n: points }), points < 0 ? '#dc2626' : '#111827')}
+    ${infoRow(L.t('amount'), L.t('iqd', { n: iqd }), points < 0 ? '#dc2626' : '#111827')}
   </table>` : ''}
 
   ${sectionsHtml}
 
 
-  ${proofHtml(completion, kind === 'audit' ? auditorName : subjectName, locale, checkIn ?? null)}
+  ${proofHtml(completion, kind === 'audit' ? auditorName : subjectName, locale, checkIn ?? null, L)}
 </body>
 </html>`;
 }
 
-/** The header for a daily checklist: who filled it, where, the tally. The selfie sits with the other proof at the end. */
-function checklistInfoHtml(completion: TaskCompletion, branchName: string, byName: string, verifiedByName: string | null): string {
-  const row = (label: string, value: string, color = '#111827') =>
-    `<tr><td style="padding:4px 8px 4px 0;color:#6b7280;">${label}</td><td style="font-weight:700;color:${color};">${value}</td></tr>`;
+/** One label/value line of a report's header table; the gap sits on the label's far side in either direction. */
+function infoRow(label: string, value: string, color = '#111827'): string {
+  return `<tr><td style="padding:4px 0;padding-inline-end:10px;color:#6b7280;vertical-align:top;">${label}</td><td style="padding:4px 0;font-weight:700;color:${color};">${value}</td></tr>`;
+}
+
+/**
+ * The header for a daily checklist: who filled it, where, the tally — and,
+ * when a deadline applied, whether it was on time; if late, his reason and the
+ * auditor's decision (penalty / warning / as usual). The selfie sits with the
+ * other proof at the end.
+ */
+function checklistInfoHtml(
+  completion: TaskCompletion,
+  branchName: string,
+  byName: string,
+  verifiedByName: string | null,
+  L: PdfLanguage,
+  locale: string,
+): string {
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
+  const verifier = bdi(escapeHtml(verifiedByName ?? ''));
+  const late: string[] = [];
+  if (completion.checklistSlot && completion.dueAt) {
+    const slot = L.t(`slot_${completion.checklistSlot}`);
+    late.push(
+      infoRow(
+        L.t('deadline'),
+        L.t(completion.wasLate ? 'deadlineLate' : 'deadlineOnTime', { slot, time: time(completion.dueAt) }),
+        completion.wasLate ? '#dc2626' : '#059669',
+      ),
+    );
+    if (completion.wasLate) {
+      late.push(infoRow(L.t('lateReason'), completion.note ? bdi(escapeHtml(completion.note)) : L.t('noReason')));
+      const [text, color] =
+        completion.lateOutcome === 'penalty'
+          ? [L.t('decisionPenalty', { amount: (completion.latePenaltyIqd ?? 0).toLocaleString(locale), name: verifier }), '#dc2626']
+          : completion.lateOutcome === 'warning'
+            ? [L.t('decisionWarning', { name: verifier }), '#d97706']
+            : completion.lateOutcome === 'none'
+              ? [L.t('decisionNone', { name: verifier }), '#059669']
+              : completion.lateExcusedAt
+                ? [L.t('decisionExcused', { reason: bdi(escapeHtml(completion.lateExcuseReason ?? '')) }), '#059669']
+                : [L.t('decisionWaiting'), '#d97706'];
+      late.push(infoRow(L.t('decision'), text, color));
+    }
+  }
   const table = `<table style="font-size:13px;border-collapse:collapse;">
-    ${row('Branch', escapeHtml(branchName))}
-    ${row('Filled by', escapeHtml(byName))}
-    ${row('Yes', String(completion.yesCount ?? 0), '#059669')}
-    ${row('No', String(completion.noCount ?? 0), (completion.noCount ?? 0) > 0 ? '#dc2626' : '#111827')}
-    ${row('Verified', verifiedByName ? `✓ ${escapeHtml(verifiedByName)}` : 'Waiting for the admin', verifiedByName ? '#059669' : '#d97706')}
+    ${infoRow(L.t('branch'), bdi(escapeHtml(branchName)))}
+    ${infoRow(L.t('filledBy'), bdi(escapeHtml(byName)))}
+    ${infoRow(L.t('yes'), String(completion.yesCount ?? 0), '#059669')}
+    ${infoRow(L.t('no'), String(completion.noCount ?? 0), (completion.noCount ?? 0) > 0 ? '#dc2626' : '#111827')}
+    ${late.join('')}
+    ${infoRow(L.t('verified'), verifiedByName ? `✓ ${verifier}` : L.t('waitingVerify'), verifiedByName ? '#059669' : '#d97706')}
   </table>`;
   return `<div style="margin-bottom:18px;">${table}</div>`;
 }
@@ -196,7 +240,7 @@ function miniMapHtml(lat: number, lng: number, width: number, height: number): s
  * Every cell is the same size and framed the same way, and each carries a
  * caption, so the block reads as a record rather than three loose pictures.
  */
-function proofHtml(completion: TaskCompletion, signerName: string, locale: string, checkIn: CheckIn | null): string {
+function proofHtml(completion: TaskCompletion, signerName: string, locale: string, checkIn: CheckIn | null, L: PdfLanguage): string {
   const hasSelfie = !!completion.selfieUrl;
   const hasSig = !!completion.signatureUrl;
   const hasLoc = completion.signedLat != null && completion.signedLng != null;
@@ -214,7 +258,7 @@ function proofHtml(completion: TaskCompletion, signerName: string, locale: strin
   const frame = (inner: string) =>
     `<div style="width:${cellW}px;height:${BOX_H}px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;">${inner}</div>`;
   const label = (text: string) =>
-    `<p style="font-size:9px;letter-spacing:0.7px;text-transform:uppercase;color:#9ca3af;margin:0 0 6px;font-weight:700;">${text}</p>`;
+    `<p style="font-size:9px;letter-spacing:${L.ar ? 0 : 0.7}px;text-transform:uppercase;color:#9ca3af;margin:0 0 6px;font-weight:700;">${text}</p>`;
   const caption = (main: string, sub = '') =>
     `<p style="font-size:10px;color:#374151;margin:6px 0 0;line-height:1.35;width:${cellW}px;">${main}${
       sub ? `<br /><span style="color:#9ca3af;">${sub}</span>` : ''
@@ -227,44 +271,43 @@ function proofHtml(completion: TaskCompletion, signerName: string, locale: strin
   const cells: string[] = [];
   if (hasSelfie) {
     cells.push(
-      label('Selfie') +
+      label(L.t('selfie')) +
         frame(`<img src="${completion.selfieUrl}" style="width:${cellW}px;height:${BOX_H}px;object-fit:cover;object-position:center 28%;display:block;" />`) +
         caption(escapeHtml(signerName))
     );
   }
   if (hasSig) {
     cells.push(
-      label('Signature') +
+      label(L.t('signature')) +
         frame(`<img src="${completion.signatureUrl}" style="width:${cellW - 16}px;height:${BOX_H - 16}px;margin:8px;object-fit:contain;display:block;" />`) +
         caption(escapeHtml(signerName), signedAt)
     );
   }
   if (hasLoc) {
-    const accuracy = completion.signedAccuracyM != null ? `±${Math.round(completion.signedAccuracyM)} m` : '';
-    // Numbers only, so nothing here needs escaping. The PDF is English-labelled
-    // throughout ("Selfie", "Signed at"), so this line is too.
+    const accuracy = completion.signedAccuracyM != null ? L.t('accuracy', { m: Math.round(completion.signedAccuracyM) }) : '';
+    // Numbers only, so nothing here needs escaping.
     const distance = !checkIn
       ? ''
       : checkIn.status === 'out'
-        ? `<span style="color:#b91c1c;font-weight:700;">Not in the kitchen · ${checkIn.meters} m away (allowed ${checkIn.radiusM} m)</span>`
+        ? `<span style="color:#b91c1c;font-weight:700;">${L.t('notInKitchen', { m: checkIn.meters, r: checkIn.radiusM })}</span>`
         : checkIn.status === 'unclear'
-          ? `<span style="color:#b45309;font-weight:700;">Location unclear · weak GPS (±${checkIn.accuracyM ?? '?'} m) · ${checkIn.meters} m from the pin</span>`
-          : `In the kitchen · ${checkIn.meters} m from the pin`;
+          ? `<span style="color:#b45309;font-weight:700;">${L.t('locationUnclear', { acc: checkIn.accuracyM ?? '?', m: checkIn.meters })}</span>`
+          : L.t('inKitchen', { m: checkIn.meters });
     cells.push(
-      label('Signed at') +
+      label(L.t('signedAt')) +
         `<a href="https://www.google.com/maps/search/?api=1&query=${completion.signedLat},${completion.signedLng}" style="text-decoration:none;color:inherit;">` +
         frame(miniMapHtml(completion.signedLat!, completion.signedLng!, cellW, BOX_H)) +
-        caption(escapeHtml(completion.signedAddress ?? 'Open in Maps'), [accuracy, distance].filter(Boolean).join('<br />')) +
+        caption(completion.signedAddress ? bdi(escapeHtml(completion.signedAddress)) : L.t('openInMaps'), [accuracy, distance].filter(Boolean).join('<br />')) +
         '</a>'
     );
   }
 
   const tds = cells
-    .map((cell, i) => `<td style="width:${cellW}px;vertical-align:top;${i > 0 ? `padding-left:${GAP}px;` : ''}">${cell}</td>`)
+    .map((cell, i) => `<td style="width:${cellW}px;vertical-align:top;${i > 0 ? `padding-${L.start}:${GAP}px;` : ''}">${cell}</td>`)
     .join('');
 
   return `<div style="margin-top:26px;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px 16px;page-break-inside:avoid;">
-    <p style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b7280;font-weight:700;margin:0 0 12px;border-bottom:1px solid #f3f4f6;padding-bottom:8px;">Verification</p>
+    <p style="font-size:11px;letter-spacing:${L.ar ? 0 : 1}px;text-transform:uppercase;color:#6b7280;font-weight:700;margin:0 0 12px;border-bottom:1px solid #f3f4f6;padding-bottom:8px;">${L.t('verification')}</p>
     <table style="border-collapse:collapse;table-layout:fixed;"><tr>${tds}</tr></table>
   </div>`;
 }

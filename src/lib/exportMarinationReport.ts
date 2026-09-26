@@ -4,7 +4,8 @@ import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { htmlToPdfFile } from '@/lib/webPdf';
-import { marinationStatus, humanSpan, type MarinationRules } from '@/lib/marination';
+import { marinationStatus, type MarinationRules } from '@/lib/marination';
+import { bdi as isolate, pdfLanguage } from '@/lib/pdfText';
 import type { ChickenMarination } from '@/types';
 
 /**
@@ -32,9 +33,9 @@ async function getLogoDataUri(): Promise<string> {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-/** Arabic names inside a left-to-right line need isolating, or punctuation jumps ends. */
+/** A name or note in the other script, isolated so its punctuation stays put. */
 function bidi(s: string): string {
-  return `<span style="direction:rtl;unicode-bidi:isolate;">${escapeHtml(s)}</span>`;
+  return isolate(escapeHtml(s));
 }
 function safeFilenamePart(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, '').trim().replace(/\s+/g, '-') || 'branch';
@@ -53,7 +54,15 @@ export interface MarinationReportData {
 }
 
 function buildHtml(data: MarinationReportData, logoDataUri: string): string {
-  const { records, rules, tz, locale, nameOf } = data;
+  const { records, rules, tz, nameOf } = data;
+  // In the app's language: Arabic right to left, English left to right.
+  const L = pdfLanguage(data.locale);
+  const locale = L.locale;
+  const span = (ms: number) => {
+    const mins = Math.max(0, Math.round(Math.abs(ms) / 60000));
+    const h = Math.floor(mins / 60);
+    return h > 0 ? L.t('spanH', { h, m: mins % 60 }) : L.t('spanM', { m: mins });
+  };
   const time = (iso: string) => new Date(iso).toLocaleTimeString(locale, { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true });
   const dateLabel = new Date(data.day + 'T12:00:00Z').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const batches = [...records].sort((a, b) => a.marinatedAt.localeCompare(b.marinatedAt));
@@ -65,19 +74,22 @@ function buildHtml(data: MarinationReportData, logoDataUri: string): string {
 
   const verdictHtml = (r: ChickenMarination, i: number) => {
     const v = verdicts[i];
-    const span = humanSpan(v.ms);
+    const d = span(v.ms);
     switch (v.state) {
-      case 'onTime': return '<span style="color:#047857;font-weight:700;">On time</span>';
-      case 'early': return `<span style="color:#B91C1C;font-weight:700;">Removed ${span} early</span><div style="font-size:10px;color:#767676;">under-marinated</div>`;
-      case 'late': return `<span style="color:#B91C1C;font-weight:700;">Removed ${span} late</span>`;
-      case 'overdue': return `<span style="color:#B91C1C;font-weight:700;">Still in &mdash; ${span} overdue</span>`;
-      default: return `<span style="color:#B45309;font-weight:700;">Still in</span><div style="font-size:10px;color:#767676;">${span} left</div>`;
+      case 'onTime': return `<span style="color:#047857;font-weight:700;">${L.t('onTime')}</span>`;
+      case 'early': return `<span style="color:#B91C1C;font-weight:700;">${L.t('resEarly', { span: d })}</span><div style="font-size:10px;color:#767676;">${L.t('underMarinated')}</div>`;
+      case 'late': return `<span style="color:#B91C1C;font-weight:700;">${L.t('resLate', { span: d })}</span>`;
+      case 'overdue': return `<span style="color:#B91C1C;font-weight:700;">${L.t('resOverdue', { span: d })}</span>`;
+      default: return `<span style="color:#B45309;font-weight:700;">${L.t('resIn')}</span><div style="font-size:10px;color:#767676;">${L.t('resLeft', { span: d })}</div>`;
     }
   };
 
   const rows = batches.map((r, i) => {
+    const who = bidi(nameOf(r.startEditedBy));
     const corrected = r.startEditedAt
-      ? `<div style="margin-top:4px;font-size:10px;color:#B45309;line-height:1.4;">Start corrected${r.originalMarinatedAt ? ` from ${time(r.originalMarinatedAt)}` : ''} by ${bidi(nameOf(r.startEditedBy))}${r.startEditReason ? `: ${bidi(r.startEditReason)}` : ''}</div>`
+      ? `<div style="margin-top:4px;font-size:10px;color:#B45309;line-height:1.4;">${
+          r.originalMarinatedAt ? L.t('correctedFrom', { time: time(r.originalMarinatedAt), name: who }) : L.t('corrected', { name: who })
+        }${r.startEditReason ? `: ${bidi(r.startEditReason)}` : ''}</div>`
       : '';
     const photo = r.unloadPhotoUrl
       ? `<img src="${r.unloadPhotoUrl}" style="width:96px;height:96px;object-fit:cover;border:1px solid #d1d5db;border-radius:8px;display:block;" />`
@@ -90,7 +102,7 @@ function buildHtml(data: MarinationReportData, logoDataUri: string): string {
         <div style="font-size:10px;color:#767676;">${bidi(r.actorName ?? '')}</div>${corrected}${note}
       </td>
       <td style="padding:10px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;">${
-        r.countIn != null ? `<div style="font-weight:700;">${r.countIn}</div><div style="font-size:10px;color:#767676;">= ${Math.round(r.countIn * CHICKENS_PER_BUCKET)} chickens</div>` : '&mdash;'
+        r.countIn != null ? `<div style="font-weight:700;">${r.countIn}</div><div style="font-size:10px;color:#767676;">${L.t('chickens', { n: Math.round(r.countIn * CHICKENS_PER_BUCKET) })}</div>` : '&mdash;'
       }</td>
       <td style="padding:10px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;">${
         r.dueAt ? time(r.dueAt) : '&mdash;'
@@ -110,42 +122,42 @@ function buildHtml(data: MarinationReportData, logoDataUri: string): string {
     </td>`;
 
   return `<!DOCTYPE html>
-<html>
+<html dir="${L.dir}" lang="${L.lang}">
 <head><meta charset="utf-8" /></head>
 <body style="font-family:-apple-system,'Helvetica Neue',Helvetica,Arial,sans-serif;margin:0;padding:40px 44px;color:#111827;background:#ffffff;">
   <div style="text-align:center;">
     <img src="${logoDataUri}" style="height:48px;" />
-    <h1 style="margin:12px 0 2px;font-size:23px;font-weight:700;">Chicken Marination Report</h1>
+    <h1 style="margin:12px 0 2px;font-size:23px;font-weight:700;">${L.t('marTitle')}</h1>
     <p style="margin:0;font-size:12px;color:#767676;">${bidi(data.branchName)} &middot; ${dateLabel}</p>
   </div>
 
   <table style="width:100%;margin-top:20px;border-collapse:separate;border-spacing:8px 0;">
     <tr>
-      ${tile('Batches', String(batches.length))}
-      ${tile('Buckets', `${buckets}`, '#111827')}
-      ${tile('On time', String(onTime), '#047857')}
-      ${tile('Early, late or overdue', String(problems), problems ? '#B91C1C' : '#111827')}
+      ${tile(L.t('batches'), String(batches.length))}
+      ${tile(L.t('buckets'), `${buckets}`, '#111827')}
+      ${tile(L.t('onTime'), String(onTime), '#047857')}
+      ${tile(L.t('problems'), String(problems), problems ? '#B91C1C' : '#111827')}
     </tr>
   </table>
-  <p style="margin:6px 8px 0;font-size:10.5px;color:#767676;">${buckets} buckets = ${Math.round(buckets * CHICKENS_PER_BUCKET)} chickens (${CHICKENS_PER_BUCKET} per bucket)</p>
+  <p style="margin:6px 8px 0;font-size:10.5px;color:#767676;">${L.t('bucketsLine', { b: buckets, c: Math.round(buckets * CHICKENS_PER_BUCKET), per: CHICKENS_PER_BUCKET })}</p>
 
   <table style="width:100%;margin-top:16px;border-collapse:collapse;font-size:12px;">
-    <tr style="text-align:left;color:#767676;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;">
+    <tr style="text-align:${L.start};color:#767676;font-size:10.5px;text-transform:uppercase;letter-spacing:${L.ar ? 0 : 0.5}px;">
       <th style="padding:6px;border-bottom:2px solid #111827;">#</th>
-      <th style="padding:6px;border-bottom:2px solid #111827;">In the vinegar</th>
-      <th style="padding:6px;border-bottom:2px solid #111827;">Buckets</th>
-      <th style="padding:6px;border-bottom:2px solid #111827;">Due out</th>
-      <th style="padding:6px;border-bottom:2px solid #111827;">Vinegar out</th>
-      <th style="padding:6px;border-bottom:2px solid #111827;">Result</th>
-      <th style="padding:6px;border-bottom:2px solid #111827;">Removal photo</th>
+      <th style="padding:6px;border-bottom:2px solid #111827;">${L.t('colIn')}</th>
+      <th style="padding:6px;border-bottom:2px solid #111827;">${L.t('buckets')}</th>
+      <th style="padding:6px;border-bottom:2px solid #111827;">${L.t('colDue')}</th>
+      <th style="padding:6px;border-bottom:2px solid #111827;">${L.t('colOut')}</th>
+      <th style="padding:6px;border-bottom:2px solid #111827;">${L.t('colResult')}</th>
+      <th style="padding:6px;border-bottom:2px solid #111827;">${L.t('colPhoto')}</th>
     </tr>
-    ${rows || '<tr><td colspan="7" style="padding:18px;text-align:center;color:#767676;">No marination recorded this day.</td></tr>'}
+    ${rows || `<tr><td colspan="7" style="padding:18px;text-align:center;color:#767676;">${L.t('noMarination')}</td></tr>`}
   </table>
 
   <table style="width:100%;margin-top:22px;border-top:1px solid #e5e7eb;font-size:10px;color:#767676;">
     <tr>
-      <td style="padding-top:10px;text-align:left;">Basra Delight &middot; BD Audit</td>
-      <td style="padding-top:10px;text-align:right;">Every time is the server's clock. Each batch is judged by the rule saved with it (now ${rules.hours} h, ${rules.earlyGraceMin} min early grace, ${rules.lateGraceMin} min late grace).</td>
+      <td style="padding-top:10px;text-align:${L.start};">${L.t('footer')}</td>
+      <td style="padding-top:10px;text-align:${L.end};">${L.t('marFooter', { h: rules.hours, early: rules.earlyGraceMin, late: rules.lateGraceMin })}</td>
     </tr>
   </table>
 </body>

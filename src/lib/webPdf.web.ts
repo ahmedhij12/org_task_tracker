@@ -12,6 +12,11 @@ export async function htmlToPdfFile(html: string, filename: string): Promise<Fil
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'position:fixed;left:-10000px;top:0;';
   const page = document.createElement('div');
+  // The report's own direction, never the app's: in the Arabic app the page
+  // is right to left, and a report drawn inside it inherited that and spilled
+  // off the left edge of the PDF (the marination report, 2026-09-26).
+  page.dir = doc.documentElement.getAttribute('dir') || 'ltr';
+  page.lang = doc.documentElement.getAttribute('lang') || 'en';
   page.setAttribute('style', `width:794px;background:#fff;box-sizing:border-box;${doc.body.getAttribute('style') ?? ''}`);
   page.innerHTML = doc.body.innerHTML;
   wrapper.appendChild(page);

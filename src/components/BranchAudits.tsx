@@ -23,8 +23,14 @@ export function BranchAudits() {
 
   const staff = useMemo(
     () =>
+      // Current staff only: a deleted or switched-off account is not on the branch any more.
       allMembers.filter(
-        (m) => m.id !== profile?.id && m.role === 'employee' && m.teamIds.some((id) => profile?.teamIds.includes(id))
+        (m) =>
+          !m.deletedAt &&
+          m.active &&
+          m.id !== profile?.id &&
+          m.role === 'employee' &&
+          m.teamIds.some((id) => profile?.teamIds.includes(id))
       ),
     [allMembers, profile?.id, profile?.teamIds]
   );
