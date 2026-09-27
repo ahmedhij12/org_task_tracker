@@ -1,4 +1,4 @@
--- NOT YET APPLIED (2026-09-26). Oil: every fryer is tracked on its own.
+-- APPLIED 2026-09-27 (with web 3015f1f6). Oil: every fryer is tracked on its own.
 -- His report: Baghdad has two fryers and only one was ever marked late or
 -- reminded; other branches will have 3 to 6.
 -- Before: a slot counted as done for the whole BRANCH once any one fryer was
@@ -71,6 +71,8 @@ begin
 
   return query select v_slot, v_late;
 end; $$;
+-- Only the signed-in app (and the definer functions) call it — not a signed-out visitor.
+revoke execute on function public.oil_slot_for(uuid, timestamptz, uuid) from public, anon;
 grant execute on function public.oil_slot_for(uuid, timestamptz, uuid) to authenticated;
 
 -- The branch's working fryers with no scheduled test for this slot on this

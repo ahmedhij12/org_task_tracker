@@ -1,4 +1,4 @@
--- NOT YET APPLIED (2026-09-27). "Mark as seen" for the people who verify —
+-- APPLIED 2026-09-27 (with web 3015f1f6). "Mark as seen" for the people who verify —
 -- admins (the super admin included) and the hygiene auditor. His words: once
 -- he has seen the alerts he wants them gone, "for me only and the hygiene and
 -- admins". Each person hides, on their own account only, what they have
