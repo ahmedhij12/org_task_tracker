@@ -11,6 +11,7 @@ import { PermissionsOnboarding } from '@/components/PermissionsOnboarding';
 import { ConfirmBranchLocation } from '@/components/ConfirmBranchLocation';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { SideMenuProvider } from '@/components/SideMenu';
+import { AlertsSeenProvider } from '@/hooks/useAlertsSeen';
 import { OrgSettingsProvider } from '@/hooks/useOrgSettings';
 import { useActivityTracking } from '@/hooks/useActivityTracking';
 import { useSingleDevice } from '@/hooks/useSingleDevice';
@@ -27,6 +28,7 @@ export default function MainLayout() {
       <ChecklistDataProvider>
         <OilTestsProvider>
           <ChickenProvider>
+            <AlertsSeenProvider>
             <SideMenuProvider>
               <MainTabs />
               <PermissionsOnboarding />
@@ -34,6 +36,7 @@ export default function MainLayout() {
               {/* Over every screen: a new version is out, close and reopen. */}
               <UpdateBanner />
             </SideMenuProvider>
+            </AlertsSeenProvider>
           </ChickenProvider>
         </OilTestsProvider>
       </ChecklistDataProvider>

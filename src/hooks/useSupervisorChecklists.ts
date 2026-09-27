@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useOrgData } from '@/hooks/useOrgData';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useAuth } from '@/hooks/useAuth';
+import { useAlertsSeen } from '@/hooks/useAlertsSeen';
 import type { TaskCompletion } from '@/types';
 
 /**
@@ -26,10 +27,12 @@ export function useSupervisorChecklists(): TaskCompletion[] {
  * How many daily checklists are still waiting for this reader's ✓. Only the
  * people who verify count anything: the admin, and the hygiene auditor once
  * that role exists. A branch manager no longer verifies, so he has no count.
+ * Ones this reader already marked as seen don't count either.
  */
 export function useUnverifiedChecklistCount(): number {
   const rows = useSupervisorChecklists();
   const { profile } = useAuth();
+  const { isNew } = useAlertsSeen();
   const verifies = profile?.role === 'owner' || (profile?.role as string) === 'hygiene_auditor';
-  return verifies ? rows.filter((r) => !r.reviewedBy).length : 0;
+  return verifies ? rows.filter((r) => !r.reviewedBy && isNew('checklists', r.createdAt)).length : 0;
 }

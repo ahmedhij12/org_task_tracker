@@ -42,7 +42,7 @@ export function MenuButton() {
       <Ionicons name="menu" size={26} color={c.text} />
       {/* Checklists moved into the menu, so its waiting count shows here. */}
       {unverified > 0 ? (
-        <View style={{ position: 'absolute', top: -2, right: -4, width: 10, height: 10, borderRadius: 5, backgroundColor: c.rose }} />
+        <View testID="menu-dot" style={{ position: 'absolute', top: -2, right: -4, width: 10, height: 10, borderRadius: 5, backgroundColor: c.rose }} />
       ) : null}
     </Pressable>
   );

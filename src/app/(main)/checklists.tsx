@@ -10,6 +10,7 @@ import { useOrgData } from '@/hooks/useOrgData';
 import { useAuth } from '@/hooks/useAuth';
 import { auditsAndVerifies, can } from '@/lib/roles';
 import { useSupervisorChecklists } from '@/hooks/useSupervisorChecklists';
+import { useAlertsSeen } from '@/hooks/useAlertsSeen';
 import { CompletionDetailSheet } from '@/components/CompletionDetailSheet';
 import { CreateChecklistTemplateSheet } from '@/components/CreateChecklistTemplateSheet';
 import { useChecklists } from '@/hooks/useChecklists';
@@ -72,6 +73,8 @@ export default function ChecklistsScreen() {
   // Verifies and edits the templates: the admin and the hygiene auditor.
   const isOwner = auditsAndVerifies(profile);
   const submissions = useSupervisorChecklists();
+  // Waiting checklists this reader already marked as seen stop counting.
+  const { canMark, isNew, markSeen } = useAlertsSeen();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<TaskCompletion | null>(null);
   // Editing a template used to live behind the "+" screen, which is gone;
@@ -97,10 +100,25 @@ export default function ChecklistsScreen() {
           .filter((s) => s.teamId === team.id)
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         // Only the people who verify see a waiting count; the manager no longer verifies.
-        return { team, rows, unverified: isOwner ? rows.filter((r) => !r.reviewedBy).length : 0 };
+        return {
+          team,
+          rows,
+          unverified: isOwner ? rows.filter((r) => !r.reviewedBy && isNew('checklists', r.createdAt)).length : 0,
+          // Seen but still not verified: no count, and no "all done" tick either.
+          pending: isOwner && rows.some((r) => !r.reviewedBy),
+        };
       })
       .sort((a, b) => b.unverified - a.unverified || a.team.name.localeCompare(b.team.name));
-  }, [teams, submissions, isOwner, profile?.id, profile?.teamIds]);
+  }, [teams, submissions, isOwner, isNew, profile?.id, profile?.teamIds]);
+  // "Mark all as seen" covers exactly what is waiting now, up to the newest one.
+  const newestUnseen = useMemo(
+    () =>
+      branches
+        .flatMap((b) => b.rows)
+        .filter((r) => !r.reviewedBy && isNew('checklists', r.createdAt))
+        .reduce<string | null>((max, r) => (!max || r.createdAt > max ? r.createdAt : max), null),
+    [branches, isNew]
+  );
 
   const lateNotSent = useLateNotSent(branches.map((b) => b.team.id));
   // Only the people who decide late checklists are told to decide.
@@ -119,8 +137,18 @@ export default function ChecklistsScreen() {
           <Text style={{ fontSize: 24, fontWeight: '800', color: c.text }}>{t('checklists.title')}</Text>
         </View>
         <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 4, marginBottom: 18 }}>{t(isOwner ? 'checklists.subtitle' : 'checklists.subtitleManager')}</Text>
+        {canMark && newestUnseen ? (
+          <Pressable
+            testID="mark-checklists-seen"
+            onPress={() => markSeen('checklists', newestUnseen)}
+            style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: c.border, marginTop: -8, marginBottom: 14 }}
+          >
+            <Ionicons name="checkmark-done" size={16} color={c.textMuted} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted }}>{t('checklists.markAllSeen')}</Text>
+          </Pressable>
+        ) : null}
 
-        {branches.map(({ team, rows, unverified }) => {
+        {branches.map(({ team, rows, unverified, pending }) => {
           const open = expanded === team.id;
           let lastDay = '';
           return (
@@ -142,7 +170,7 @@ export default function ChecklistsScreen() {
                   <View style={{ minWidth: 24, height: 24, borderRadius: 12, backgroundColor: c.rose, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
                     <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>{unverified}</Text>
                   </View>
-                ) : rows.length > 0 ? (
+                ) : rows.length > 0 && !pending ? (
                   <Ionicons name="checkmark-done" size={18} color={c.emerald} />
                 ) : null}
                 <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={c.textMuted} />
@@ -158,6 +186,8 @@ export default function ChecklistsScreen() {
                       const showDay = day !== lastDay;
                       lastDay = day;
                       const verified = !!r.reviewedBy;
+                      // Waiting and not yet marked as seen by this reader.
+                      const fresh = !verified && isNew('checklists', r.createdAt);
                       const late = r.wasLate && !!r.checklistSlot;
                       // A late one waits on the auditor's decision; once decided, the badge says which.
                       const badge =
@@ -169,7 +199,9 @@ export default function ChecklistsScreen() {
                               ? { text: `✓ ${t('checklists.verified')}`, fg: c.emerald, bg: c.emeraldSoft }
                               : late && !r.lateExcusedAt && canDecide
                                 ? { text: t('checklists.lateDecide'), fg: c.rose, bg: c.roseSoft }
-                                : { text: t('checklists.new'), fg: c.rose, bg: c.roseSoft };
+                                : fresh
+                                  ? { text: t('checklists.new'), fg: c.rose, bg: c.roseSoft }
+                                  : { text: t('checklists.notVerified'), fg: c.textMuted, bg: c.border };
                       // A daily checklist is measured against its own branch.
                       const where = checkInFor({ lat: r.signedLat, lng: r.signedLng, accuracyM: r.signedAccuracyM }, team);
                       return (
@@ -190,7 +222,7 @@ export default function ChecklistsScreen() {
                               backgroundColor: c.bgSubtle,
                               marginBottom: 8,
                               borderWidth: 1,
-                              borderColor: verified ? c.border : c.rose,
+                              borderColor: fresh ? c.rose : c.border,
                             }}
                           >
                             {r.selfieUrl ? (
